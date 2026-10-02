@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -65,6 +66,7 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
     decode_token_to_search_after,
     encode_search_after_to_token,
 )
+from stac_fastapi.sfeos_helpers.database.index import index_by_collection_id
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
@@ -82,7 +84,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
     ITEM_INDICES,
-    ITEMS_INDEX_PREFIX,
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
@@ -442,7 +443,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             dict: A dictionary containing the Queryables mappings.
         """
         mappings = await self.client.indices.get_mapping(
-            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+            index=index_alias_by_collection_id(collection_id),
         )
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
@@ -1690,9 +1691,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_dict = (
             collection
             if isinstance(collection, dict)
-            else collection.model_dump()
-            if hasattr(collection, "model_dump")
-            else dict(collection)
+            else (
+                collection.model_dump()
+                if hasattr(collection, "model_dump")
+                else dict(collection)
+            )
         )
 
         # Handle collection ID change
@@ -1704,13 +1707,23 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Create the new collection
             await self.create_collection(collection_dict, refresh=refresh)
 
+            source_indices = await self.client.indices.get(
+                index=f"{index_by_collection_id(collection_id)}-*"
+            )
+            source_index = next(iter(source_indices.keys()))
+            source_alias = index_alias_by_collection_id(collection_id)
+
+            destination_indices = await self.client.indices.get(
+                index=f"{index_by_collection_id(collection_dict.get('id'))}-*"
+            )
+            destination_index = next(iter(destination_indices.keys()))
+            destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
+
             # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
-                    "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
-                    },
-                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
+                    "dest": {"index": destination_index},
+                    "source": {"index": source_index},
                     "script": {
                         "lang": "painless",
                         "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
@@ -1718,6 +1731,25 @@ class DatabaseLogic(BaseDatabaseLogic):
                 },
                 wait_for_completion=True,
                 refresh=refresh,
+            )
+
+            await self.client.indices.update_aliases(
+                body={
+                    "actions": [
+                        {
+                            "remove": {
+                                "index": source_index,
+                                "alias": source_alias,
+                            }
+                        },
+                        {
+                            "add": {
+                                "index": destination_index,
+                                "alias": destination_alias,
+                            }
+                        },
+                    ]
+                }
             )
 
             # Delete the old collection
