@@ -196,4 +196,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
         relation = relation_mapping[query["op"]]
         queries = [{"geo_shape": {field: {"shape": geometry, "relation": relation}}}]
 
+    else:
+        raise ValueError(f"CQL2 operator {query['op']!r} is not supported")
+
     return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
