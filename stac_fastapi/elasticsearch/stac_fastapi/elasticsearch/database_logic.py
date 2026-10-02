@@ -25,9 +25,7 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
-from stac_fastapi.elasticsearch.config import (
-    AsyncElasticsearchSettings,
-)
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
