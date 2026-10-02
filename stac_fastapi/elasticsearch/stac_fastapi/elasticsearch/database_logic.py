@@ -1707,14 +1707,16 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Create the new collection
             await self.create_collection(collection_dict, refresh=refresh)
 
-            source_index = self.client.indices.get(
+            source_indices = await self.client.indices.get(
                 index=f"{index_by_collection_id(collection_id)}-*"
-            ).keys()[0]
+            )
+            source_index = source_indices.keys()[0]
             source_alias = index_alias_by_collection_id(collection_id)
 
-            destination_index = self.client.indices.get(
+            destination_indices = await self.client.indices.get(
                 index=f"{index_by_collection_id(collection_dict.get('id'))}-*"
-            ).keys()[0]
+            )
+            destination_index = destination_indices.keys()[0]
             destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
 
             # Reindex items from the old collection to the new collection
