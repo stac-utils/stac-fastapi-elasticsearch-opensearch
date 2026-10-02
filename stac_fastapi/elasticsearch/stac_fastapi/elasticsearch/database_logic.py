@@ -25,7 +25,9 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config import (
+    AsyncElasticsearchSettings,
+)
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
@@ -1708,7 +1710,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.create_collection(collection_dict, refresh=refresh)
 
             source_index = self.client.indices.get(
-                f"{index_by_collection_id(collection_id)}-*"
+                index=f"{index_by_collection_id(collection_id)}-*"
             ).keys()[0]
             source_alias = index_alias_by_collection_id(collection_id)
 

@@ -1688,15 +1688,24 @@ class DatabaseLogic(BaseDatabaseLogic):
 
             await self.create_collection(collection_dict, refresh=refresh)
 
+            source_index = self.client.indices.get(
+                index=f"{index_by_collection_id(collection_id)}-*"
+            ).keys()[0]
+            source_alias = index_alias_by_collection_id(collection_id)
+
+            destination_index = self.client.indices.get(
+                index=f"{index_by_collection_id(collection_dict.get('id'))}-*"
+            ).keys()[0]
+            destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
+
+            # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
-                    "dest": {
-                        "index": index_by_collection_id(collection_dict.get("id"))
-                    },
-                    "source": {"index": index_alias_by_collection_id(collection_id)},
+                    "dest": {"index": destination_index},
+                    "source": {"index": source_index},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,
@@ -1708,18 +1717,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "actions": [
                         {
                             "remove": {
-                                "index": index_by_collection_id(collection_id),
-                                "alias": index_alias_by_collection_id(collection_id),
+                                "index": source_index,
+                                "alias": source_alias,
                             }
                         },
                         {
                             "add": {
-                                "index": index_by_collection_id(
-                                    collection_dict.get("id")
-                                ),
-                                "alias": index_alias_by_collection_id(
-                                    collection_dict.get("id")
-                                ),
+                                "index": destination_index,
+                                "alias": destination_alias,
                             }
                         },
                     ]
