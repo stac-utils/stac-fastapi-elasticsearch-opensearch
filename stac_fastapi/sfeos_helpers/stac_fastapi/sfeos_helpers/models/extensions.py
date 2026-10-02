@@ -371,20 +371,26 @@ class Extensions:
             "hide_alternate_parents", "HIDE_ALTERNATE_PARENTS", False
         )
 
-        return [
+        extensions: list[ApiExtension] = [
             CatalogsExtension(
                 client=catalogs_client,
                 settings=self.settings.model_dump(),
                 hide_alternate_parents=hide_parents,
             ),
-            CatalogsTransactionExtension(
-                client=catalogs_client,
-                settings=self.settings.model_dump(),
-            ),
+        ]
+        if self.transactions_enabled:
+            extensions.append(
+                CatalogsTransactionExtension(
+                    client=catalogs_client,
+                    settings=self.settings.model_dump(),
+                )
+            )
+        extensions.append(
             CatalogsSearchExtension(
                 client=catalogs_client,
                 search_get_request_model=create_get_request_model(self.search),
                 search_post_request_model=search_post_request_model,
                 conformance_classes=list(CATALOGS_SEARCH_CONFORMANCE),
-            ),
-        ]
+            )
+        )
+        return extensions

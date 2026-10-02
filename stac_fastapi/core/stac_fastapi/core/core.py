@@ -1,6 +1,7 @@
 """Core client."""
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime as datetime_type
@@ -1014,10 +1015,10 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
-        # Use token from the request if the model doesn't define it
-        token_param = getattr(
-            search_request, "token", None
-        ) or request.query_params.get("token")
+        # Use the query-string token only if the model doesn't define one
+        token_param = getattr(search_request, "token", None)
+        if token_param is None:
+            token_param = request.query_params.get("token")
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
@@ -2181,6 +2182,13 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     ) -> BulkTransaction | Response:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
+        The path collection is authoritative: every item is written to its index.
+        An item whose `collection` is absent, `null` or `""` is written with the path
+        collection; any other value that differs is reported per item in `errors`, or
+        rejects the batch with `400` under `RAISE_ON_BULK_ERROR`. Without a path
+        collection (direct calls), the first entry with a non-empty string `id` and
+        `collection` sets the batch collection.
+
         Args:
             items: The items to insert.
             chunk_size: The size of each chunk for bulk processing.
@@ -2188,6 +2196,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         Returns:
             A string indicating the number of items successfully added.
+
+        Raises:
+            NotFoundError: If the batch collection does not exist.
         """
         request = kwargs.get("request")
 
@@ -2211,16 +2222,67 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             for item in items.items.values()
         ]
 
+        collection_id = getattr(request, "path_params", {}).get("collection_id")
+        if collection_id is None:
+            # Direct call without a path: the first admissible entry naming a collection sets it.
+            collection_id = next(
+                (
+                    item["collection"]
+                    for item in raw_items
+                    if isinstance(item, dict)
+                    and isinstance(item.get("id"), str)
+                    and item["id"]
+                    and isinstance(item.get("collection"), str)
+                    and item["collection"]
+                ),
+                None,
+            )
+        if collection_id is not None:
+            self.database.check_collection_exists_sync(collection_id)
+
+        admitted_items = []
+        admission_errors = []
+        for key, item in zip(items.items, raw_items):
+            if not isinstance(item, dict):
+                admission_errors.append(
+                    {"id": key, "msg": "Item must be a JSON object."}
+                )
+            elif not isinstance(item.get("id"), str) or not item["id"]:
+                admission_errors.append(
+                    {"id": key, "msg": "Item must have a non-empty string id."}
+                )
+            elif collection_id is not None and item.get("collection") not in (
+                None,
+                "",
+                collection_id,
+            ):
+                value = item["collection"]
+                shown = f"'{value}'" if isinstance(value, str) else json.dumps(value)
+                admission_errors.append(
+                    {
+                        "id": key,
+                        "msg": f"Item collection {shown} does not match path collection '{collection_id}'",
+                    }
+                )
+            elif collection_id is not None:
+                admitted_items.append({**item, "collection": collection_id})
+            else:
+                admitted_items.append(item)
+
+        if admission_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": f"Bulk insertion rejected. {len(admission_errors)} items are malformed.",
+                    "errors": admission_errors,
+                },
+            )
+
         # 1. DEDUPLICATE FIRST
         # Doing this before validation saves us from validating the exact same STAC item twice
-        seen_ids: dict = {}
-        for item in raw_items:
-            item_id = item.get("id")
-            if item_id is not None:
-                seen_ids[item_id] = item
-
+        seen_ids: dict = {item["id"]: item for item in admitted_items}
         unique_items = list(seen_ids.values())
-        skipped_batch_duplicates = len(raw_items) - len(unique_items)
+        skipped_batch_duplicates = len(admitted_items) - len(unique_items)
 
         if not unique_items:
             return cast(
@@ -2229,7 +2291,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     "received": len(raw_items),
                     "success": 0,
                     "skipped": skipped_batch_duplicates,
-                    "errors": [],
+                    "errors": admission_errors,
                 },
             )
 
@@ -2247,19 +2309,19 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             # This endpoint historically has strict mode enabled by default.
             # We fail the entire batch immediately if any item is invalid.
             if validation_errors:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
-                        "summary": build_bulk_summary(
-                            raw_features=raw_items,
-                            processed_items=unique_items,
-                            valid_items=valid_items,
-                            validation_error_count=validation_error_count,
-                        ),
-                        "errors": validation_errors,
-                    },
-                )
+                detail = {
+                    "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
+                    "summary": build_bulk_summary(
+                        raw_features=admitted_items,
+                        processed_items=unique_items,
+                        valid_items=valid_items,
+                        validation_error_count=validation_error_count,
+                    ),
+                    "errors": validation_errors,
+                }
+                if admission_errors:
+                    detail["malformed"] = admission_errors
+                raise HTTPException(status_code=400, detail=detail)
         else:
             valid_items = unique_items
 
@@ -2277,12 +2339,12 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     "received": len(raw_items),
                     "success": 0,
                     "skipped": skipped_batch_duplicates + len(valid_items),
-                    "errors": [],
+                    "errors": admission_errors,
                 },
             )
 
         # 4. DATABASE INSERTION LAYER
-        collection_id = processed_items[0]["collection"]
+        collection_id = collection_id or processed_items[0]["collection"]
         success, errors = self.database.bulk_sync(
             collection_id,
             processed_items,
@@ -2315,6 +2377,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": format_bulk_errors(all_errors),
+                "errors": admission_errors + format_bulk_errors(all_errors),
             },
         )

@@ -1,8 +1,14 @@
+import base64
 import uuid
+from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from stac_fastapi.core.catalogs_client import CatalogsClient
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+
+from ..conftest import build_test_app_with_catalogs, get_flattened_routes
 
 
 @pytest.mark.asyncio
@@ -611,6 +617,110 @@ async def test_catalogs_pagination_token_parameter(catalogs_app_client, load_tes
     catalogs_response = resp.json()
     assert "catalogs" in catalogs_response
     assert "links" in catalogs_response
+
+
+@pytest.mark.asyncio
+async def test_catalogs_pagination_next_link(catalogs_app_client, load_test_data):
+    """Test that /catalogs links to the next page while more catalogs match."""
+    created = set()
+    for i in range(3):
+        test_catalog = load_test_data("test_catalog.json")
+        test_catalog["id"] = f"test-catalog-{uuid.uuid4()}-{i}"
+        resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert resp.status_code == 201
+        created.add(test_catalog["id"])
+
+    resp = await catalogs_app_client.get("/catalogs?limit=1")
+    assert resp.status_code == 200
+    total = resp.json()["numberMatched"]
+
+    # Other tests leave catalogs behind, so size the pages from the total:
+    # at least two pages, whatever the total is. Any other query parameter
+    # is carried to the next page.
+    limit = min(total - 1, 1000)
+    url = f"/catalogs?limit={limit}&unrelated=kept"
+    seen = []
+    for _ in range(total):
+        resp = await catalogs_app_client.get(url)
+        assert resp.status_code == 200
+        page = resp.json()
+        seen += [catalog["id"] for catalog in page["catalogs"]]
+        next_links = [link for link in page["links"] if link["rel"] == "next"]
+        if not next_links:
+            break
+        assert len(next_links) == 1
+        query = parse_qs(urlparse(next_links[0]["href"]).query)
+        assert query["limit"] == [str(limit)]
+        assert query["unrelated"] == ["kept"]
+        url = next_links[0]["href"]
+
+    assert len(seen) > limit, "The first page should link to a second page"
+    assert len(seen) == len(set(seen)) == total
+    assert created <= set(seen)
+
+
+@pytest.mark.asyncio
+async def test_catalogs_next_link_pages_through_tricky_ids(
+    catalogs_app_client, load_test_data
+):
+    """Paging /catalogs one at a time terminates and returns each id once.
+
+    The old raw token split on ``|``, so a catalog id containing ``|`` sent the
+    ``next`` link back to page 1 forever. The token is now opaque base64, so
+    following ``next`` terminates. ``+`` and ``=`` check that the link still
+    escapes the token.
+    """
+    created = set()
+    for suffix in ("a|b", "c+d", "e=f"):
+        test_catalog = load_test_data("test_catalog.json")
+        test_catalog["id"] = f"test-catalog-{uuid.uuid4()}-{suffix}"
+        resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert resp.status_code == 201
+        created.add(test_catalog["id"])
+
+    total = (await catalogs_app_client.get("/catalogs?limit=1")).json()["numberMatched"]
+
+    seen = []
+    tokens_seen = set()
+    url = "/catalogs?limit=1"
+    for _ in range(total + 5):  # bounded, so a looping token fails instead of hanging
+        resp = await catalogs_app_client.get(url)
+        assert resp.status_code == 200
+        page = resp.json()
+        seen += [catalog["id"] for catalog in page["catalogs"]]
+        next_links = [link for link in page["links"] if link["rel"] == "next"]
+        if not next_links:
+            break
+        token = parse_qs(urlparse(next_links[0]["href"]).query)["token"][0]
+        assert token not in tokens_seen, "next repeated a token: paging is looping"
+        tokens_seen.add(token)
+        url = next_links[0]["href"]
+    else:
+        raise AssertionError("paging did not terminate")
+
+    assert len(seen) == len(set(seen)) == total
+    assert created <= set(seen)
+
+
+@pytest.mark.asyncio
+async def test_catalogs_pagination_non_list_token_is_page_one(
+    catalogs_app_client, load_test_data
+):
+    """A base64 token that is not a list of sort values is ignored: page 1, not a 500."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert resp.status_code == 201
+
+    first = await catalogs_app_client.get("/catalogs?limit=1000")
+    assert first.status_code == 200
+    page_one = [catalog["id"] for catalog in first.json()["catalogs"]]
+
+    for payload in (b'{"x": 1}', b'"x"'):  # valid base64 JSON, but not a list
+        token = base64.urlsafe_b64encode(payload).decode()
+        resp = await catalogs_app_client.get(f"/catalogs?limit=1000&token={token}")
+        assert resp.status_code == 200, resp.text
+        assert [catalog["id"] for catalog in resp.json()["catalogs"]] == page_one
 
 
 @pytest.mark.asyncio
@@ -4839,34 +4949,30 @@ async def test_core_put_collection_response_links_match_get(
     )
 
 
-async def _stored_collection(collection_id):
+async def _stored_document(doc_id):
     from ..conftest import database
 
-    stored = await database.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+    stored = await database.client.get(index=COLLECTIONS_INDEX, id=doc_id)
     return stored["_source"]
 
 
-def _put_after_first_collection_read(monkeypatch, client, collection, title):
-    """Send a PUT setting `title` right after the next read of the collection."""
+def _put_before_update(monkeypatch, client, path, doc, title):
+    """PUT `doc` with `title` to `path` right before the next update of the document."""
     from ..conftest import database
 
     client_cls = type(database.client)
-    original_get = client_cls.get
+    original_update = client_cls.update
     fired = []
 
-    async def racing_get(self, *args, **kwargs):
-        resp = await original_get(self, *args, **kwargs)
-        if kwargs.get("id") == collection["id"] and not fired:
+    async def racing_update(self, *args, **kwargs):
+        if kwargs.get("id") == doc["id"] and not fired:
             fired.append(True)
-            monkeypatch.setattr(client_cls, "get", original_get)
-            put = await client.put(
-                f"/collections/{collection['id']}",
-                json={**collection, "title": title},
-            )
+            monkeypatch.setattr(client_cls, "update", original_update)
+            put = await client.put(path, json={**doc, "title": title})
             assert put.status_code == 200
-        return resp
+        return await original_update(self, *args, **kwargs)
 
-    monkeypatch.setattr(client_cls, "get", racing_get)
+    monkeypatch.setattr(client_cls, "update", racing_update)
     return fired
 
 
@@ -4874,7 +4980,7 @@ def _put_after_first_collection_read(monkeypatch, client, collection, title):
 async def test_link_collection_keeps_concurrent_put_metadata(
     catalogs_app_client, load_test_data, monkeypatch
 ):
-    """A PUT landing between the link's read and write must not be reverted."""
+    """A PUT landing just before the link's update must not be reverted."""
     catalog_ids, collection = await _collection_in_two_catalogs(
         catalogs_app_client, load_test_data
     )
@@ -4883,8 +4989,12 @@ async def test_link_collection_keeps_concurrent_put_metadata(
     resp = await catalogs_app_client.post("/catalogs", json=third)
     assert resp.status_code == 201
 
-    fired = _put_after_first_collection_read(
-        monkeypatch, catalogs_app_client, collection, "Updated during link"
+    fired = _put_before_update(
+        monkeypatch,
+        catalogs_app_client,
+        f"/collections/{collection['id']}",
+        collection,
+        "Updated during link",
     )
     resp = await catalogs_app_client.post(
         f"/catalogs/{third['id']}/collections", json={"id": collection["id"]}
@@ -4892,7 +5002,7 @@ async def test_link_collection_keeps_concurrent_put_metadata(
     assert resp.status_code == 200
     assert fired == [True]
 
-    stored = await _stored_collection(collection["id"])
+    stored = await _stored_document(collection["id"])
     assert stored["title"] == "Updated during link"
     await _assert_memberships(
         catalogs_app_client, collection["id"], [*catalog_ids, third["id"]]
@@ -4944,12 +5054,17 @@ async def test_core_post_collection_response_links_match_get(
 async def test_unlink_collection_keeps_concurrent_put_metadata(
     catalogs_app_client, load_test_data, monkeypatch
 ):
-    """A PUT landing between the unlink's read and write must not be reverted."""
+    """A PUT landing just before the unlink's update must not be reverted."""
     catalog_ids, collection = await _collection_in_two_catalogs(
         catalogs_app_client, load_test_data
     )
-    fired = _put_after_first_collection_read(
-        monkeypatch, catalogs_app_client, collection, "Updated during unlink"
+
+    fired = _put_before_update(
+        monkeypatch,
+        catalogs_app_client,
+        f"/collections/{collection['id']}",
+        collection,
+        "Updated during unlink",
     )
     resp = await catalogs_app_client.delete(
         f"/catalogs/{catalog_ids[0]}/collections/{collection['id']}"
@@ -4957,7 +5072,7 @@ async def test_unlink_collection_keeps_concurrent_put_metadata(
     assert resp.status_code == 204
     assert fired == [True]
 
-    stored = await _stored_collection(collection["id"])
+    stored = await _stored_document(collection["id"])
     assert stored["title"] == "Updated during unlink"
     assert stored["parent_ids"] == [catalog_ids[1]]
 
@@ -4976,7 +5091,7 @@ async def test_link_collection_twice_does_not_duplicate_parent_ids(
     )
     assert resp.status_code == 200
 
-    parent_ids = (await _stored_collection(collection["id"]))["parent_ids"]
+    parent_ids = (await _stored_document(collection["id"]))["parent_ids"]
     assert sorted(parent_ids) == sorted(catalog_ids)
 
 
@@ -4993,7 +5108,7 @@ async def test_unlink_collection_twice_returns_404(catalogs_app_client, load_tes
     resp = await catalogs_app_client.delete(path)
     assert resp.status_code == 404
 
-    stored = await _stored_collection(collection["id"])
+    stored = await _stored_document(collection["id"])
     assert stored["parent_ids"] == [catalog_ids[1]]
 
 
@@ -5032,5 +5147,246 @@ async def test_link_collection_returns_409_when_conflict_retries_exhausted(
 
     assert resp.status_code == 409
     assert retries == [3]
-    parent_ids = (await _stored_collection(collection["id"]))["parent_ids"]
+    parent_ids = (await _stored_document(collection["id"]))["parent_ids"]
     assert sorted(parent_ids) == sorted(catalog_ids)
+
+
+async def _catalog_under(client, load_test_data, parents):
+    """Create `parents` new catalogs and one catalog linked under all of them."""
+    catalogs = []
+    for i in range(parents + 1):
+        catalog = load_test_data("test_catalog.json")
+        catalog["id"] = f"test-catalog-{uuid.uuid4()}-{i}"
+        resp = await client.post("/catalogs", json=catalog)
+        assert resp.status_code == 201
+        catalogs.append(catalog)
+
+    *parent_catalogs, child = catalogs
+    parent_ids = [parent["id"] for parent in parent_catalogs]
+    for parent_id in parent_ids:
+        resp = await client.post(
+            f"/catalogs/{parent_id}/catalogs", json={"id": child["id"]}
+        )
+        assert resp.status_code == 200
+    return parent_ids, child
+
+
+@pytest.mark.asyncio
+async def test_link_sub_catalog_keeps_concurrent_put_metadata(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A catalog PUT landing just before a sub-catalog link's update survives."""
+    parent_ids, child = await _catalog_under(catalogs_app_client, load_test_data, 2)
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/{parent_ids[1]}/catalogs/{child['id']}"
+    )
+    assert resp.status_code == 204
+
+    fired = _put_before_update(
+        monkeypatch,
+        catalogs_app_client,
+        f"/catalogs/{child['id']}",
+        child,
+        "Updated during link",
+    )
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[1]}/catalogs", json={"id": child["id"]}
+    )
+    assert resp.status_code == 200
+    assert fired == [True]
+
+    stored = await _stored_document(child["id"])
+    assert stored["title"] == "Updated during link"
+    assert sorted(stored["parent_ids"]) == sorted(parent_ids)
+
+
+@pytest.mark.asyncio
+async def test_unlink_sub_catalog_keeps_concurrent_put_metadata(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A catalog PUT landing just before a sub-catalog unlink's update survives."""
+    parent_ids, child = await _catalog_under(catalogs_app_client, load_test_data, 2)
+
+    fired = _put_before_update(
+        monkeypatch,
+        catalogs_app_client,
+        f"/catalogs/{child['id']}",
+        child,
+        "Updated during unlink",
+    )
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/{parent_ids[0]}/catalogs/{child['id']}"
+    )
+    assert resp.status_code == 204
+    assert fired == [True]
+
+    stored = await _stored_document(child["id"])
+    assert stored["title"] == "Updated during unlink"
+    assert stored["parent_ids"] == [parent_ids[1]]
+
+
+@pytest.mark.asyncio
+async def test_put_catalog_retries_on_concurrent_link(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A sub-catalog link landing between a catalog PUT's read and write survives."""
+    from ..conftest import database
+
+    parent_ids, child = await _catalog_under(catalogs_app_client, load_test_data, 2)
+    third = load_test_data("test_catalog.json")
+    third["id"] = f"test-catalog-{uuid.uuid4()}-3"
+    resp = await catalogs_app_client.post("/catalogs", json=third)
+    assert resp.status_code == 201
+
+    client_cls = type(database.client)
+    original_index = client_cls.index
+    conditional_calls = []
+
+    async def racing_index(self, *args, **kwargs):
+        if "if_seq_no" in kwargs:
+            conditional_calls.append(kwargs["if_seq_no"])
+            if len(conditional_calls) == 1:
+                link = await catalogs_app_client.post(
+                    f"/catalogs/{third['id']}/catalogs", json={"id": child["id"]}
+                )
+                assert link.status_code == 200
+        return await original_index(self, *args, **kwargs)
+
+    monkeypatch.setattr(client_cls, "index", racing_index)
+    resp = await catalogs_app_client.put(
+        f"/catalogs/{child['id']}", json={**child, "title": "Updated during a race"}
+    )
+    monkeypatch.undo()
+
+    assert resp.status_code == 200
+    assert len(conditional_calls) == 2
+    stored = await _stored_document(child["id"])
+    assert stored["title"] == "Updated during a race"
+    assert sorted(stored["parent_ids"]) == sorted([*parent_ids, third["id"]])
+
+
+@pytest.mark.asyncio
+async def test_link_sub_catalog_returns_409_when_conflict_retries_exhausted(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A sub-catalog link whose scripted update keeps conflicting surfaces 409."""
+    from ..conftest import database
+
+    parent_ids, child = await _catalog_under(catalogs_app_client, load_test_data, 2)
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/{parent_ids[1]}/catalogs/{child['id']}"
+    )
+    assert resp.status_code == 204
+
+    # A stale compare-and-write version forces a real backend version conflict;
+    # the backend rejects it combined with retry_on_conflict, so record and drop it.
+    client_cls = type(database.client)
+    original_update = client_cls.update
+    retries = []
+
+    async def conflicting_update(self, *args, **kwargs):
+        retries.append(kwargs.pop("retry_on_conflict", None))
+        return await original_update(
+            self, *args, **kwargs, if_seq_no=0, if_primary_term=1
+        )
+
+    monkeypatch.setattr(client_cls, "update", conflicting_update)
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[1]}/catalogs", json={"id": child["id"]}
+    )
+    monkeypatch.undo()
+
+    assert resp.status_code == 409
+    assert retries == [3]
+    assert (await _stored_document(child["id"]))["parent_ids"] == [parent_ids[0]]
+
+
+@pytest.mark.asyncio
+async def test_put_catalog_returns_409_when_conflict_retries_exhausted(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A catalog PUT whose versioned write keeps conflicting surfaces 409."""
+    from ..conftest import database
+
+    _, child = await _catalog_under(catalogs_app_client, load_test_data, 1)
+
+    client_cls = type(database.client)
+    original_index = client_cls.index
+    conditional_calls = []
+
+    async def conflicting_index(self, *args, **kwargs):
+        if "if_seq_no" in kwargs:
+            conditional_calls.append(kwargs["if_seq_no"])
+            kwargs["if_seq_no"] += 1_000_000
+        return await original_index(self, *args, **kwargs)
+
+    monkeypatch.setattr(client_cls, "index", conflicting_index)
+    resp = await catalogs_app_client.put(
+        f"/catalogs/{child['id']}", json={**child, "title": "Never stored"}
+    )
+    monkeypatch.undo()
+
+    assert resp.status_code == 409
+    assert len(conditional_calls) == 3
+    assert (await _stored_document(child["id"]))["title"] == child["title"]
+
+
+# ============================================================================
+# Transaction Extension Gating Tests
+# ============================================================================
+
+CATALOGS_TRANSACTION_CONFORMANCE = (
+    "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/transaction"
+)
+CATALOG_WRITE_ROUTES = {
+    "POST /catalogs",
+    "PUT /catalogs/{catalog_id}",
+    "DELETE /catalogs/{catalog_id}",
+    "POST /catalogs/{catalog_id}/collections",
+    "PUT /catalogs/{catalog_id}/collections/{collection_id}",
+    "DELETE /catalogs/{catalog_id}/collections/{collection_id}",
+    "POST /catalogs/{catalog_id}/catalogs",
+    "DELETE /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
+}
+CATALOG_READ_ROUTES = {
+    "GET /catalogs",
+    "GET /catalogs/{catalog_id}",
+    "GET /catalogs/{catalog_id}/search",
+    "POST /catalogs/{catalog_id}/search",
+}
+
+
+def test_catalog_transaction_routes_absent_when_transactions_disabled():
+    """Catalog write routes are only mounted with the Transaction extension."""
+    app = build_test_app_with_catalogs(transactions_enabled=False)
+
+    routes = get_flattened_routes(app)
+
+    assert not CATALOG_WRITE_ROUTES & routes
+    assert CATALOG_READ_ROUTES <= routes
+    assert (
+        CATALOGS_TRANSACTION_CONFORMANCE not in app.state.catalogs_conformance_classes
+    )
+
+
+def test_catalog_transaction_routes_present_by_default():
+    """The default settings keep the catalog write routes and conformance class."""
+    app = build_test_app_with_catalogs()
+
+    routes = get_flattened_routes(app)
+
+    assert CATALOG_WRITE_ROUTES | CATALOG_READ_ROUTES <= routes
+    assert CATALOGS_TRANSACTION_CONFORMANCE in app.state.catalogs_conformance_classes
+
+
+@pytest.mark.asyncio
+async def test_catalog_conformance_omits_transaction_uri_from_client():
+    """The client leaves the transaction class to the mounted extension."""
+    database = MagicMock()
+    database.find_catalog = AsyncMock()
+    client = CatalogsClient(database=database)
+
+    conformance = await client.get_catalog_conformance("c")
+
+    database.find_catalog.assert_awaited_once_with("c")
+    assert CATALOGS_TRANSACTION_CONFORMANCE not in conformance["conformsTo"]

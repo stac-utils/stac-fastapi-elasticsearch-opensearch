@@ -410,10 +410,13 @@ def build_test_app():
     return api.app
 
 
-def build_test_app_with_catalogs():
+def build_test_app_with_catalogs(transactions_enabled: bool = True):
     """Build a test app with catalogs extension enabled."""
     # Turn on the flag in settings
-    test_settings = AsyncSettings(enable_catalogs_route=True)
+    test_settings = AsyncSettings(
+        enable_catalogs_route=True,
+        enable_transactions_extensions=transactions_enabled,
+    )
     test_database = DatabaseLogic()
 
     # Let the factory do all the hard work!

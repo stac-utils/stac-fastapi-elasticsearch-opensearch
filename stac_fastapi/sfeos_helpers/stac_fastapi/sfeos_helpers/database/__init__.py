@@ -31,13 +31,12 @@ Function Naming Conventions:
 
 # Re-export all functions for backward compatibility
 from .catalogs import (
-    COLLECTION_PARENT_ID_SCRIPT,
+    PARENT_ID_SCRIPT,
     search_children_with_pagination_shared,
     search_collections_by_parent_id_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
     unlink_catalog_children_shared,
-    update_catalog_in_index_shared,
 )
 from .datetime import (
     extract_date,
@@ -63,6 +62,7 @@ from .query import (
     apply_collections_free_text_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
+    decode_search_after_token_shared,
     populate_sort_shared,
 )
 from .utils import (
@@ -80,12 +80,11 @@ from .utils import (
 
 __all__ = [
     # Catalog operations
-    "COLLECTION_PARENT_ID_SCRIPT",
+    "PARENT_ID_SCRIPT",
     "unlink_catalog_children_shared",
     "search_collections_by_parent_id_shared",
     "search_collections_by_parent_id_with_pagination_shared",
     "search_sub_catalogs_with_pagination_shared",
-    "update_catalog_in_index_shared",
     "search_children_with_pagination_shared",
     # Index operations
     "create_index_templates_shared",
@@ -101,6 +100,7 @@ __all__ = [
     "apply_collections_bbox_filter_shared",
     "apply_collections_datetime_filter_shared",
     "apply_collections_free_text_filter_shared",
+    "decode_search_after_token_shared",
     "populate_sort_shared",
     # Mapping operations
     "get_queryables_mapping_shared",
