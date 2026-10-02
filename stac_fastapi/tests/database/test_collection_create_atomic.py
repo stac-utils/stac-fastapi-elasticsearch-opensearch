@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX, ITEMS_INDEX_PREFIX
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX, ITEMS_ALIAS_PREFIX
 from stac_fastapi.sfeos_helpers.search_engine.selection.selectors import (
     DatetimeBasedIndexSelector,
 )
@@ -54,7 +54,7 @@ async def owned_collection_app(request, monkeypatch):
                 refresh=True,
             )
             await database.client.indices.delete(
-                index=f"{ITEMS_INDEX_PREFIX}{prefix}*", ignore_unavailable=True
+                index=f"{ITEMS_ALIAS_PREFIX}{prefix}*", ignore_unavailable=True
             )
             if datetime:
                 cache = database.async_index_selector.cache_manager
@@ -265,7 +265,7 @@ async def test_rename(
             for c in [source, destination]
         ]
         items = await app.database.client.search(
-            index=f"{ITEMS_INDEX_PREFIX}{app.prefix}*",
+            index=f"{ITEMS_ALIAS_PREFIX}{app.prefix}*",
             body={"query": {"match_all": {}}, "version": True},
         )
         return documents, sorted(items["hits"]["hits"], key=lambda hit: hit["_id"])
