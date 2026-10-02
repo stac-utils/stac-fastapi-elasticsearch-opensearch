@@ -190,8 +190,8 @@ async def test_catalog_scope_precedes_parsing(
 @pytest.mark.parametrize(
     "target,error",
     [
-        ("parse_cql2_text", RuntimeError("parser defect")),
-        ("to_cql2", ValueError("serialization defect")),
+        ("cql2_text_to_json", RuntimeError("parser defect")),
+        ("cql2_text_to_json", ValueError("conversion defect")),
         ("post_search", orjson.JSONDecodeError("downstream JSON", "x", 0)),
         ("post_search", ValueError("downstream value")),
         ("execute_search", RuntimeError("backend unavailable")),
@@ -235,9 +235,9 @@ async def test_unrelated_failures_propagate(
 async def test_generated_json_failure_propagates(
     catalogs_app_client, search_scope, monkeypatch
 ):
-    """JSON generated from an AST is not untrusted raw client JSON."""
+    """A JSON error inside the CQL2 text conversion is not raw client JSON."""
     routes, _ = search_scope
-    monkeypatch.setattr(core, "to_cql2", lambda ast: "{")
+    monkeypatch.setattr(core, "cql2_text_to_json", lambda text: orjson.loads("{"))
     with pytest.raises(orjson.JSONDecodeError):
         await catalogs_app_client.get(routes["global"], params={"filter": "id = 'a'"})
 

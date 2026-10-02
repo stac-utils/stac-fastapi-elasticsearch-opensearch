@@ -13,9 +13,15 @@
 # defines spatial operators (S_INTERSECTS, S_CONTAINS, S_WITHIN, S_DISJOINT).
 # """
 
+import re
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 from typing import Any
+
+import cql2
+
+from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
 
 DEFAULT_QUERYABLES: dict[str, dict[str, Any]] = {
     "id": {
@@ -54,6 +60,8 @@ OPTIONAL_QUERYABLES: dict[str, dict[str, Any]] = {
 """Queryables that are present in some collections."""
 
 ALL_QUERYABLES: dict[str, dict[str, Any]] = DEFAULT_QUERYABLES | OPTIONAL_QUERYABLES
+
+_FULL_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class LogicalOp(str, Enum):
@@ -133,3 +141,74 @@ class SpatialNode(CqlNode):
     op: SpatialOp
     field: str
     geometry: dict[str, Any]
+
+
+class CQL2TextError(ValueError):
+    """A CQL2 text filter that does not parse, or holds an invalid literal."""
+
+
+def cql2_text_to_json(cql2_text: str) -> dict[str, Any]:
+    """Convert a CQL2 text filter to CQL2 JSON.
+
+    The cql2 library writes every number as a float. Whole numbers are written
+    back as integers, as CQL2 JSON clients send them: Elasticsearch and
+    OpenSearch compare a number with a keyword field as text, where 161.0 does
+    not match "161". cql2 does not check what a DATE or TIMESTAMP holds, so
+    this does: an RFC 3339 full-date and date-time, as CQL2 requires.
+
+    Args:
+        cql2_text (str): The CQL2 text filter.
+
+    Returns:
+        dict[str, Any]: The filter as CQL2 JSON.
+
+    Raises:
+        CQL2TextError: If the text is not valid CQL2 text, or a DATE,
+            TIMESTAMP or INTERVAL holds no valid date or timestamp.
+    """
+    try:
+        expr = cql2.parse_text(cql2_text)
+    except cql2.ParseError as e:
+        raise CQL2TextError("expected valid CQL2 text") from e
+    return _checked(expr.to_json())
+
+
+def _checked(value: Any) -> Any:
+    """Write whole numbers as integers and check temporal literals."""
+    if isinstance(value, float) and value.is_integer() and abs(value) < 2**53:
+        return int(value)
+    if isinstance(value, list):
+        return [_checked(element) for element in value]
+    if isinstance(value, dict):
+        if value.keys() == {"date"}:
+            _check_instant("DATE", value["date"], date_only=True)
+        elif value.keys() == {"timestamp"}:
+            _check_instant("TIMESTAMP", value["timestamp"], date_only=False)
+        elif value.keys() == {"interval"} and isinstance(value["interval"], list):
+            for bound in value["interval"]:
+                if bound != "..":
+                    _check_instant("INTERVAL", bound, date_only=None)
+        return {key: _checked(element) for key, element in value.items()}
+    return value
+
+
+def _check_instant(kind: str, literal: Any, date_only: bool | None) -> None:
+    """Raise CQL2TextError unless literal is an RFC 3339 date or date-time.
+
+    date_only is True for a date, False for a date-time, None for either.
+    """
+    if isinstance(literal, str):
+        if date_only is not False and _FULL_DATE.fullmatch(literal):
+            try:
+                date.fromisoformat(literal)
+                return
+            except ValueError:
+                pass
+        elif date_only is not True:
+            try:
+                rfc3339_str_to_datetime(literal)
+                return
+            except ValueError:
+                pass
+    expected = {True: "date", False: "date-time", None: "date or date-time"}
+    raise CQL2TextError(f"{kind}({literal!r}) is not an RFC 3339 {expected[date_only]}")
