@@ -9,6 +9,7 @@ from stac_fastapi.core.extensions.filter import (
     SpatialOp,
 )
 
+from .ast_parser import _temporal_literal
 from .cql2 import cql2_like_to_es
 
 
@@ -109,8 +110,8 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             )
 
         value = query["args"][1]
-        if isinstance(value, dict) and "timestamp" in value:
-            value = value["timestamp"]
+        if isinstance(value, dict) and ("timestamp" in value or "date" in value):
+            value = value.get("timestamp", value.get("date"))
             if query["op"] == ComparisonOp.EQ:
                 queries = [{"range": {selected_field: {"gte": value, "lte": value}}}]
             elif query["op"] == ComparisonOp.NEQ:
@@ -158,10 +159,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
                 f"BETWEEN operator expects 2 or 3 args, got {len(query['args'])}"
             )
 
-        if isinstance(gte, dict) and "timestamp" in gte:
-            gte = gte["timestamp"]
-        if isinstance(lte, dict) and "timestamp" in lte:
-            lte = lte["timestamp"]
+        gte, lte = _temporal_literal(gte), _temporal_literal(lte)
         queries = [{"range": {field: {"gte": gte, "lte": lte}}}]
 
     elif query["op"] == AdvancedComparisonOp.IN:
