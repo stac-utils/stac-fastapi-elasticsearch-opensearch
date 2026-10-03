@@ -144,6 +144,17 @@ def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
     return False
 
 
+def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
+    """Split `fields` selectors into include and exclude sets, ignoring empty names."""
+    includes: set[str] = set()
+    excludes: set[str] = set()
+    for field in fields:
+        name = field[1:] if field[:1] in "+- " else field
+        if name:
+            (excludes if field[:1] == "-" else includes).add(name)
+    return includes, excludes
+
+
 @attr.s
 class CoreClient(AsyncBaseCoreClient):
     """Client for core endpoints defined by the STAC specification.
@@ -421,14 +432,7 @@ class CoreClient(AsyncBaseCoreClient):
             token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
-        includes, excludes = set(), set()
-        if fields:
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    include_field = field[1:] if field[0] in "+ " else field
-                    includes.add(include_field)
+        includes, excludes = parse_fields(fields) if fields else (set(), set())
 
         sort = None
         if sortby:
@@ -870,12 +874,7 @@ class CoreClient(AsyncBaseCoreClient):
                 base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
-            includes, excludes = set(), set()
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    includes.add(field[1:] if field[0] in "+ " else field)
+            includes, excludes = parse_fields(fields)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
