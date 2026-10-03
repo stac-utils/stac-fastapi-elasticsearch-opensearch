@@ -327,7 +327,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         """Create a new catalog."""
         db_catalog_dict = self._to_dict(catalog)
         db_catalog_dict["type"] = "Catalog"
-        db_catalog_dict["parent_ids"] = db_catalog_dict.get("parent_ids", [])
+        # A catalog created here is top level. Nesting goes through
+        # POST /catalogs/{catalog_id}/catalogs, and update keeps stored parent_ids.
+        db_catalog_dict["parent_ids"] = []
 
         # Filter out dynamic links
         if "links" in db_catalog_dict:
