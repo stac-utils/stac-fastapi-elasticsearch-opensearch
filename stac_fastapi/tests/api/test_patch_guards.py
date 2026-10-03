@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from stac_fastapi.core.core import patch_changes_field
+from stac_fastapi.core.core import patch_addresses_field, patch_changes_field
 from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id, mk_item_id
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
@@ -233,6 +233,19 @@ async def test_patch_metadata_paths_are_distinct(field, path, operation):
     if operation == "move":
         patch.update({"from": path, "path": "/title"})
     assert not patch_changes_field([patch], field, "protected")
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        {"op": "add", "path": "/parent_ids_old", "value": ["a"]},
+        {"op": "replace", "path": "/summaries/parent_ids", "value": ["a"]},
+        {"op": "move", "from": "/title", "path": "/description"},
+        {"op": "replace", "path": "", "value": {"id": "c", "title": "t"}},
+    ],
+)
+async def test_patch_addresses_field_ignores_other_paths(op):
+    assert not patch_addresses_field([op], "parent_ids")
 
 
 @pytest.mark.parametrize("validator", ["false", "true"])

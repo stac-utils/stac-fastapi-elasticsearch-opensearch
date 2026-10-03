@@ -144,6 +144,21 @@ def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
     return False
 
 
+def patch_addresses_field(patch: list, field: str) -> bool:
+    """Return whether any JSON Patch operation reads or writes a top-level field."""
+    for op in patch:
+        path = _op_member(op, "path") or ""
+        if path == "":
+            value = _op_member(op, "value")
+            if isinstance(value, dict) and field in value:
+                return True
+            continue
+        source = _op_member(op, "from") or _op_member(op, "from_") or ""
+        if field in (path.strip("/").split("/")[0], source.strip("/").split("/")[0]):
+            return True
+    return False
+
+
 @attr.s
 class CoreClient(AsyncBaseCoreClient):
     """Client for core endpoints defined by the STAC specification.
@@ -2047,6 +2062,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             raise HTTPException(
                 status_code=400,
                 detail="A patch may not change the collection type.",
+            )
+
+        if isinstance(patch, list) and patch_addresses_field(patch, "parent_ids"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
             )
 
         # When validation is DISABLED, delegate to database layer for direct execution
