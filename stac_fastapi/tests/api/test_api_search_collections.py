@@ -223,6 +223,43 @@ async def test_collections_fields_all_endpoints(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "include,exclude",
+    [(["doesnotexist"], []), (["nope*"], []), (["doesnotexist"], ["links"])],
+)
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/collections"),
+        ("GET", "/collections-search"),
+        ("POST", "/collections-search"),
+    ],
+)
+async def test_collections_fields_matching_nothing_return_id_only(
+    app_client, txn_client, ctx, method, path, include, exclude
+):
+    test_prefix = f"fields-nomatch-{uuid.uuid4().hex[:8]}"
+    collection_ids = [f"{test_prefix}-a", f"{test_prefix}-b"]
+    for coll_id in collection_ids:
+        await create_collection(txn_client, {**ctx.collection, "id": coll_id})
+    await refresh_indices(txn_client)
+
+    if method == "GET":
+        fields = ",".join(include + [f"-{field}" for field in exclude])
+        resp = await app_client.get(path, params={"fields": fields})
+    else:
+        resp = await app_client.post(
+            path, json={"fields": {"include": include, "exclude": exclude}}
+        )
+
+    assert resp.status_code == 200
+    test_collections = [
+        c for c in resp.json()["collections"] if c["id"].startswith(test_prefix)
+    ]
+    assert test_collections == [{"id": coll_id} for coll_id in collection_ids]
+
+
+@pytest.mark.asyncio
 async def test_collections_free_text_all_endpoints(
     app_client, txn_client, ctx, monkeypatch
 ):
