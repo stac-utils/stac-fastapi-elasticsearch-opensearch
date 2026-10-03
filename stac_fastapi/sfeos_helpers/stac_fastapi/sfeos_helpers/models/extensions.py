@@ -5,7 +5,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from stac_fastapi.api.models import create_get_request_model, create_post_request_model
+from stac_fastapi.api.models import (
+    create_get_request_model,
+    create_post_request_model,
+    create_request_model,
+)
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -338,6 +342,13 @@ class Extensions:
                 CatalogsSearchExtension,
                 CatalogsTransactionExtension,
             )
+            from stac_fastapi_catalogs_extension.types import (
+                CatalogChildrenRequest,
+                CatalogCollectionItemsRequest,
+                CatalogCollectionsRequest,
+                CatalogsGetRequest,
+                SubCatalogsRequest,
+            )
 
             from stac_fastapi.core.catalogs_client import CatalogsClient
         except ImportError as exc:
@@ -371,11 +382,50 @@ class Extensions:
             "hide_alternate_parents", "HIDE_ALTERNATE_PARENTS", False
         )
 
+        # The listing routes take the same `filter` parameters as the routes they
+        # mirror: the collections filter for catalogs and collections, the item
+        # filter for items.
+        collection_filter = [
+            ext
+            for ext in self.get_enabled_extensions("collection_search")
+            if isinstance(ext, CollectionSearchFilterExtension)
+        ]
+        item_filter = [
+            ext
+            for ext in self.get_enabled_extensions("item_collection")
+            if isinstance(ext, FilterExtension)
+        ]
+
+        def with_filter(base_model: Any, extensions: list[ApiExtension]) -> Any:
+            if not extensions:
+                return base_model
+            return create_request_model(
+                model_name=f"{base_model.__name__}WithFilter",
+                base_model=base_model,
+                extensions=extensions,
+                request_type="GET",
+            )
+
         extensions: list[ApiExtension] = [
             CatalogsExtension(
                 client=catalogs_client,
                 settings=self.settings.model_dump(),
                 hide_alternate_parents=hide_parents,
+                catalogs_get_request_model=with_filter(
+                    CatalogsGetRequest, collection_filter
+                ),
+                catalog_collections_get_request_model=with_filter(
+                    CatalogCollectionsRequest, collection_filter
+                ),
+                sub_catalogs_get_request_model=with_filter(
+                    SubCatalogsRequest, collection_filter
+                ),
+                catalog_children_get_request_model=with_filter(
+                    CatalogChildrenRequest, collection_filter
+                ),
+                catalog_collection_items_get_request_model=with_filter(
+                    CatalogCollectionItemsRequest, item_filter
+                ),
             ),
         ]
         if self.transactions_enabled:
