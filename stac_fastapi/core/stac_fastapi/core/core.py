@@ -1932,6 +1932,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
         collection = collection.model_dump(mode="json")
+        # Catalog membership is set by the catalog routes, and update keeps
+        # stored parent_ids.
+        collection.pop("parent_ids", None)
         request = kwargs["request"]
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
