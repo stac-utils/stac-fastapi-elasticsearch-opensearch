@@ -195,6 +195,7 @@ class BaseDatabaseLogic(abc.ABC):
         limit: int,
         request: Any = None,
         sort: list[dict[str, Any]] | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of catalogs from the database, supporting pagination.
 
@@ -203,6 +204,7 @@ class BaseDatabaseLogic(abc.ABC):
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
             sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+            filter (Optional[Dict[str, Any]], optional): A CQL2 JSON filter the catalogs must match. Defaults to None.
 
         Returns:
             A tuple of (catalogs, next pagination token if any, optional count).
@@ -237,8 +239,9 @@ class BaseDatabaseLogic(abc.ABC):
         token: str | None,
         request: Any = None,
         resource_type: str | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int, str | None]:
-        """Get children of a catalog.
+        """Get children of a catalog, optionally matching a CQL2 JSON filter.
 
         Returns:
             Tuple of (children_list, total_count, next_token).
@@ -252,8 +255,9 @@ class BaseDatabaseLogic(abc.ABC):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int, str | None]:
-        """Get collections of a catalog.
+        """Get collections of a catalog, optionally matching a CQL2 JSON filter.
 
         Returns:
             Tuple of (collections_list, total_count, next_token).
@@ -267,8 +271,9 @@ class BaseDatabaseLogic(abc.ABC):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int, str | None]:
-        """Get sub-catalogs of a catalog.
+        """Get sub-catalogs of a catalog, optionally matching a CQL2 JSON filter.
 
         Returns:
             Tuple of (catalogs_list, total_count, next_token).
@@ -315,13 +320,12 @@ class BaseDatabaseLogic(abc.ABC):
         datetime: str | None = None,
         limit: int = 10,
         sortby: str | None = None,
-        filter_expr: str | None = None,
-        filter_lang: str | None = None,
+        filter: dict[str, Any] | None = None,
         token: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
     ) -> Any:
-        """Get items from a collection in a catalog."""
+        """Get items from a collection in a catalog, optionally matching a CQL2 JSON filter."""
         pass
 
     @abc.abstractmethod
