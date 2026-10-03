@@ -11,6 +11,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
+from stac_fastapi.core.utilities import MAX_LIMIT
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 from stac_fastapi.types.errors import ConflictError
 
@@ -32,10 +33,10 @@ def decode_token_to_search_after(token: str | None) -> list | None:
         search_after = json.loads(base64.urlsafe_b64decode(token.encode()).decode())
     except Exception:
         return None
-    # A token must decode to a list of non-empty scalars. Any other shape (a bare
-    # string, an object, a null) is treated as an invalid token: page 1, not a 500.
+    # A token must decode to a list of scalars; null and "" are sort values of a
+    # missing or empty field. Any other shape is an invalid token: page 1, not a 500.
     if not isinstance(search_after, list) or not all(
-        isinstance(v, (str, int, float)) and v != "" for v in search_after
+        isinstance(v, (str, int, float)) or v is None for v in search_after
     ):
         return None
     return search_after
@@ -132,10 +133,12 @@ async def search_collections_by_parent_id_with_pagination_shared(
     if filter_query:
         query["bool"]["must"].append(filter_query)
 
+    # ponytail: at MAX_LIMIT a full last page still links to an empty page; a size=1 lookahead would fix it
+    size = min(limit + 1, MAX_LIMIT)
     search_params = {
         "query": query,
         "sort": [{"id": {"order": "asc"}}],
-        "size": limit,
+        "size": size,
         "track_total_hits": True,
     }
 
@@ -156,8 +159,9 @@ async def search_collections_by_parent_id_with_pagination_shared(
     total_hits = _get_total_hits(hits_container)
     hits = hits_container.get("hits", [])
 
-    collections = [hit["_source"] for hit in hits]
-    next_search_after = hits[-1].get("sort") if len(hits) == limit else None
+    page = hits[:limit]
+    collections = [hit["_source"] for hit in page]
+    next_search_after = page[-1].get("sort") if len(hits) == size else None
 
     return collections, total_hits, next_search_after
 
@@ -188,10 +192,11 @@ async def search_sub_catalogs_with_pagination_shared(
     ]
     if filter_query:
         must.append(filter_query)
+    size = min(limit + 1, MAX_LIMIT)
     body = {
         "query": {"bool": {"must": must}},
         "sort": [{"id": {"order": "asc"}}],
-        "size": limit,
+        "size": size,
         "track_total_hits": True,
     }
     if search_after:
@@ -207,8 +212,9 @@ async def search_sub_catalogs_with_pagination_shared(
     total_hits = _get_total_hits(hits_container)
     hits = hits_container.get("hits", [])
 
-    catalogs = [hit["_source"] for hit in hits]
-    next_search_after = hits[-1].get("sort") if len(hits) == limit else None
+    page = hits[:limit]
+    catalogs = [hit["_source"] for hit in page]
+    next_search_after = page[-1].get("sort") if len(hits) == size else None
 
     return catalogs, total_hits, next_search_after
 
@@ -241,10 +247,11 @@ async def search_children_with_pagination_shared(
     if filter_query:
         filter_queries.append(filter_query)
 
+    size = min(limit + 1, MAX_LIMIT)
     body = {
         "query": {"bool": {"filter": filter_queries}},
         "sort": [{"id": {"order": "asc"}}],
-        "size": limit,
+        "size": size,
         "track_total_hits": True,
     }
     if search_after:
@@ -260,8 +267,9 @@ async def search_children_with_pagination_shared(
     total_hits = _get_total_hits(hits_container)
     hits = hits_container.get("hits", [])
 
-    children = [hit["_source"] for hit in hits]
-    next_search_after = hits[-1].get("sort") if len(hits) == limit else None
+    page = hits[:limit]
+    children = [hit["_source"] for hit in page]
+    next_search_after = page[-1].get("sort") if len(hits) == size else None
 
     return children, total_hits, next_search_after
 
