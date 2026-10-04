@@ -1117,7 +1117,7 @@ async def test_json_patch_collection_parent_ids_filtered(
     collection_id = collection["id"]
     
     # Verify collection does not have parent_ids initially
-    assert "parent_ids" not in collection or collection.get("parent_ids") is None
+    assert collection.get("parent_ids") is None
     
     # Try to add parent_ids through JSON Patch
     operations = [
@@ -1138,7 +1138,7 @@ async def test_json_patch_collection_parent_ids_filtered(
     updated_collection = await core_client.get_collection(
         collection_id, request=MockRequest()
     )
-    assert "parent_ids" not in updated_collection or updated_collection.get("parent_ids") is None
+    assert updated_collection.get("parent_ids") is None
 
 
 @pytest.mark.asyncio
@@ -1225,4 +1225,4 @@ async def test_json_patch_collection_nested_parent_ids_filtered(
     updated_collection = await core_client.get_collection(
         collection_id, request=MockRequest()
     )
-    assert "parent_ids" not in updated_collection or updated_collection.get("parent_ids") is None
+    assert updated_collection.get("parent_ids") is None
