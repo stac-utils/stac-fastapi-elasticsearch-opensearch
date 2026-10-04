@@ -1106,3 +1106,87 @@ async def test_json_patch_collection_copy_property_does_not_exists(
                 headers={"content-type": "application/json-patch+json"}
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_collection_parent_ids_filtered(
+    ctx, core_client, txn_client
+):
+    """Test that JSON Patch operations on parent_ids are filtered out."""
+    collection = ctx.collection
+    collection_id = collection["id"]
+    
+    # Verify collection does not have parent_ids initially
+    assert "parent_ids" not in collection or collection.get("parent_ids") is None
+    
+    # Try to add parent_ids through JSON Patch
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/parent_ids", "value": ["fake-catalog"]}
+        ),
+    ]
+
+    await txn_client.patch_collection(
+        collection_id=collection_id,
+        patch=operations,
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+    )
+
+    # Verify parent_ids was NOT added
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
+    assert "parent_ids" not in updated_collection or updated_collection.get("parent_ids") is None
+
+
+@pytest.mark.asyncio
+async def test_json_patch_collection_type_filtered(ctx, core_client, txn_client):
+    """Test that JSON Patch operations on type are filtered out."""
+    collection = ctx.collection
+    collection_id = collection["id"]
+    original_type = collection["type"]
+    
+    # Try to change type through JSON Patch
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/type", "value": "InvalidType"}
+        ),
+    ]
+
+    await txn_client.patch_collection(
+        collection_id=collection_id,
+        patch=operations,
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+    )
+
+    # Verify type was NOT changed
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
+    assert updated_collection["type"] == original_type
+
+
+@pytest.mark.asyncio
+async def test_json_patch_collection_id_filtered(ctx, core_client, txn_client):
+    """Test that JSON Patch operations on id are filtered out."""
+    collection = ctx.collection
+    collection_id = collection["id"]
+    
+    # Try to change id through JSON Patch
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/id", "value": "new-id"}
+        ),
+    ]
+
+    await txn_client.patch_collection(
+        collection_id=collection_id,
+        patch=operations,
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+    )
+
+    # Verify id was NOT changed
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
+    assert updated_collection["id"] == collection_id
