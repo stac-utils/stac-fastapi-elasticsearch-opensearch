@@ -1880,6 +1880,13 @@ class DatabaseLogic(BaseDatabaseLogic):
         script_operations = []
 
         for operation in operations:
+            # Skip operations on protected fields: parent_ids, id, type
+            # These can come in two formats:
+            # - From JSON Patch: "/parent_ids", "/id", "/type"
+            # - From merge patch: "parent_ids", "id", "type"
+            if operation.path in ["parent_ids", "/parent_ids", "id", "/id", "type", "/type"]:
+                continue
+
             if (
                 operation.op in ["add", "replace"]
                 and operation.path == "collection"
