@@ -1190,3 +1190,31 @@ async def test_json_patch_collection_id_filtered(ctx, core_client, txn_client):
         collection_id, request=MockRequest
     )
     assert updated_collection["id"] == collection_id
+
+
+@pytest.mark.asyncio
+async def test_json_patch_collection_nested_parent_ids_filtered(
+    ctx, core_client, txn_client
+):
+    """Test that JSON Patch operations on nested parent_ids are filtered out."""
+    collection = ctx.collection
+    collection_id = collection["id"]
+    
+    # Try to add to nested parent_ids through JSON Patch
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/parent_ids/0", "value": "fake-catalog"}
+        ),
+    ]
+
+    await txn_client.patch_collection(
+        collection_id=collection_id,
+        patch=operations,
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+    )
+
+    # Verify parent_ids was NOT modified
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
+    assert "parent_ids" not in updated_collection or updated_collection.get("parent_ids") is None

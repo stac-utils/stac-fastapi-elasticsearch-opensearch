@@ -1881,10 +1881,14 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         for operation in operations:
             # Skip operations on protected fields: parent_ids, id, type
-            # These can come in two formats:
-            # - From JSON Patch: "/parent_ids", "/id", "/type"
-            # - From merge patch: "parent_ids", "id", "type"
-            if operation.path in ["parent_ids", "/parent_ids", "id", "/id", "type", "/type"]:
+            # These can come in two formats and may be nested:
+            # - From JSON Patch: "/parent_ids", "/parent_ids/0", "/id", "/type", etc.
+            # - From merge patch: "parent_ids", "parent_ids/0", "id", "type", etc.
+            path = operation.path
+            if any(
+                path in [f, f"/{f}"] or path.startswith(f"{f}/") or path.startswith(f"/{f}/")
+                for f in ["parent_ids", "id", "type"]
+            ):
                 continue
 
             if (
