@@ -1136,7 +1136,7 @@ async def test_json_patch_collection_parent_ids_filtered(
     
     # Verify parent_ids was NOT added
     updated_collection = await core_client.get_collection(
-        collection_id, request=MockRequest
+        collection_id, request=MockRequest()
     )
     assert "parent_ids" not in updated_collection or updated_collection.get("parent_ids") is None
 
@@ -1165,7 +1165,7 @@ async def test_json_patch_collection_type_filtered(ctx, core_client, txn_client)
     
     # Verify type was NOT changed
     updated_collection = await core_client.get_collection(
-        collection_id, request=MockRequest
+        collection_id, request=MockRequest()
     )
     assert updated_collection["type"] == original_type
 
@@ -1193,7 +1193,7 @@ async def test_json_patch_collection_id_filtered(ctx, core_client, txn_client):
     
     # Verify id was NOT changed
     updated_collection = await core_client.get_collection(
-        collection_id, request=MockRequest
+        collection_id, request=MockRequest()
     )
     assert updated_collection["id"] == collection_id
 
@@ -1223,6 +1223,6 @@ async def test_json_patch_collection_nested_parent_ids_filtered(
     
     # Verify parent_ids was NOT modified
     updated_collection = await core_client.get_collection(
-        collection_id, request=MockRequest
+        collection_id, request=MockRequest()
     )
     assert "parent_ids" not in updated_collection or updated_collection.get("parent_ids") is None
