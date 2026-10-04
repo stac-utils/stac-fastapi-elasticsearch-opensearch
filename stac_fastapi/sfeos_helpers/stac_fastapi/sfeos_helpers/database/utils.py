@@ -71,10 +71,15 @@ def is_protected_collection_field(path: str) -> bool:
     PATCH operations. They can be changed through specialized routes (e.g.,
     catalog membership through /catalogs/{id}/collections routes).
 
+    Currently used only in JSON Patch context where paths always include leading "/".
+    The function is designed to support both formats to enable potential future reuse
+    in merge patch contexts or other path-based filtering scenarios.
+
     Args:
-        path: A JSON Patch path string. Can be in two formats:
-            - From JSON Patch API: "/parent_ids", "/id", "/type", "/parent_ids/0", etc.
-            - From merge patch operations: "parent_ids", "id", "type", "parent_ids/0", etc.
+        path: A JSON Patch path string. Typically from JSON Patch API: 
+            "/parent_ids", "/id", "/type", "/parent_ids/0", etc.
+            Can also support merge patch format without leading "/": 
+            "parent_ids", "id", "type", etc. (for future reuse).
 
     Returns:
         True if the path refers to a protected field, False otherwise.
