@@ -70,6 +70,7 @@ from stac_fastapi.sfeos_helpers.database.query import (
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
+    is_protected_collection_field,
     merge_to_operations,
     operations_to_script,
     validate_datetime_operations,
@@ -1860,15 +1861,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         script_operations = []
 
         for operation in operations:
-            # Skip operations on protected fields: parent_ids, id, type
-            # These can come in two formats and may be nested:
-            # - From JSON Patch: "/parent_ids", "/parent_ids/0", "/id", "/type", etc.
-            # - From merge patch: "parent_ids", "parent_ids/0", "id", "type", etc.
-            path = operation.path
-            if any(
-                path in [f, f"/{f}"] or path.startswith(f"{f}/") or path.startswith(f"/{f}/")
-                for f in ["parent_ids", "id", "type"]
-            ):
+            # Skip operations on protected fields (parent_ids, id, type)
+            if is_protected_collection_field(operation.path):
                 continue
 
             if (

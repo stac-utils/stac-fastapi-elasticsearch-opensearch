@@ -64,6 +64,28 @@ DATETIME_RETRY_STRATEGY = AsyncRetrying(
 )
 
 
+def is_protected_collection_field(path: str) -> bool:
+    """Check if a JSON Patch path refers to a protected collection field.
+
+    Protected fields (parent_ids, id, type) cannot be modified directly through
+    PATCH operations. They can be changed through specialized routes (e.g.,
+    catalog membership through /catalogs/{id}/collections routes).
+
+    Args:
+        path: A JSON Patch path string. Can be in two formats:
+            - From JSON Patch API: "/parent_ids", "/id", "/type", "/parent_ids/0", etc.
+            - From merge patch operations: "parent_ids", "id", "type", "parent_ids/0", etc.
+
+    Returns:
+        True if the path refers to a protected field, False otherwise.
+    """
+    protected_fields = ["parent_ids", "id", "type"]
+    return any(
+        path in [f, f"/{f}"] or path.startswith(f"{f}/") or path.startswith(f"/{f}/")
+        for f in protected_fields
+    )
+
+
 def separate_bulk_conflict_errors(
     errors: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

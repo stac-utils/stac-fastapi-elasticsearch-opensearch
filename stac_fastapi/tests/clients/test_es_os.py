@@ -1126,12 +1126,14 @@ async def test_json_patch_collection_parent_ids_filtered(
         ),
     ]
 
-    await txn_client.patch_collection(
+    # The patch should succeed without raising an exception (silently filter the operation)
+    result = await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
-
+    assert result is not None  # Patch should return the collection
+    
     # Verify parent_ids was NOT added
     updated_collection = await core_client.get_collection(
         collection_id, request=MockRequest
@@ -1153,12 +1155,14 @@ async def test_json_patch_collection_type_filtered(ctx, core_client, txn_client)
         ),
     ]
 
-    await txn_client.patch_collection(
+    # The patch should succeed without raising an exception (silently filter the operation)
+    result = await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
-
+    assert result is not None  # Patch should return the collection
+    
     # Verify type was NOT changed
     updated_collection = await core_client.get_collection(
         collection_id, request=MockRequest
@@ -1179,12 +1183,14 @@ async def test_json_patch_collection_id_filtered(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.patch_collection(
+    # The patch should succeed without raising an exception (silently filter the operation)
+    result = await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
-
+    assert result is not None  # Patch should return the collection
+    
     # Verify id was NOT changed
     updated_collection = await core_client.get_collection(
         collection_id, request=MockRequest
@@ -1207,12 +1213,14 @@ async def test_json_patch_collection_nested_parent_ids_filtered(
         ),
     ]
 
-    await txn_client.patch_collection(
+    # The patch should succeed without raising an exception (silently filter the operation)
+    result = await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
-
+    assert result is not None  # Patch should return the collection
+    
     # Verify parent_ids was NOT modified
     updated_collection = await core_client.get_collection(
         collection_id, request=MockRequest
