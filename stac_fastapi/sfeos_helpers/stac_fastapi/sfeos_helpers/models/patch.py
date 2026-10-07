@@ -105,7 +105,7 @@ class ElasticPath(BaseModel):
         data["nest"] = "/".join(data["parts"])
 
         if data["nest"].strip("/") == "assets":
-            data["value"]["asset_key"] = data["key"]
+            data["value"]["es_key"] = data["key"]
             data["key"] = "-"
 
         if (

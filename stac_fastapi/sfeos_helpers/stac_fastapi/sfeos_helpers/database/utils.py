@@ -454,9 +454,8 @@ def add_commands(
         if path.parts[0] == "assets" and path.parts[-1] == "alternate":
             commands.add(
                 f"for (a in ctx._source.assets) {{ if (a.asset_key == '{path.parts[-2]}') {{"
-                "int insertPos = a.alternate.size() > 0 ?  a.alternate.size() - 1 : 0;"
-                f"a.alternate.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});"
-                "break;} }"
+                "if (!a.containsKey('alternate') || a.alternate == null) {a.alternate = [];}"
+                f"a.alternate.add({value}); break;}} }}"
             )
         else:
             commands.add(
