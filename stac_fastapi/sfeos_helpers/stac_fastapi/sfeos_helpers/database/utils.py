@@ -450,12 +450,20 @@ def add_commands(
         params[path.param_key] = operation.value
 
     if isinstance(path.key, int):
-        commands.add(
-            f"if (ctx._source{path.es_nest} instanceof ArrayList){{"
-            f"int insertPos = ctx._source{path.es_nest}.size() > 0 ? ctx._source{path.es_nest}.size() - 1 : 0;"
-            f"ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});}}"
-            f" else ctx._source{path.es_path} = {value};"
-        )
+        if path.parts[0] == "assets" and path.parts[-1] == "alternate":
+            commands.add(
+                f"for (a in ctx._source.assets) {{ if (a.asset_key == {path.parts[-2]}) {{"
+                "int insertPos = a.alternate.size() > 0 ?  a.alternate.size() - 1 : 0;"
+                f"a.alternate.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});"
+                "break;} }"
+            )
+        else:
+            commands.add(
+                f"if (ctx._source{path.es_nest} instanceof ArrayList){{"
+                f"int insertPos = ctx._source{path.es_nest}.size() > 0 ? ctx._source{path.es_nest}.size() - 1 : 0;"
+                f"ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});}}"
+                f" else ctx._source{path.es_path} = {value};"
+            )
 
     else:
         commands.add(f"ctx._source{path.es_path} = {value};")
