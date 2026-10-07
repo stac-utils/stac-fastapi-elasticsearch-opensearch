@@ -453,7 +453,7 @@ def add_commands(
     if isinstance(path.key, int):
         if path.parts[0] == "assets" and path.parts[-1] == "alternate":
             commands.add(
-                f"for (a in ctx._source.assets) {{ if (a.asset_key == '{path.parts[-2]}') {{"
+                f"for (a in ctx._source.assets) {{ if (a.es_key == '{path.parts[-2]}') {{"
                 "if (!a.containsKey('alternate') || a.alternate == null) {a.alternate = [];}"
                 f"a.alternate.add({value}); break;}} }}"
             )
