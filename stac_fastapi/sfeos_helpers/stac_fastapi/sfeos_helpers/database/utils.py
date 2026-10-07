@@ -452,7 +452,7 @@ def add_commands(
     if isinstance(path.key, int):
         if path.parts[0] == "assets" and path.parts[-1] == "alternate":
             commands.add(
-                f"for (a in ctx._source.assets) {{ if (a.asset_key == {path.parts[-2]}) {{"
+                f"for (a in ctx._source.assets) {{ if (a.asset_key == '{path.parts[-2]}') {{"
                 "int insertPos = a.alternate.size() > 0 ?  a.alternate.size() - 1 : 0;"
                 f"a.alternate.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});"
                 "break;} }"
