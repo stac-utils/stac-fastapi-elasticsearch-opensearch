@@ -364,27 +364,28 @@ def check_commands(
     """
     if path.nest:
         part_nest = ""
-        for index, path_part in enumerate(path.parts):
+        if "alternate" not in path.parts:
+            for index, path_part in enumerate(path.parts):
 
-            # Create nested dictionaries if not present for merge operations
-            if create_nest and not from_path:
-                value = "[:]"
-                for sub_part in reversed(path.parts[index + 1 :]):
-                    value = f"['{sub_part}': {value}]"
+                # Create nested dictionaries if not present for merge operations
+                if create_nest and not from_path:
+                    value = "[:]"
+                    for sub_part in reversed(path.parts[index + 1 :]):
+                        value = f"['{sub_part}': {value}]"
 
-                commands.add(
-                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
-                    f"{{ctx._source{part_nest}['{path_part}'] = {value};}}"
-                    f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
-                )
+                    commands.add(
+                        f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                        f"{{ctx._source{part_nest}['{path_part}'] = {value};}}"
+                        f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
+                    )
 
-            else:
-                commands.add(
-                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
-                    f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
-                )
+                else:
+                    commands.add(
+                        f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                        f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
+                    )
 
-            part_nest += f"['{path_part}']"
+                part_nest += f"['{path_part}']"
 
     if from_path or op in ["remove", "replace", "test"]:
 
