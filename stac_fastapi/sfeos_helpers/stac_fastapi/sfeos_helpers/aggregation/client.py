@@ -20,6 +20,7 @@ from stac_fastapi.core.extensions.aggregation import EsAggregationExtensionPostR
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
 from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
+from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -356,11 +357,18 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             search = self.database.apply_collections_filter(
                 search=search, collection_ids=aggregate_request.collections
             )
+            path_collection_id = collection_id
+            supported_aggregations = self.DEFAULT_AGGREGATIONS
             # validate that aggregations are supported for all collections
             for collection_id in aggregate_request.collections:
-                aggregation_info = await self.get_aggregations(
-                    collection_id=collection_id, request=request
-                )
+                try:
+                    aggregation_info = await self.get_aggregations(
+                        collection_id=collection_id, request=request
+                    )
+                except NotFoundError:
+                    if path_collection_id:  # /collections/{collection_id}/aggregate
+                        raise
+                    continue  # like /search, skip a collection that does not exist
                 supported_aggregations = (
                     aggregation_info["aggregations"] + self.DEFAULT_AGGREGATIONS
                 )
