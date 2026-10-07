@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, model_validator
 
 regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
-replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": ""})
+replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": "", "-": "_"})
 
 
 class ESCommandSet:
@@ -103,7 +103,7 @@ class ElasticPath(BaseModel):
         data["nest"] = "/".join(data["parts"])
 
         if data["nest"].strip("/") == "assets":
-            data["asset_key"] = data["key"]
+            data["value"]["asset_key"] = data["key"]
             data["key"] = "-"
 
         if (
@@ -111,7 +111,7 @@ class ElasticPath(BaseModel):
             and data["parts"][0] == "assets"
             and data["parts"][-1] == "alternate"
         ):
-            data["alternate_key"] = data["key"]
+            data["value"]["alternate_key"] = data["key"]
             data["key"] = "-"
 
         data["es_key"] = data["key"]

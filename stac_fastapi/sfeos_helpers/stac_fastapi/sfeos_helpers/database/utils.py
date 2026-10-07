@@ -446,13 +446,13 @@ def add_commands(
         )
 
     else:
-        value = f"params.{path.param_key}"
+        value = f"params['{path.param_key}']"
         params[path.param_key] = operation.value
 
     if isinstance(path.key, int):
         commands.add(
-            f"if (ctx._source{path.es_nest} instanceof ArrayList)"
-            "{int insertPos = ctx._source.links.size() > 0 ? ctx._source.links.size() - 1 : 0;"
+            f"if (ctx._source{path.es_nest} instanceof ArrayList){{"
+            f"int insertPos = ctx._source{path.es_nest}.size() > 0 ? ctx._source{path.es_nest}.size() - 1 : 0;"
             f"ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});}}"
             f" else ctx._source{path.es_path} = {value};"
         )
@@ -471,7 +471,7 @@ def test_commands(
         operation (PatchOperation): operation to run
         path (ElasticPath): path for value to be tested
     """
-    value = f"params.{path.param_key}"
+    value = f"params['{path.param_key}']"
     params[path.param_key] = operation.value
 
     if isinstance(path.key, int):
@@ -504,12 +504,7 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
 
     for operation in operations:
         path = ElasticPath(path=operation.path, value=operation.value)
-
-        if es_key := path.asset_key:
-            operation.value["es_key"] = es_key
-
-        if alternate_key := path.alternate_key:
-            operation.value["alternate_key"] = alternate_key
+        operation.value = path.value
 
         from_path, _ = (
             ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None,
