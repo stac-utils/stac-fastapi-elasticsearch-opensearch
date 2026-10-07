@@ -504,7 +504,9 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
 
     for operation in operations:
         path = ElasticPath(path=operation.path, value=operation.value)
-        operation.value = path.value
+
+        if path.value:
+            operation.value = path.value
 
         from_path, _ = (
             ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None,

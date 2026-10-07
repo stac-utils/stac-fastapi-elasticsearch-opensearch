@@ -87,6 +87,8 @@ class ElasticPath(BaseModel):
     asset_key: str | None = None
     alternate_key: str | None = None
 
+    value: Any | None = None
+
     model_config = ConfigDict(frozen=True)
 
     @model_validator(mode="before")
