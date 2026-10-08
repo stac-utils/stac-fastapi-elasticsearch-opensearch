@@ -189,6 +189,22 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
 
 
 @pytest.mark.asyncio
+async def test_app_fields_extension_matching_nothing_returns_id_and_collection(
+    app_client, ctx
+):
+    params = {"collections": ["test-collection"], "fields": "doesnotexist"}
+    body = {"collections": ["test-collection"], "fields": {"include": ["doesnotexist"]}}
+    for resp in (
+        await app_client.get("/search", params=params),
+        await app_client.post("/search", json=body),
+    ):
+        assert resp.status_code == 200
+        assert resp.json()["features"] == [
+            {"id": ctx.item["id"], "collection": "test-collection"}
+        ]
+
+
+@pytest.mark.asyncio
 async def test_app_fields_extension_query(app_client, ctx, txn_client):
     item = ctx.item
     resp = await app_client.post(
