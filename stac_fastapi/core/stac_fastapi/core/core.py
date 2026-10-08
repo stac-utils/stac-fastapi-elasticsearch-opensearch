@@ -161,8 +161,8 @@ def patch_addresses_field(patch: list, field: str) -> bool:
         if field in (path.strip("/").split("/")[0], source.strip("/").split("/")[0]):
             return True
     return False
-  
-  
+
+
 def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
     """Split `fields` selectors into include and exclude sets, ignoring empty names."""
     includes: set[str] = set()
