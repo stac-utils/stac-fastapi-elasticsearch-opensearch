@@ -62,6 +62,18 @@ OPTIONAL_QUERYABLES: dict[str, dict[str, Any]] = {
 ALL_QUERYABLES: dict[str, dict[str, Any]] = DEFAULT_QUERYABLES | OPTIONAL_QUERYABLES
 
 _FULL_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DATE_TIME = re.compile(
+    _FULL_DATE.pattern
+    + r"[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]([01]\d|2[0-3]):[0-5]\d)"
+)
+# The quoted arguments of TIMESTAMP and INTERVAL, or another quoted string,
+# so that a call inside a string is skipped. This scan can go once cql2
+# refuses the timestamps it now rewrites as UTC, such as a +25:00 offset.
+_TEMPORAL_ARGS = re.compile(
+    r"\b(timestamp|interval)\s*\(\s*'((?:[^']|'')*)'(?:\s*,\s*'((?:[^']|'')*)')?"
+    r"|'(?:[^']|'')*'",
+    re.IGNORECASE,
+)
 
 MAX_CQL2_DEPTH = 16
 """How deep CQL2 text may nest parentheses and operators."""
@@ -165,7 +177,9 @@ def cql2_text_to_json(cql2_text: str) -> dict[str, Any]:
     back as integers, as CQL2 JSON clients send them: Elasticsearch and
     OpenSearch compare a number with a keyword field as text, where 161.0 does
     not match "161". cql2 does not check what a DATE or TIMESTAMP holds, so
-    this does: an RFC 3339 full-date and date-time, as CQL2 requires.
+    this does: an RFC 3339 full-date and date-time, as CQL2 requires. cql2
+    rewrites a timestamp it can read as UTC, '2020-01-01T00:00:00+25:00'
+    too, so TIMESTAMP and INTERVAL arguments are checked as written.
 
     Args:
         cql2_text (str): The CQL2 text filter.
@@ -178,6 +192,11 @@ def cql2_text_to_json(cql2_text: str) -> dict[str, Any]:
             a DATE, TIMESTAMP or INTERVAL holds no valid date or timestamp.
     """
     _check_depth(cql2_text)
+    for kind, *literals in _TEMPORAL_ARGS.findall(cql2_text):
+        date_only = None if kind.lower() == "interval" else False
+        for literal in literals:
+            if kind and literal not in ("", ".."):
+                _check_instant(kind.upper(), literal, date_only)
     try:
         expr = cql2.parse_text(cql2_text)
     except cql2.ParseError as e:
@@ -246,7 +265,7 @@ def _check_instant(kind: str, literal: Any, date_only: bool | None) -> None:
                 return
             except ValueError:
                 pass
-        elif date_only is not True:
+        elif date_only is not True and _DATE_TIME.fullmatch(literal):
             try:
                 rfc3339_str_to_datetime(literal)
                 return

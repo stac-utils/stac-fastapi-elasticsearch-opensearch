@@ -346,6 +346,24 @@ async def test_invalid_temporal_literal(app, app_client, route, literal):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("route", ROUTES)
 @pytest.mark.parametrize(
+    "text",
+    [
+        "datetime >= TIMESTAMP('2020-01-01T00:00:00+00:99')",
+        "datetime >= TIMESTAMP('2020-01-01T00:00:00+25:00')",
+        "T_INTERSECTS(datetime, INTERVAL('2020-01-01T00:00:00+25:00', '..'))",
+    ],
+)
+async def test_invalid_time_offset(app, app_client, route, text):
+    """A time offset past 23 hours or 59 minutes is not RFC 3339, and gets 400."""
+    resp = await _get(app, route, text)
+
+    assert resp.status_code == 400, resp.text
+    assert "is not an RFC 3339 date" in resp.json()["detail"], resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ROUTES)
+@pytest.mark.parametrize(
     "text,status",
     [
         pytest.param("id = " + "-" * 4000 + "1", 400, id="4000-minus"),
