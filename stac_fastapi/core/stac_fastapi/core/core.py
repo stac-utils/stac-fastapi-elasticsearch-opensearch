@@ -104,6 +104,7 @@ def validate_limit(value: Any) -> int:
             detail="Invalid limit parameter: must be a positive integer",
         )
 
+
 FIELD_LABELS = {"id": "Item ID", "collection": "Collection ID"}
 
 
