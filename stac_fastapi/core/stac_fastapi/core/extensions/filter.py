@@ -63,6 +63,17 @@ ALL_QUERYABLES: dict[str, dict[str, Any]] = DEFAULT_QUERYABLES | OPTIONAL_QUERYA
 
 _FULL_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
+MAX_CQL2_DEPTH = 16
+"""How deep CQL2 text may nest parentheses and operators."""
+
+MAX_CQL2_AND_OR = 1000
+"""How many AND and OR operators CQL2 text may hold."""
+
+# Quoted strings and names, which _check_depth skips, then what it counts.
+_CQL2_TOKEN = re.compile(
+    r"""'(?:[^']|'')*'|"(?:[^"]|"")*"|[(),]|[-+*/%^=<>!]|\b(?:and|or|not|like|in|div)\b"""
+)
+
 
 class LogicalOp(str, Enum):
     """Enumeration for logical operators used in constructing Elasticsearch queries."""
@@ -163,14 +174,45 @@ def cql2_text_to_json(cql2_text: str) -> dict[str, Any]:
         dict[str, Any]: The filter as CQL2 JSON.
 
     Raises:
-        CQL2TextError: If the text is not valid CQL2 text, or a DATE,
-            TIMESTAMP or INTERVAL holds no valid date or timestamp.
+        CQL2TextError: If the text is not valid CQL2 text, nests too deep, or
+            a DATE, TIMESTAMP or INTERVAL holds no valid date or timestamp.
     """
+    _check_depth(cql2_text)
     try:
         expr = cql2.parse_text(cql2_text)
     except cql2.ParseError as e:
         raise CQL2TextError("expected valid CQL2 text") from e
     return _checked(expr.to_json())
+
+
+def _check_depth(cql2_text: str) -> None:
+    """Raise CQL2TextError for CQL2 text that nests too deep for cql2.
+
+    cql2 has no depth limit yet. It parses recursively, so deep nesting
+    overflows the stack and kills the process, and each nested parenthesis
+    can double the parse time. Each parenthesis and each operator is one
+    level deeper, up to the next comma, AND or OR at its own level. cql2 also
+    nests AND and OR one level each before it flattens them, so their number
+    is capped too.
+    """
+    outer: list[int] = []
+    depth = and_or = 0
+    for token in _CQL2_TOKEN.findall(cql2_text.lower()):
+        if token == "(":
+            outer.append(depth)
+            depth += 1
+        elif token == ")":
+            depth = outer.pop() if outer else 0
+        elif token in (",", "and", "or"):
+            depth = outer[-1] + 1 if outer else 0
+            and_or += token != ","
+        elif token[0] not in "'\"":
+            depth += 1
+        if depth > MAX_CQL2_DEPTH or and_or > MAX_CQL2_AND_OR:
+            raise CQL2TextError(
+                f"expected CQL2 text nested at most {MAX_CQL2_DEPTH} levels deep"
+                f" and at most {MAX_CQL2_AND_OR} AND and OR"
+            )
 
 
 def _checked(value: Any) -> Any:

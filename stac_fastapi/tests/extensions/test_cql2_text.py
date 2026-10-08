@@ -346,6 +346,34 @@ async def test_invalid_temporal_literal(app, app_client, route, literal):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("route", ROUTES)
 @pytest.mark.parametrize(
+    "text,status",
+    [
+        pytest.param("id = " + "-" * 4000 + "1", 400, id="4000-minus"),
+        pytest.param("NOT " * 4000 + "id = 'a'", 400, id="4000-not"),
+        pytest.param("(" * 2000 + "id = 'a'" + ")" * 2000, 400, id="2000-groups"),
+        pytest.param("(" * 16 + "id = 'a'" + ")" * 16, 400, id="17-levels"),
+        pytest.param("(" * 15 + "id = 'a'" + ")" * 15, 200, id="16-levels"),
+        pytest.param(" OR ".join(["id = 'a'"] * 1002), 400, id="1001-or"),
+        pytest.param(
+            " AND ".join(f"id <> '{i}'" for i in range(300)), 200, id="299-and"
+        ),
+        pytest.param(
+            "id IN (" + ", ".join(f"'{i}'" for i in range(1000)) + ")",
+            200,
+            id="in-1000-values",
+        ),
+    ],
+)
+async def test_cql2_text_nesting_limit(app, app_client, route, text, status):
+    """CQL2 text that nests too deep for cql2 gets 400; long flat filters do not."""
+    resp = await _get(app, route, text)
+
+    assert resp.status_code == status, resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ROUTES)
+@pytest.mark.parametrize(
     "text,op",
     [
         (
