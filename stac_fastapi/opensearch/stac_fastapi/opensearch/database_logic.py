@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import os
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import urlsafe_b64encode
 from copy import deepcopy
 from typing import Any, Iterable, Type
 
@@ -12,6 +12,8 @@ import orjson
 from fastapi import HTTPException
 from opensearchpy import Q, Search
 from opensearchpy.exceptions import ConflictError as OSConflictError
+from opensearchpy.exceptions import ConnectionError as OSConnectionError
+from opensearchpy.exceptions import ConnectionTimeout as OSConnectionTimeout
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from opensearchpy.exceptions import RequestError
 from starlette.requests import Request
@@ -41,6 +43,7 @@ from stac_fastapi.sfeos_helpers.database import (
     check_item_exists_in_alias,
     check_item_exists_in_alias_sync,
     create_index_templates_shared,
+    decode_search_after_token_shared,
     delete_item_index_shared,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
@@ -243,26 +246,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         else:
             formatted_sort = [{"id": {"order": "asc"}}]
 
+        size = min(limit + 1, MAX_LIMIT)
         body = {
             "sort": formatted_sort,
-            "size": limit,
+            "size": size,
         }
 
-        # Handle search_after token - split by '|' to get all sort values
-        search_after = None
-        if token:
-            try:
-                # The token should be a pipe-separated string of sort values
-                # e.g., "2023-01-01T00:00:00Z|collection-1"
-                search_after = token.split("|")
-                # If the number of sort fields doesn't match token parts, ignore the token
-                if len(search_after) != len(formatted_sort):
-                    search_after = None
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
-                body["search_after"] = search_after
+        # Handle search_after token (opaque base64, like the catalog routes)
+        search_after = decode_token_to_search_after(token)
+        if search_after is not None and len(search_after) == len(formatted_sort):
+            body["search_after"] = search_after
 
         # Build the query part of the body
         query_parts = []
@@ -353,19 +346,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
 
         hits = response["hits"]["hits"]
+        page = hits[:limit]
         collections = [
             self.collection_serializer.db_to_stac(
                 collection=hit["_source"], request=request, extensions=self.extensions
             )
-            for hit in hits
+            for hit in page
         ]
 
         next_token = None
-        if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                # Join all sort values with '|' to create the token
-                next_token = "|".join(str(val) for val in next_token_values)
+        if len(hits) == size:
+            next_token = encode_search_after_to_token(page[-1].get("sort"))
 
         # Get the total count of collections
         matched = (
@@ -947,6 +938,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
+        search_after = decode_search_after_token_shared(token, sort)
+
         search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
@@ -973,10 +966,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         elif query:
             search_body["query"] = query
 
-        search_after = None
-
-        if token:
-            search_after = orjson.loads(urlsafe_b64decode(token))
         if search_after:
             search_body["search_after"] = search_after
 
@@ -1118,6 +1107,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
+    def check_collection_exists_sync(self, collection_id: str):
+        """Database logic to check if a collection exists, using the sync client."""
+        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
+            raise NotFoundError(f"Collection {collection_id} does not exist")
+
     async def _check_item_exists_in_collection(
         self, collection_id: str, item_id: str
     ) -> bool:
@@ -1228,9 +1222,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
-        # Check if the collection exists
-        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise NotFoundError(f"Collection {item['collection']} does not exist")
+        self.check_collection_exists_sync(item["collection"])
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -2102,6 +2094,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     """CATALOGS LOGIC"""
 
+    async def _collections_filter_query(
+        self, filter: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Translate a CQL2 JSON filter on catalog or collection documents to a query."""
+        if not filter:
+            return None
+        queryables_mapping = await self.get_collections_queryables_mapping()
+        try:
+            return filter_module.to_es(queryables_mapping, filter)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error with cql2 filter: {e}")
+
     @retry_on_connection_error
     async def get_all_catalogs(
         self,
@@ -2109,6 +2113,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Any = None,
         sort: list[dict[str, Any]] | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of catalogs from OpenSearch, supporting pagination.
 
@@ -2117,6 +2122,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
             sort (list[dict[str, Any]] | None, optional): Optional sort parameter. Defaults to None.
+            filter (dict[str, Any] | None, optional): A CQL2 JSON filter the catalogs must match. Defaults to None.
 
         Returns:
             A tuple of (catalogs, next pagination token if any, optional count).
@@ -2136,31 +2142,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not formatted_sort:
             formatted_sort = [{"id": {"order": "asc"}}]
 
+        size = min(limit + 1, MAX_LIMIT)
         body = {
             "sort": formatted_sort,
-            "size": limit,
+            "size": size,
             "query": {"term": {"type": "Catalog"}},
             "_source": True,  # Ensure all fields including parent_ids are returned
         }
+        filter_query = await self._collections_filter_query(filter)
+        if filter_query:
+            body["query"] = {"bool": {"must": [body["query"], filter_query]}}
 
-        # Handle search_after token
-        search_after = None
-        if token:
-            try:
-                search_after = token.split("|")
-                # Validate token format: must have correct number of values and be non-empty
-                if len(search_after) != len(formatted_sort):
-                    search_after = None
-                else:
-                    # Validate each value is non-empty (check for patterns like "id||date")
-                    for val in search_after:
-                        if not val:
-                            search_after = None
-                            break
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
+        # Handle search_after token (opaque base64, like the other catalog routes)
+        search_after = decode_token_to_search_after(token)
+        if search_after is not None:
+            if len(search_after) != len(formatted_sort):
+                search_after = None  # a token from a different sort: start at page 1
+            else:
                 body["search_after"] = search_after
 
         # Search for catalogs in collections index
@@ -2170,13 +2168,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         hits = response["hits"]["hits"]
-        catalogs = [hit["_source"] for hit in hits]
+        page = hits[:limit]
+        catalogs = [hit["_source"] for hit in page]
 
         next_token = None
-        if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                next_token = "|".join(str(val) for val in next_token_values)
+        if len(hits) == size:
+            next_token = encode_search_after_to_token(page[-1].get("sort"))
 
         # Get the total count
         matched = (
@@ -2282,6 +2279,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         resource_type: str | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get children of a catalog (both sub-catalogs and collections)."""
         # Decode token to search_after
@@ -2297,6 +2295,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit=limit,
             search_after=search_after,
             resource_type=resource_type,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2311,6 +2310,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog."""
         # Decode token to search_after
@@ -2325,6 +2325,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id=catalog_id,
             limit=limit,
             search_after=search_after,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2339,6 +2340,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get sub-catalogs within a catalog."""
         # Decode token to search_after
@@ -2353,6 +2355,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id=catalog_id,
             limit=limit,
             search_after=search_after,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2443,8 +2446,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime: str | None = None,
         limit: int = 10,
         sortby: str | None = None,
-        filter_expr: str | None = None,
-        filter_lang: str | None = None,
+        filter: dict[str, Any] | None = None,
         token: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
@@ -2464,6 +2466,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime_search = None
         if datetime:
             search, datetime_search = self.apply_datetime_filter(search, datetime)
+
+        if filter:
+            try:
+                search, _ = await self.apply_cql2_filter(search, filter)
+            except (OSConnectionError, OSConnectionTimeout):
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
+                )
 
         sort_param = None
 

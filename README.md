@@ -383,6 +383,8 @@ The catalogs extension implements a **safety-first design** that protects collec
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
+**Filtering listings:** when the filter extension is enabled, the `GET` listing routes above (`/catalogs`, `/catalogs/{catalog_id}/catalogs`, `/catalogs/{catalog_id}/children`, `/catalogs/{catalog_id}/collections` and `/catalogs/{catalog_id}/collections/{collection_id}/items`) accept `filter`, `filter-lang` and `filter-crs` like `/collections` and `/collections/{collection_id}/items`, for example `/catalogs/earth-observation/collections?filter=id LIKE 'sentinel%'&filter-lang=cql2-text`.
+
 ### Usage Examples
 
 ```bash
@@ -1075,7 +1077,7 @@ You can customize additional settings in your `.env` file:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `RAISE_ON_BULK_ERROR` | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag. | `false` | Optional |
+| `RAISE_ON_BULK_ERROR` | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. Malformed `bulk_items` entries (not a JSON object, or without a non-empty string `id`) follow this flag: rejected with `400` when `true`, reported per item in `errors` when `false`. The same applies to `bulk_items` entries whose `collection` differs from the path collection (an absent, `null` or `""` `collection` is filled from the path regardless of this flag) and to `bulk_items` items that fail STAC validation when `ENABLE_STAC_VALIDATOR=true`. **Note:** single Item `POST`/`PUT` validation errors always raise regardless of this flag. ItemCollection validation failures follow this flag when at least one item is written; an ItemCollection with no writable items returns `400` (with `ENABLE_REDIS_QUEUE=true`, `202` and zero items queued), and the `MAX_BATCH_ERROR_SIZE` threshold rejection is unconditional (see [Chunked Validation with Fail-Fast](#chunked-validation-with-fail-fast)). | `false` | Optional |
 | `DATABASE_REFRESH` | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
 | `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
 | `USE_DATETIME_NANOS` | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`. | `true` | Optional |
@@ -1208,7 +1210,7 @@ For high-volume ingestion scenarios, you can enable **chunked validation with fa
 1. **Chunking**: Items are validated in chunks of `MAX_BATCH_SIZE` items
 2. **Error Tracking**: Validation errors are accumulated across chunks
 3. **Fail-Fast**: If total errors exceed `MAX_BATCH_ERROR_SIZE`, validation stops immediately and the entire batch is rejected
-4. **Atomic Rejection**: The entire batch is always rejected if any errors are found (no partial inserts)
+4. **Atomic Rejection**: With `RAISE_ON_BULK_ERROR=true` the entire batch is rejected if any errors are found (no partial inserts); otherwise invalid items are reported and the valid ones are written
 
 **Example: Enable chunked validation with fail-fast**
 ```bash

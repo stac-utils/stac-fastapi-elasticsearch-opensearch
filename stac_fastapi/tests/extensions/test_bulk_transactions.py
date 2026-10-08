@@ -6,10 +6,11 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
+from stac_fastapi.core.validate import validate_batch_with_stac_validator
 from stac_fastapi.extensions.bulk_transactions import Items
 from stac_fastapi.sfeos_helpers.database import BulkIndexError, ItemAlreadyExistsError
 
-from ..conftest import MockRequest, create_item
+from ..conftest import MockRequest, create_collection, create_item
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import OpensearchSettings as SearchSettings
@@ -110,6 +111,7 @@ async def test_bulk_item_insert_validation_error(
     from fastapi import HTTPException
 
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
 
     items = {}
     # Add 9 valid items
@@ -143,6 +145,48 @@ async def test_bulk_item_insert_validation_error(
     assert summary["skipped_total"] == 1
     assert summary["conflict_count"] == 0
     assert summary["database_error_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_item_insert_reports_validation_error_per_item(
+    ctx, core_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+
+    items = {}
+    for _ in range(9):
+        _item = deepcopy(ctx.item)
+        _item["id"] = str(uuid.uuid4())
+        items[_item["id"]] = _item
+
+    invalid_item = deepcopy(ctx.item)
+    invalid_item["id"] = str(uuid.uuid4())
+    invalid_item["properties"].pop("datetime", None)
+    items[invalid_item["id"]] = invalid_item
+
+    result = bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+
+    assert result == {
+        "received": 10,
+        "success": 9,
+        "skipped": 0,
+        "errors": [
+            {
+                "id": invalid_item["id"],
+                "msg": "; ".join(
+                    msg
+                    for msg, item_ids in validate_batch_with_stac_validator(
+                        [invalid_item]
+                    )[1].items()
+                    if invalid_item["id"] in item_ids
+                ),
+            }
+        ],
+    }
+
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
+    assert len(fc["features"]) >= 9
 
 
 @pytest.mark.asyncio
@@ -526,3 +570,51 @@ async def test_bulk_conflict_error_takes_precedence_over_other_errors(
 
         assert exc_info.value.item_id == item_id
         assert exc_info.value.collection_id == ctx.collection["id"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_item_insert_without_request_uses_first_named_collection(
+    ctx, core_client, txn_client, bulk_txn_client
+):
+    other = {**ctx.collection, "id": "bulk-direct-other-collection"}
+    await create_collection(txn_client, other)
+    ok = {**deepcopy(ctx.item), "id": str(uuid.uuid4())}
+    bad = {**deepcopy(ctx.item), "id": str(uuid.uuid4()), "collection": other["id"]}
+    nocoll = {k: v for k, v in deepcopy(ctx.item).items() if k != "collection"}
+    nocoll["id"] = str(uuid.uuid4())
+
+    result = bulk_txn_client.bulk_item_insert(
+        Items(items={"ok": ok, "bad": bad, "nocoll": nocoll}), refresh=True
+    )
+
+    assert result["success"] == 2
+    assert result["errors"] == [
+        {
+            "id": "bad",
+            "msg": f"Item collection '{other['id']}' does not match path collection '{ctx.collection['id']}'",
+        }
+    ]
+    assert "collection" not in nocoll
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
+    assert {ok["id"], nocoll["id"]} <= {feature["id"] for feature in fc["features"]}
+    other_fc = await core_client.item_collection(other["id"], request=MockRequest())
+    assert other_fc["features"] == []
+
+
+@pytest.mark.asyncio
+async def test_bulk_item_insert_without_request_ignores_collection_of_entry_without_id(
+    ctx, core_client, bulk_txn_client
+):
+    item = {**deepcopy(ctx.item), "id": str(uuid.uuid4())}
+
+    result = bulk_txn_client.bulk_item_insert(
+        Items(items={"no-id": {"collection": "no-such-collection"}, item["id"]: item}),
+        refresh=True,
+    )
+
+    assert result["success"] == 1
+    assert result["errors"] == [
+        {"id": "no-id", "msg": "Item must have a non-empty string id."}
+    ]
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
+    assert item["id"] in {feature["id"] for feature in fc["features"]}

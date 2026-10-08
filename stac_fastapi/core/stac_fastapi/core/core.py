@@ -1,6 +1,7 @@
 """Core client."""
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime as datetime_type
@@ -23,6 +24,7 @@ from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
 from starlette.responses import Response
 
+from stac_fastapi.api.models import GeoJSONResponse
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
@@ -78,12 +80,29 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.search import BaseSearchPostRequest
+from stac_fastapi.types.search import BaseSearchPostRequest, Limit
 
 logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
+limitValidator = TypeAdapter(Limit)
+# Operators `apply_stacql_filter` implements.
+COLLECTIONS_QUERY_OPERATORS = frozenset(
+    {"eq", "ne", "neq", "gt", "gte", "lt", "lte", "in", "contains"}
+)
+
+
+def validate_limit(value: Any) -> int:
+    """Validate a client limit as a positive integer cropped to 10000."""
+    # OGC API - Features Req. 22 C: crop above the maximum, don't reject.
+    try:
+        return limitValidator.validate_python(value)
+    except ValidationError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid limit parameter: must be a positive integer",
+        )
 
 FIELD_LABELS = {"id": "Item ID", "collection": "Collection ID"}
 
@@ -142,6 +161,32 @@ def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
         if touches and not (kind in ("add", "replace", "test") and value == expected):
             return True
     return False
+
+
+def patch_addresses_field(patch: list, field: str) -> bool:
+    """Return whether any JSON Patch operation reads or writes a top-level field."""
+    for op in patch:
+        path = _op_member(op, "path") or ""
+        if path == "":
+            value = _op_member(op, "value")
+            if isinstance(value, dict) and field in value:
+                return True
+            continue
+        source = _op_member(op, "from") or _op_member(op, "from_") or ""
+        if field in (path.strip("/").split("/")[0], source.strip("/").split("/")[0]):
+            return True
+    return False
+
+
+def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
+    """Split `fields` selectors into include and exclude sets, ignoring empty names."""
+    includes: set[str] = set()
+    excludes: set[str] = set()
+    for field in fields:
+        name = field[1:] if field[:1] in "+- " else field
+        if name:
+            (excludes if field[:1] == "-" else includes).add(name)
+    return includes, excludes
 
 
 @attr.s
@@ -407,9 +452,9 @@ class CoreClient(AsyncBaseCoreClient):
             pass
 
         if body_limit is not None:
-            limit = int(body_limit)
+            limit = validate_limit(body_limit)
         elif query_limit:
-            limit = int(query_limit)
+            limit = validate_limit(query_limit)
         else:
             limit = default_limit
 
@@ -421,14 +466,7 @@ class CoreClient(AsyncBaseCoreClient):
             token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
-        includes, excludes = set(), set()
-        if fields:
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    include_field = field[1:] if field[0] in "+ " else field
-                    includes.add(include_field)
+        includes, excludes = parse_fields(fields) if fields else (set(), set())
 
         sort = None
         if sortby:
@@ -458,6 +496,18 @@ class CoreClient(AsyncBaseCoreClient):
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid query parameter: {e}"
+                )
+            if parsed_query is not None and not (
+                isinstance(parsed_query, dict)
+                and all(
+                    isinstance(expr, dict)
+                    and expr.keys() <= COLLECTIONS_QUERY_OPERATORS
+                    for expr in parsed_query.values()
+                )
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid query parameter: expected a JSON object of operator objects.",
                 )
 
         # Parse the filter parameter if provided
@@ -694,7 +744,7 @@ class CoreClient(AsyncBaseCoreClient):
         fields: list[str] | None = None,
         q: str | list[str] | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """List items within a specific collection.
 
         This endpoint delegates to ``get_search`` under the hood with
@@ -780,7 +830,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter_expr: str | None = None,
         filter_lang: str | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """Get search results from the database.
 
         Args:
@@ -870,12 +920,7 @@ class CoreClient(AsyncBaseCoreClient):
                 base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
-            includes, excludes = set(), set()
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    includes.add(field[1:] if field[0] in "+ " else field)
+            includes, excludes = parse_fields(fields)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
@@ -891,7 +936,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """
         Perform a POST search on the catalog.
 
@@ -922,9 +967,9 @@ class CoreClient(AsyncBaseCoreClient):
             pass
 
         if body_limit is not None:
-            limit = int(body_limit)
+            limit = validate_limit(body_limit)
         elif query_limit:
-            limit = int(query_limit)
+            limit = validate_limit(query_limit)
         else:
             limit = default_limit
 
@@ -1028,10 +1073,10 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
-        # Use token from the request if the model doesn't define it
-        token_param = getattr(
-            search_request, "token", None
-        ) or request.query_params.get("token")
+        # Use the query-string token only if the model doesn't define one
+        token_param = getattr(search_request, "token", None)
+        if token_param is None:
+            token_param = request.query_params.get("token")
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
@@ -1088,13 +1133,17 @@ class CoreClient(AsyncBaseCoreClient):
                 body=getattr(request, "postbody", None),
             )
 
-        return stac_types.ItemCollection(
+        item_collection = stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
             numberReturned=len(items),
             numberMatched=maybe_count,
         )
+        # Projected features need not be valid STAC Items, so skip response-model validation.
+        if include or exclude:
+            return GeoJSONResponse(item_collection)
+        return item_collection
 
 
 @attr.s
@@ -1944,6 +1993,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
         collection = collection.model_dump(mode="json")
+        # Catalog membership is set by the catalog routes, and update keeps
+        # stored parent_ids.
+        collection.pop("parent_ids", None)
         request = kwargs["request"]
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
@@ -2056,6 +2108,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             raise HTTPException(
                 status_code=400,
                 detail="A patch may not change the collection type.",
+            )
+
+        if isinstance(patch, list) and patch_addresses_field(patch, "parent_ids"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
             )
 
         # When validation is DISABLED, delegate to database layer for direct execution
@@ -2207,6 +2265,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     ) -> BulkTransaction | Response:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
+        The path collection is authoritative: every item is written to its index.
+        An item whose `collection` is absent, `null` or `""` is written with the path
+        collection; any other value that differs is reported per item in `errors`, or
+        rejects the batch with `400` under `RAISE_ON_BULK_ERROR`. Without a path
+        collection (direct calls), the first entry with a non-empty string `id` and
+        `collection` sets the batch collection. Items that fail STAC validation
+        (`ENABLE_STAC_VALIDATOR`) follow `RAISE_ON_BULK_ERROR` in the same way as
+        admission errors: reported per item in `errors`, or a whole-batch `400`.
+
         Args:
             items: The items to insert.
             chunk_size: The size of each chunk for bulk processing.
@@ -2214,6 +2281,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         Returns:
             A string indicating the number of items successfully added.
+
+        Raises:
+            NotFoundError: If the batch collection does not exist.
         """
         request = kwargs.get("request")
 
@@ -2237,16 +2307,67 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             for item in items.items.values()
         ]
 
+        collection_id = getattr(request, "path_params", {}).get("collection_id")
+        if collection_id is None:
+            # Direct call without a path: the first admissible entry naming a collection sets it.
+            collection_id = next(
+                (
+                    item["collection"]
+                    for item in raw_items
+                    if isinstance(item, dict)
+                    and isinstance(item.get("id"), str)
+                    and item["id"]
+                    and isinstance(item.get("collection"), str)
+                    and item["collection"]
+                ),
+                None,
+            )
+        if collection_id is not None:
+            self.database.check_collection_exists_sync(collection_id)
+
+        admitted_items = []
+        admission_errors = []
+        for key, item in zip(items.items, raw_items):
+            if not isinstance(item, dict):
+                admission_errors.append(
+                    {"id": key, "msg": "Item must be a JSON object."}
+                )
+            elif not isinstance(item.get("id"), str) or not item["id"]:
+                admission_errors.append(
+                    {"id": key, "msg": "Item must have a non-empty string id."}
+                )
+            elif collection_id is not None and item.get("collection") not in (
+                None,
+                "",
+                collection_id,
+            ):
+                value = item["collection"]
+                shown = f"'{value}'" if isinstance(value, str) else json.dumps(value)
+                admission_errors.append(
+                    {
+                        "id": key,
+                        "msg": f"Item collection {shown} does not match path collection '{collection_id}'",
+                    }
+                )
+            elif collection_id is not None:
+                admitted_items.append({**item, "collection": collection_id})
+            else:
+                admitted_items.append(item)
+
+        if admission_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": f"Bulk insertion rejected. {len(admission_errors)} items are malformed.",
+                    "errors": admission_errors,
+                },
+            )
+
         # 1. DEDUPLICATE FIRST
         # Doing this before validation saves us from validating the exact same STAC item twice
-        seen_ids: dict = {}
-        for item in raw_items:
-            item_id = item.get("id")
-            if item_id is not None:
-                seen_ids[item_id] = item
-
+        seen_ids: dict = {item["id"]: item for item in admitted_items}
         unique_items = list(seen_ids.values())
-        skipped_batch_duplicates = len(raw_items) - len(unique_items)
+        skipped_batch_duplicates = len(admitted_items) - len(unique_items)
 
         if not unique_items:
             return cast(
@@ -2255,11 +2376,12 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     "received": len(raw_items),
                     "success": 0,
                     "skipped": skipped_batch_duplicates,
-                    "errors": [],
+                    "errors": admission_errors,
                 },
             )
 
         # 2. VALIDATION LAYER (Use batch validator for efficiency)
+        validation_error_entries: list[dict] = []
         if get_bool_env("ENABLE_STAC_VALIDATOR"):
             from stac_fastapi.core.validate import validate_batch_with_stac_validator
 
@@ -2267,18 +2389,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 unique_items
             )
 
-            # Count total validation errors (validation_errors maps error_msg -> [item_ids])
-            validation_error_count = count_validation_errors(validation_errors)
-
-            # This endpoint historically has strict mode enabled by default.
-            # We fail the entire batch immediately if any item is invalid.
-            if validation_errors:
+            if validation_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+                # Count total validation errors (validation_errors maps error_msg -> [item_ids])
+                validation_error_count = count_validation_errors(validation_errors)
                 raise HTTPException(
                     status_code=400,
                     detail={
                         "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
                         "summary": build_bulk_summary(
-                            raw_features=raw_items,
+                            raw_features=admitted_items,
                             processed_items=unique_items,
                             valid_items=valid_items,
                             validation_error_count=validation_error_count,
@@ -2286,8 +2405,20 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                         "errors": validation_errors,
                     },
                 )
+
+            messages_by_id: dict[str, list[str]] = {}
+            for msg, item_ids in validation_errors.items():
+                for item_id in item_ids:
+                    messages_by_id.setdefault(item_id, []).append(msg)
+            validation_error_entries = [
+                {"id": item["id"], "msg": "; ".join(messages_by_id[item["id"]])}
+                for item in unique_items
+                if item["id"] in messages_by_id
+            ]
         else:
             valid_items = unique_items
+
+        reported_errors = admission_errors + validation_error_entries
 
         # 3. PREPROCESSING LAYER
         processed_items = []
@@ -2303,12 +2434,12 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     "received": len(raw_items),
                     "success": 0,
                     "skipped": skipped_batch_duplicates + len(valid_items),
-                    "errors": [],
+                    "errors": reported_errors,
                 },
             )
 
         # 4. DATABASE INSERTION LAYER
-        collection_id = processed_items[0]["collection"]
+        collection_id = collection_id or processed_items[0]["collection"]
         success, errors = self.database.bulk_sync(
             collection_id,
             processed_items,
@@ -2341,6 +2472,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": format_bulk_errors(all_errors),
+                "errors": reported_errors + format_bulk_errors(all_errors),
             },
         )
