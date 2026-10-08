@@ -2239,7 +2239,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         collection; any other value that differs is reported per item in `errors`, or
         rejects the batch with `400` under `RAISE_ON_BULK_ERROR`. Without a path
         collection (direct calls), the first entry with a non-empty string `id` and
-        `collection` sets the batch collection.
+        `collection` sets the batch collection. Items that fail STAC validation
+        (`ENABLE_STAC_VALIDATOR`) follow `RAISE_ON_BULK_ERROR` in the same way as
+        admission errors: reported per item in `errors`, or a whole-batch `400`.
 
         Args:
             items: The items to insert.
@@ -2348,6 +2350,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             )
 
         # 2. VALIDATION LAYER (Use batch validator for efficiency)
+        validation_error_entries: list[dict] = []
         if get_bool_env("ENABLE_STAC_VALIDATOR"):
             from stac_fastapi.core.validate import validate_batch_with_stac_validator
 
@@ -2355,27 +2358,36 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 unique_items
             )
 
-            # Count total validation errors (validation_errors maps error_msg -> [item_ids])
-            validation_error_count = count_validation_errors(validation_errors)
+            if validation_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+                # Count total validation errors (validation_errors maps error_msg -> [item_ids])
+                validation_error_count = count_validation_errors(validation_errors)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
+                        "summary": build_bulk_summary(
+                            raw_features=admitted_items,
+                            processed_items=unique_items,
+                            valid_items=valid_items,
+                            validation_error_count=validation_error_count,
+                        ),
+                        "errors": validation_errors,
+                    },
+                )
 
-            # This endpoint historically has strict mode enabled by default.
-            # We fail the entire batch immediately if any item is invalid.
-            if validation_errors:
-                detail = {
-                    "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
-                    "summary": build_bulk_summary(
-                        raw_features=admitted_items,
-                        processed_items=unique_items,
-                        valid_items=valid_items,
-                        validation_error_count=validation_error_count,
-                    ),
-                    "errors": validation_errors,
-                }
-                if admission_errors:
-                    detail["malformed"] = admission_errors
-                raise HTTPException(status_code=400, detail=detail)
+            messages_by_id: dict[str, list[str]] = {}
+            for msg, item_ids in validation_errors.items():
+                for item_id in item_ids:
+                    messages_by_id.setdefault(item_id, []).append(msg)
+            validation_error_entries = [
+                {"id": item["id"], "msg": "; ".join(messages_by_id[item["id"]])}
+                for item in unique_items
+                if item["id"] in messages_by_id
+            ]
         else:
             valid_items = unique_items
+
+        reported_errors = admission_errors + validation_error_entries
 
         # 3. PREPROCESSING LAYER
         processed_items = []
@@ -2391,7 +2403,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     "received": len(raw_items),
                     "success": 0,
                     "skipped": skipped_batch_duplicates + len(valid_items),
-                    "errors": admission_errors,
+                    "errors": reported_errors,
                 },
             )
 
@@ -2429,6 +2441,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": admission_errors + format_bulk_errors(all_errors),
+                "errors": reported_errors + format_bulk_errors(all_errors),
             },
         )

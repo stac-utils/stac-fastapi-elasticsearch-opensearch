@@ -10,6 +10,8 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from stac_fastapi.core.core import BulkTransactionsClient, TransactionsClient
+from stac_fastapi.core.validate import validate_batch_with_stac_validator
+from stac_fastapi.extensions.bulk_transactions import Items
 from stac_fastapi.sfeos_helpers.database import ItemAlreadyExistsError
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 
@@ -332,24 +334,180 @@ async def test_bulk_items_validator_reports_missing_id_instead_of_skipping(
     assert [error["id"] for error in body["errors"]] == ["bad"]
 
 
+def _validator_messages(item):
+    """Messages the validator reports for `item`, in the order `core.py` joins them."""
+    _, errors = validate_batch_with_stac_validator([item])
+    messages = [msg for msg, item_ids in errors.items() if item["id"] in item_ids]
+    assert messages
+    return messages
+
+
+def _validator_msg(item):
+    return "; ".join(_validator_messages(item))
+
+
+def _invalid_item(item):
+    invalid = deepcopy(item)
+    invalid["id"] = str(uuid.uuid4())
+    del invalid["properties"]["datetime"]
+    return invalid
+
+
+def _validator_env(monkeypatch, strict):
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "false")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", strict)
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+
 @pytest.mark.asyncio
-async def test_bulk_items_validator_rejection_reports_malformed_entries(
+async def test_bulk_items_reports_invalid_item_and_writes_valid_sibling(
+    ctx, app_client, monkeypatch
+):
+    _validator_env(monkeypatch, "false")
+    valid, items = _mixed_batch(ctx.item, _invalid_item)
+    invalid_id = items["bad"]["id"]
+    response = await _post_bulk_items(ctx.collection["id"], items)
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "received": 2,
+        "success": 1,
+        "skipped": 0,
+        "errors": [{"id": invalid_id, "msg": _validator_msg(items["bad"])}],
+    }
+    created = await app_client.get(
+        f"/collections/{ctx.collection['id']}/items/{valid['id']}"
+    )
+    assert created.status_code == 200
+    missing = await app_client.get(
+        f"/collections/{ctx.collection['id']}/items/{invalid_id}"
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_bulk_items_strict_rejects_invalid_item_without_writing(
+    ctx, app_client, monkeypatch
+):
+    _validator_env(monkeypatch, "true")
+    valid, items = _mixed_batch(ctx.item, _invalid_item)
+    invalid_id = items["bad"]["id"]
+    response = await _post_bulk_items(ctx.collection["id"], items)
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == {
+        "message": "Bulk insertion rejected. 1 items failed validation.",
+        "summary": {
+            "input_count": 2,
+            "processed_count": 2,
+            "valid_count": 1,
+            "skipped_total": 1,
+            "validation_error_count": 1,
+            "conflict_count": 0,
+            "database_error_count": 0,
+        },
+        "errors": {msg: [invalid_id] for msg in _validator_messages(items["bad"])},
+    }
+    missing = await app_client.get(
+        f"/collections/{ctx.collection['id']}/items/{valid['id']}"
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_bulk_items_all_invalid_returns_200_with_errors(ctx, monkeypatch):
+    _validator_env(monkeypatch, "false")
+    invalid = _invalid_item(ctx.item)
+    response = await _post_bulk_items(ctx.collection["id"], {invalid["id"]: invalid})
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "received": 1,
+        "success": 0,
+        "skipped": 0,
+        "errors": [{"id": invalid["id"], "msg": _validator_msg(invalid)}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_bulk_items_reports_every_error_type_once_in_order(
+    ctx, app_client, monkeypatch
+):
+    """Admission errors come first, then validation, then database conflicts."""
+    _validator_env(monkeypatch, "false")
+    valid = {**deepcopy(ctx.item), "id": str(uuid.uuid4())}
+    invalid = _invalid_item(ctx.item)
+    items = {
+        valid["id"]: valid,
+        "bad": "x",
+        invalid["id"]: invalid,
+        ctx.item["id"]: ctx.item,
+    }
+    response = await _post_bulk_items(ctx.collection["id"], items)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["received"], body["success"], body["skipped"]) == (4, 1, 1)
+    assert body["errors"][:2] == [
+        {"id": "bad", "msg": "Item must be a JSON object."},
+        {"id": invalid["id"], "msg": _validator_msg(invalid)},
+    ]
+    assert [error["id"] for error in body["errors"]] == [
+        "bad",
+        invalid["id"],
+        ctx.item["id"],
+    ]
+    assert "already exists" in body["errors"][2]["msg"]
+    created = await app_client.get(
+        f"/collections/{ctx.collection['id']}/items/{valid['id']}"
+    )
+    assert created.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_bulk_items_reports_malformed_and_invalid_entries_together(
     ctx, monkeypatch
 ):
-    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "false")
-    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
-    invalid = deepcopy(ctx.item)
-    invalid["id"] = str(uuid.uuid4())
-    invalid["type"] = "NotAFeature"
+    _validator_env(monkeypatch, "false")
+    invalid = _invalid_item(ctx.item)
     response = await _post_bulk_items(
-        invalid["collection"], {invalid["id"]: invalid, "bad": "x"}
+        ctx.collection["id"], {invalid["id"]: invalid, "bad": "x"}
     )
-    assert response.status_code == 400, response.text
-    detail = response.json()["detail"]
-    assert [error["id"] for error in detail["malformed"]] == ["bad"]
-    summary = detail["summary"]
-    assert summary["skipped_total"] == summary["validation_error_count"]
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "received": 2,
+        "success": 0,
+        "skipped": 0,
+        "errors": [
+            {"id": "bad", "msg": "Item must be a JSON object."},
+            {"id": invalid["id"], "msg": _validator_msg(invalid)},
+        ],
+    }
+
+
+def test_bulk_items_joins_validator_messages_per_item_in_batch_order(monkeypatch):
+    """One entry per failing item, keyed by item id, messages joined in validator order."""
+    _validator_env(monkeypatch, "false")
+    monkeypatch.setattr(
+        "stac_fastapi.core.validate.validate_batch_with_stac_validator",
+        lambda items: ([], {"second msg": ["b", "a"], "first msg": ["a"]}),
+    )
+    database = Mock()
+    client = BulkTransactionsClient(database=database, settings=Mock())
+    result = client.bulk_item_insert(
+        Items(
+            items={
+                "key-a": {"id": "a", "collection": "c"},
+                "key-b": {"id": "b", "collection": "c"},
+            }
+        )
+    )
+    assert result == {
+        "received": 2,
+        "success": 0,
+        "skipped": 0,
+        "errors": [
+            {"id": "a", "msg": "second msg; first msg"},
+            {"id": "b", "msg": "second msg"},
+        ],
+    }
+    database.bulk_sync.assert_not_called()
 
 
 OTHER_COLLECTION = "bulk-items-other-collection"
