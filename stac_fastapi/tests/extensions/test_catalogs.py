@@ -806,6 +806,45 @@ async def test_catalogs_pagination_non_list_token_is_page_one(
 
 
 @pytest.mark.asyncio
+async def test_catalog_listings_full_last_page_has_no_next_link(
+    catalogs_app_client, load_test_data
+):
+    """A last page holding exactly ``limit`` entries has no next link."""
+    prefix = f"test-catalog-{uuid.uuid4()}"
+    parent_id = f"{prefix}-parent"
+    parent = load_test_data("test_catalog.json")
+    parent["id"] = parent_id
+    resp = await catalogs_app_client.post("/catalogs", json=parent)
+    assert resp.status_code == 201, resp.text
+    for i in range(2):
+        sub = load_test_data("test_catalog.json")
+        sub["id"] = f"{prefix}-sub-{i}"
+        resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub
+        )
+        assert resp.status_code == 201, resp.text
+        collection = load_test_data("test_collection.json")
+        collection["id"] = f"{prefix}-col-{i}"
+        resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/collections", json=collection
+        )
+        assert resp.status_code == 201, resp.text
+
+    listings = [
+        ("/catalogs", {"filter": f"id LIKE '{prefix}%'", "limit": 3}, "catalogs"),
+        (f"/catalogs/{parent_id}/collections", {"limit": 2}, "collections"),
+        (f"/catalogs/{parent_id}/catalogs", {"limit": 2}, "catalogs"),
+        (f"/catalogs/{parent_id}/children", {"limit": 4}, "children"),
+    ]
+    for path, params, key in listings:
+        resp = await catalogs_app_client.get(path, params=params)
+        assert resp.status_code == 200, resp.text
+        page = resp.json()
+        assert len(page[key]) == page["numberMatched"] == params["limit"], path
+        assert "next" not in [link["rel"] for link in page["links"]], path
+
+
+@pytest.mark.asyncio
 async def test_create_catalog_collection(catalogs_app_client, load_test_data, ctx):
     """Test creating a collection within a catalog."""
     # First create a catalog

@@ -1,4 +1,5 @@
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -57,7 +58,7 @@ async def test_collections_pagination_uses_redis_cache(
     next_link = next(
         (link for link in resp1_json["links"] if link["rel"] == "next"), None
     )
-    next_token = next_link["href"].split("token=")[1]
+    next_token = parse_qs(urlparse(next_link["href"]).query)["token"][0]
 
     resp2 = await app_client.get(
         "/collections", params={"limit": 1, "token": next_token}

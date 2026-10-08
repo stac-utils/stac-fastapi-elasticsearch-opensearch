@@ -85,6 +85,10 @@ logger = logging.getLogger(__name__)
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
 limitValidator = TypeAdapter(Limit)
+# Operators `apply_stacql_filter` implements.
+COLLECTIONS_QUERY_OPERATORS = frozenset(
+    {"eq", "ne", "neq", "gt", "gte", "lt", "lte", "in", "contains"}
+)
 
 
 def validate_limit(value: Any) -> int:
@@ -157,6 +161,17 @@ def patch_addresses_field(patch: list, field: str) -> bool:
         if field in (path.strip("/").split("/")[0], source.strip("/").split("/")[0]):
             return True
     return False
+  
+  
+def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
+    """Split `fields` selectors into include and exclude sets, ignoring empty names."""
+    includes: set[str] = set()
+    excludes: set[str] = set()
+    for field in fields:
+        name = field[1:] if field[:1] in "+- " else field
+        if name:
+            (excludes if field[:1] == "-" else includes).add(name)
+    return includes, excludes
 
 
 @attr.s
@@ -436,14 +451,7 @@ class CoreClient(AsyncBaseCoreClient):
             token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
-        includes, excludes = set(), set()
-        if fields:
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    include_field = field[1:] if field[0] in "+ " else field
-                    includes.add(include_field)
+        includes, excludes = parse_fields(fields) if fields else (set(), set())
 
         sort = None
         if sortby:
@@ -473,6 +481,18 @@ class CoreClient(AsyncBaseCoreClient):
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid query parameter: {e}"
+                )
+            if parsed_query is not None and not (
+                isinstance(parsed_query, dict)
+                and all(
+                    isinstance(expr, dict)
+                    and expr.keys() <= COLLECTIONS_QUERY_OPERATORS
+                    for expr in parsed_query.values()
+                )
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid query parameter: expected a JSON object of operator objects.",
                 )
 
         # Parse the filter parameter if provided
@@ -885,12 +905,7 @@ class CoreClient(AsyncBaseCoreClient):
                 base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
-            includes, excludes = set(), set()
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    includes.add(field[1:] if field[0] in "+ " else field)
+            includes, excludes = parse_fields(fields)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
