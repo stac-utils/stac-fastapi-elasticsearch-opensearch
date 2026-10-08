@@ -257,3 +257,36 @@ async def test_invalid_literal_is_not_a_syntax_error(catalogs_app, search_scope)
             },
         )
     assert response.status_code == 500
+
+
+@pytest.mark.parametrize(
+    "route,value,equivalent",
+    [
+        (route, value, equivalent)
+        for route in ("global", "items")
+        for value, equivalent in (
+            ("id,", "id"),
+            ("-geometry,", "-geometry"),
+            (",", None),
+            ("+", None),
+        )
+    ]
+    + [("catalog", value, None) for value in (",", "+")],
+)
+async def test_empty_fields_entries_are_ignored(
+    catalogs_app, catalogs_app_client, search_scope, route, value, equivalent
+):
+    """Empty or sign-only fields entries behave as if they were absent."""
+    routes, item = search_scope
+    params = {"ids": item["id"]}
+    async with AsyncClient(
+        transport=ASGITransport(app=catalogs_app, raise_app_exceptions=False),
+        base_url="http://test-server",
+    ) as client:
+        response = await client.get(routes[route], params={**params, "fields": value})
+    assert response.status_code == 200, response.text
+    if equivalent is not None:
+        params["fields"] = equivalent
+    expected = await catalogs_app_client.get(routes[route], params=params)
+    assert expected.status_code == 200, expected.text
+    assert response.json()["features"] == expected.json()["features"]
