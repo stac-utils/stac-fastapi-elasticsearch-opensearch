@@ -224,6 +224,34 @@ async def test_populated_controls(collections_http, ctx, kind):
 
 
 @pytest.mark.parametrize(
+    "path,value,equivalent",
+    [
+        (path, value, equivalent)
+        for path in ("/collections", URL)
+        for value, equivalent in (("id,", "id"), (",", None), ("+", None))
+    ]
+    + [(URL, "", None)],
+)
+async def test_empty_fields_entries_are_ignored(
+    collections_http, ctx, path, value, equivalent
+):
+    response = await collections_http.get(path, params={"fields": value})
+    assert response.status_code == 200, response.text
+    params = {} if equivalent is None else {"fields": equivalent}
+    expected = await collections_http.get(path, params=params)
+    assert expected.status_code == 200, expected.text
+    assert response.json()["collections"] == expected.json()["collections"]
+
+
+async def test_empty_post_fields_include_is_ignored(collections_http, ctx):
+    response = await collections_http.post(URL, json={"fields": {"include": [""]}})
+    assert response.status_code == 200, response.text
+    expected = await collections_http.post(URL, json={})
+    assert expected.status_code == 200, expected.text
+    assert response.json()["collections"] == expected.json()["collections"]
+
+
+@pytest.mark.parametrize(
     "fields,error",
     [
         ({"include": "bad"}, ValidationError),
