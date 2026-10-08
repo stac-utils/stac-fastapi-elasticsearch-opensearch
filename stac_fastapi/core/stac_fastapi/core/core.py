@@ -24,6 +24,7 @@ from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
 from starlette.responses import Response
 
+from stac_fastapi.api.models import GeoJSONResponse
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
@@ -729,7 +730,7 @@ class CoreClient(AsyncBaseCoreClient):
         fields: list[str] | None = None,
         q: str | list[str] | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """List items within a specific collection.
 
         This endpoint delegates to ``get_search`` under the hood with
@@ -815,7 +816,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter_expr: str | None = None,
         filter_lang: str | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """Get search results from the database.
 
         Args:
@@ -921,7 +922,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """
         Perform a POST search on the catalog.
 
@@ -1118,13 +1119,17 @@ class CoreClient(AsyncBaseCoreClient):
                 body=getattr(request, "postbody", None),
             )
 
-        return stac_types.ItemCollection(
+        item_collection = stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
             numberReturned=len(items),
             numberMatched=maybe_count,
         )
+        # Projected features need not be valid STAC Items, so skip response-model validation.
+        if include or exclude:
+            return GeoJSONResponse(item_collection)
+        return item_collection
 
 
 @attr.s
