@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Fixed `make image-es-os` not rebuilding the dev image (recipe indented with spaces) and disabled the compose rate limit for OpenSearch `make test-*` targets so local catalogs tests don't fail with 429. ([#893](https://github.com/stac-utils/stac-fastapi/pull/893))
+- GET `/search`, `/catalogs/{catalog_id}/search`, `/collections/{collection_id}/items`, `/collections` and `/collections-search`, and `POST /collections-search`, now ignore an empty or sign-only `fields` entry. An empty entry returned `500`, and a bare `+` returned `500` or features with only `id` and `collection`. Now `fields=a,` behaves like `fields=a` and `fields=,` like no `fields`. Valid selectors are unchanged. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 
 ### Updated
