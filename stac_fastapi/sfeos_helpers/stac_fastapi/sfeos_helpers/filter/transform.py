@@ -168,6 +168,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
         values = query["args"][1]
         if not isinstance(values, list):
             raise ValueError(f"Arg {values} is not a list")
+        values = [_temporal_literal(element) for element in values]
         queries = [{"terms": {field: values}}]
 
     elif query["op"] == AdvancedComparisonOp.LIKE:

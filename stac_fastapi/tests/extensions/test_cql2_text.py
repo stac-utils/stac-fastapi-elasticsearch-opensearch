@@ -289,6 +289,27 @@ async def test_collections_cql2_text(
 
 
 @pytest.mark.asyncio
+async def test_collections_cql2_text_in_dates(app_client, txn_client, load_test_data):
+    """GET /collections compares the DATE values of an IN list as dates."""
+    collection = copy.deepcopy(load_test_data("test_collection.json"))
+    collection["id"] = "cql2text-dated"
+    collection["created"] = "2020-01-01"
+    await create_collection(txn_client, collection)
+    await refresh_indices(txn_client)
+
+    resp = await app_client.get(
+        "/collections",
+        params={
+            "filter-lang": "cql2-text",
+            "filter": "created IN (DATE('2020-01-01'), DATE('2020-01-02'))",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert [c["id"] for c in resp.json()["collections"]] == ["cql2text-dated"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "filter_lang,text",
     [("cql2-text", "TRUE"), ("cql2-text", "FALSE"), ("cql2-json", "false")],
