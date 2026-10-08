@@ -1,5 +1,7 @@
+import base64
 import json
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -1332,3 +1334,147 @@ async def test_collections_bbox_all_endpoints(app_client, txn_client, ctx):
         assert (
             f"{test_prefix}-3d-europe" not in found_ids
         ), f"3D Europe should not match Asia bbox in {endpoint['method']} {endpoint['path']}"
+
+
+COLLECTION_LISTINGS = [
+    ("GET", "/collections"),
+    ("GET", "/collections-search"),
+    ("POST", "/collections-search"),
+]
+
+
+def _prefix_filter(method: str, prefix: str) -> dict:
+    if method == "GET":
+        return {"filter": f"id LIKE '{prefix}%'", "filter-lang": "cql2-text"}
+    return {
+        "filter": {"op": "like", "args": [{"property": "id"}, f"{prefix}%"]},
+        "filter-lang": "cql2-json",
+    }
+
+
+async def _walk_collections(app_client, method, path, query, max_pages):
+    """Follow rel=next from the first page and return the ids in page order."""
+    seen: list[str] = []
+    tokens_seen: set[str] = set()
+    url, params, body = path, query, query
+    for _ in range(max_pages):  # bounded, so a looping token fails instead of hanging
+        if method == "GET":
+            resp = await app_client.get(url, params=params)
+        else:
+            resp = await app_client.post(path, json=body)
+        assert resp.status_code == 200, resp.text
+        page = resp.json()
+        seen += [c["id"] for c in page["collections"]]
+        nxt = next((link for link in page["links"] if link["rel"] == "next"), None)
+        if nxt is None:
+            return seen
+        if method == "GET":
+            token = parse_qs(urlparse(nxt["href"]).query)["token"][0]
+            url, params = nxt["href"], None
+        else:
+            token = nxt["body"]["token"]
+            body = nxt["body"]
+        assert token not in tokens_seen, "next repeated a token: paging is looping"
+        tokens_seen.add(token)
+    raise AssertionError("paging did not terminate")
+
+
+async def _create_collections(txn_client, test_collection, ids, titles=None):
+    for i, coll_id in enumerate(ids):
+        collection = {**test_collection, "id": coll_id}
+        collection.pop("title", None)
+        if titles and titles[i] is not None:
+            collection["title"] = titles[i]
+        await create_collection(txn_client, collection)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", COLLECTION_LISTINGS)
+async def test_collections_next_link_pages_through_tricky_ids(
+    app_client, txn_client, test_collection, method, path
+):
+    """Paging one at a time terminates and returns each id once.
+
+    The old raw token split on ``|``, so an id containing ``|`` sent ``next``
+    back to page 1 forever. ``+`` and ``=`` check that the link escapes the token.
+    """
+    prefix = f"ctok-{uuid.uuid4().hex[:8]}"
+    ids = [f"{prefix}-a|b", f"{prefix}-c+d", f"{prefix}-e=f"]
+    try:
+        await _create_collections(txn_client, test_collection, ids)
+        query = {**_prefix_filter(method, prefix), "limit": 1}
+        seen = await _walk_collections(app_client, method, path, query, len(ids) + 3)
+        assert seen == sorted(ids)
+    finally:
+        for coll_id in ids:
+            await txn_client.delete_collection(coll_id)
+
+
+@pytest.mark.asyncio
+async def test_collections_paging_sorted_by_title_with_missing_and_empty_titles(
+    app_client, txn_client, test_collection
+):
+    """Tokens carrying a ``""`` or ``null`` sort value resume at the right place.
+
+    Empty titles sort first and missing titles last, so the walk follows both.
+    """
+    prefix = f"ctok-{uuid.uuid4().hex[:8]}"
+    ids = [f"{prefix}-{i}" for i in range(5)]
+    titles = ["a|b", "", "", None, None]
+    try:
+        await _create_collections(txn_client, test_collection, ids, titles)
+        query = {**_prefix_filter("GET", prefix), "sortby": "title", "limit": 1}
+        seen = await _walk_collections(app_client, "GET", "/collections", query, 8)
+        assert seen == [ids[1], ids[2], ids[0], ids[3], ids[4]]
+    finally:
+        for coll_id in ids:
+            await txn_client.delete_collection(coll_id)
+
+
+@pytest.mark.asyncio
+async def test_collections_old_or_invalid_token_returns_first_page(
+    app_client, txn_client, test_collection
+):
+    """A raw token from the old format, or any invalid token, returns page 1."""
+    prefix = f"ctok-{uuid.uuid4().hex[:8]}"
+    ids = [f"{prefix}-0", f"{prefix}-1"]
+    try:
+        await _create_collections(txn_client, test_collection, ids)
+        query = {**_prefix_filter("GET", prefix), "limit": 1}
+        first = await app_client.get("/collections", params=query)
+        assert [c["id"] for c in first.json()["collections"]] == [ids[0]]
+
+        non_list = base64.urlsafe_b64encode(b'{"x": 1}').decode()
+        for token in ("zzz", "a|b", non_list):
+            resp = await app_client.get(
+                "/collections", params={**query, "token": token}
+            )
+            assert resp.status_code == 200, resp.text
+            assert [c["id"] for c in resp.json()["collections"]] == [ids[0]], token
+    finally:
+        for coll_id in ids:
+            await txn_client.delete_collection(coll_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", COLLECTION_LISTINGS)
+async def test_collections_full_last_page_has_no_next_link(
+    app_client, txn_client, test_collection, method, path
+):
+    """A last page holding exactly ``limit`` collections has no next link."""
+    prefix = f"ctok-{uuid.uuid4().hex[:8]}"
+    ids = [f"{prefix}-0", f"{prefix}-1"]
+    try:
+        await _create_collections(txn_client, test_collection, ids)
+        query = {**_prefix_filter(method, prefix), "limit": 2}
+        if method == "GET":
+            resp = await app_client.get(path, params=query)
+        else:
+            resp = await app_client.post(path, json=query)
+        assert resp.status_code == 200, resp.text
+        page = resp.json()
+        assert [c["id"] for c in page["collections"]] == ids
+        assert "next" not in [link["rel"] for link in page["links"]]
+    finally:
+        for coll_id in ids:
+            await txn_client.delete_collection(coll_id)
