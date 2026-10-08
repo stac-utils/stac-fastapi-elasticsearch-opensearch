@@ -11,6 +11,7 @@ from starlette.responses import Response
 from stac_fastapi.api.models import APIRequest
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
+from stac_fastapi.types.rfc3339 import str_to_interval
 from stac_fastapi.types.stac import Collections
 
 
@@ -310,6 +311,10 @@ class CollectionsSearchEndpointExtension(ApiExtension):
                 params["limit"] = int(params["limit"])
             except ValueError:
                 pass
+
+        # Same validation and errors as GET /collections.
+        if "datetime" in params:
+            str_to_interval(params["datetime"])
 
         # Handle fields parameter
         if "fields" in params:

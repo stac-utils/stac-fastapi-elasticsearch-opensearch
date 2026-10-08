@@ -24,6 +24,7 @@ from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
 from starlette.responses import Response
 
+from stac_fastapi.api.models import GeoJSONResponse
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
@@ -146,6 +147,32 @@ def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
         if touches and not (kind in ("add", "replace", "test") and value == expected):
             return True
     return False
+
+
+def patch_addresses_field(patch: list, field: str) -> bool:
+    """Return whether any JSON Patch operation reads or writes a top-level field."""
+    for op in patch:
+        path = _op_member(op, "path") or ""
+        if path == "":
+            value = _op_member(op, "value")
+            if isinstance(value, dict) and field in value:
+                return True
+            continue
+        source = _op_member(op, "from") or _op_member(op, "from_") or ""
+        if field in (path.strip("/").split("/")[0], source.strip("/").split("/")[0]):
+            return True
+    return False
+
+
+def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
+    """Split `fields` selectors into include and exclude sets, ignoring empty names."""
+    includes: set[str] = set()
+    excludes: set[str] = set()
+    for field in fields:
+        name = field[1:] if field[:1] in "+- " else field
+        if name:
+            (excludes if field[:1] == "-" else includes).add(name)
+    return includes, excludes
 
 
 @attr.s
@@ -425,14 +452,7 @@ class CoreClient(AsyncBaseCoreClient):
             token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
-        includes, excludes = set(), set()
-        if fields:
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    include_field = field[1:] if field[0] in "+ " else field
-                    includes.add(include_field)
+        includes, excludes = parse_fields(fields) if fields else (set(), set())
 
         sort = None
         if sortby:
@@ -710,7 +730,7 @@ class CoreClient(AsyncBaseCoreClient):
         fields: list[str] | None = None,
         q: str | list[str] | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """List items within a specific collection.
 
         This endpoint delegates to ``get_search`` under the hood with
@@ -796,7 +816,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter_expr: str | None = None,
         filter_lang: str | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """Get search results from the database.
 
         Args:
@@ -886,12 +906,7 @@ class CoreClient(AsyncBaseCoreClient):
                 base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
-            includes, excludes = set(), set()
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    includes.add(field[1:] if field[0] in "+ " else field)
+            includes, excludes = parse_fields(fields)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
@@ -907,7 +922,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """
         Perform a POST search on the catalog.
 
@@ -1104,13 +1119,17 @@ class CoreClient(AsyncBaseCoreClient):
                 body=getattr(request, "postbody", None),
             )
 
-        return stac_types.ItemCollection(
+        item_collection = stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
             numberReturned=len(items),
             numberMatched=maybe_count,
         )
+        # Projected features need not be valid STAC Items, so skip response-model validation.
+        if include or exclude:
+            return GeoJSONResponse(item_collection)
+        return item_collection
 
 
 @attr.s
@@ -2065,6 +2084,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 detail="A patch may not change the collection type.",
             )
 
+        if isinstance(patch, list) and patch_addresses_field(patch, "parent_ids"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
+            )
+
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
             await self.database.find_collection(collection_id)
@@ -2219,7 +2244,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         collection; any other value that differs is reported per item in `errors`, or
         rejects the batch with `400` under `RAISE_ON_BULK_ERROR`. Without a path
         collection (direct calls), the first entry with a non-empty string `id` and
-        `collection` sets the batch collection.
+        `collection` sets the batch collection. Items that fail STAC validation
+        (`ENABLE_STAC_VALIDATOR`) follow `RAISE_ON_BULK_ERROR` in the same way as
+        admission errors: reported per item in `errors`, or a whole-batch `400`.
 
         Args:
             items: The items to insert.
@@ -2328,6 +2355,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             )
 
         # 2. VALIDATION LAYER (Use batch validator for efficiency)
+        validation_error_entries: list[dict] = []
         if get_bool_env("ENABLE_STAC_VALIDATOR"):
             from stac_fastapi.core.validate import validate_batch_with_stac_validator
 
@@ -2335,27 +2363,36 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 unique_items
             )
 
-            # Count total validation errors (validation_errors maps error_msg -> [item_ids])
-            validation_error_count = count_validation_errors(validation_errors)
+            if validation_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+                # Count total validation errors (validation_errors maps error_msg -> [item_ids])
+                validation_error_count = count_validation_errors(validation_errors)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
+                        "summary": build_bulk_summary(
+                            raw_features=admitted_items,
+                            processed_items=unique_items,
+                            valid_items=valid_items,
+                            validation_error_count=validation_error_count,
+                        ),
+                        "errors": validation_errors,
+                    },
+                )
 
-            # This endpoint historically has strict mode enabled by default.
-            # We fail the entire batch immediately if any item is invalid.
-            if validation_errors:
-                detail = {
-                    "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
-                    "summary": build_bulk_summary(
-                        raw_features=admitted_items,
-                        processed_items=unique_items,
-                        valid_items=valid_items,
-                        validation_error_count=validation_error_count,
-                    ),
-                    "errors": validation_errors,
-                }
-                if admission_errors:
-                    detail["malformed"] = admission_errors
-                raise HTTPException(status_code=400, detail=detail)
+            messages_by_id: dict[str, list[str]] = {}
+            for msg, item_ids in validation_errors.items():
+                for item_id in item_ids:
+                    messages_by_id.setdefault(item_id, []).append(msg)
+            validation_error_entries = [
+                {"id": item["id"], "msg": "; ".join(messages_by_id[item["id"]])}
+                for item in unique_items
+                if item["id"] in messages_by_id
+            ]
         else:
             valid_items = unique_items
+
+        reported_errors = admission_errors + validation_error_entries
 
         # 3. PREPROCESSING LAYER
         processed_items = []
@@ -2371,7 +2408,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     "received": len(raw_items),
                     "success": 0,
                     "skipped": skipped_batch_duplicates + len(valid_items),
-                    "errors": admission_errors,
+                    "errors": reported_errors,
                 },
             )
 
@@ -2409,6 +2446,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": admission_errors + format_bulk_errors(all_errors),
+                "errors": reported_errors + format_bulk_errors(all_errors),
             },
         )
