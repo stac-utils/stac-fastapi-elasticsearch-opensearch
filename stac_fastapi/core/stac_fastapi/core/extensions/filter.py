@@ -247,7 +247,7 @@ def _checked(value: Any) -> Any:
             _check_instant("TIMESTAMP", value["timestamp"], date_only=False)
         elif value.keys() == {"interval"} and isinstance(value["interval"], list):
             for bound in value["interval"]:
-                if bound != "..":
+                if isinstance(bound, str) and bound != "..":
                     _check_instant("INTERVAL", bound, date_only=None)
         return {key: _checked(element) for key, element in value.items()}
     return value

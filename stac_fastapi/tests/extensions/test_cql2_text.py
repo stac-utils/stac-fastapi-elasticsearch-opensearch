@@ -402,6 +402,10 @@ async def test_cql2_text_nesting_limit(app, app_client, route, text, status):
             "id = 'a' AND T_BEFORE(datetime, TIMESTAMP('2030-01-01T00:00:00Z'))",
             "t_before",
         ),
+        (
+            "T_INTERSECTS(datetime, INTERVAL(start_datetime, end_datetime))",
+            "t_intersects",
+        ),
     ],
 )
 async def test_unsupported_operator_is_named(app, app_client, route, text, op):
