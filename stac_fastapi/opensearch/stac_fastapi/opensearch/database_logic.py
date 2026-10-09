@@ -82,7 +82,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ITEM_INDICES,
-    ITEMS_ALIAS_PREFIX,
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
