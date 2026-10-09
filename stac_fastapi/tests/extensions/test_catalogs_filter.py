@@ -44,6 +44,15 @@ def _ids(resp, key: str) -> list[str]:
     return sorted(entry["id"] for entry in resp.json()[key])
 
 
+LISTING_PATHS = [
+    "/catalogs",
+    "/catalogs/{catalog_id}/collections",
+    "/catalogs/{catalog_id}/catalogs",
+    "/catalogs/{catalog_id}/children",
+    "/catalogs/{catalog_id}/collections/{collection_id}/items",
+]
+
+
 @pytest.mark.asyncio
 async def test_catalogs_list_applies_filter(catalogs_app_client, load_test_data):
     """GET /catalogs keeps only the catalogs that match the filter."""
@@ -230,16 +239,7 @@ async def test_invalid_filter_is_rejected(catalogs_app_client, load_test_data):
         {"op": "between", "args": [{"property": "id"}, 1]},
     ],
 )
-@pytest.mark.parametrize(
-    "path",
-    [
-        "/catalogs",
-        "/catalogs/{catalog_id}/collections",
-        "/catalogs/{catalog_id}/catalogs",
-        "/catalogs/{catalog_id}/children",
-        "/catalogs/{catalog_id}/collections/{collection_id}/items",
-    ],
-)
+@pytest.mark.parametrize("path", LISTING_PATHS)
 async def test_filter_that_fails_translation_is_rejected(
     catalogs_app_client, load_test_data, ctx, path, cql2_json
 ):
@@ -305,3 +305,41 @@ async def test_openapi_lists_the_filter_parameters(catalogs_app_client, path):
     assert resp.status_code == 200
     params = {p["name"] for p in resp.json()["paths"][path]["get"]["parameters"]}
     assert {"filter", "filter-lang"} <= params
+
+
+@pytest.mark.asyncio
+async def test_cql2_text_not_in_leaves_out_what_it_names(
+    catalogs_app_client, load_test_data, ctx
+):
+    """CQL2 text `NOT IN` keeps the collections it does not name."""
+    cat = _uid("cat")
+    await _catalog(catalogs_app_client, load_test_data, cat)
+    keep, drop = _uid("keep-col"), _uid("drop-col")
+    await _collection(catalogs_app_client, ctx, cat, keep)
+    await _collection(catalogs_app_client, ctx, cat, drop)
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{cat}/collections", params={"filter": f"id NOT IN ('{drop}')"}
+    )
+    assert _ids(resp, "collections") == [keep]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", LISTING_PATHS)
+async def test_invalid_temporal_literal_is_rejected(
+    catalogs_app_client, load_test_data, ctx, path
+):
+    """A CQL2 text TIMESTAMP that is not an RFC 3339 date-time is a 400, as on /search."""
+    cat = _uid("cat")
+    await _catalog(catalogs_app_client, load_test_data, cat)
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{cat}/collections", json={"id": ctx.collection["id"]}
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await catalogs_app_client.get(
+        path.format(catalog_id=cat, collection_id=ctx.collection["id"]),
+        params={"filter": "datetime >= TIMESTAMP('2020-13-01T00:00:00Z')"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "is not an RFC 3339 date-time" in resp.text
