@@ -78,12 +78,29 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.search import BaseSearchPostRequest
+from stac_fastapi.types.search import BaseSearchPostRequest, Limit
 
 logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
+limitValidator = TypeAdapter(Limit)
+# Operators `apply_stacql_filter` implements.
+COLLECTIONS_QUERY_OPERATORS = frozenset(
+    {"eq", "ne", "neq", "gt", "gte", "lt", "lte", "in", "contains"}
+)
+
+
+def validate_limit(value: Any) -> int:
+    """Validate a client limit as a positive integer cropped to 10000."""
+    # OGC API - Features Req. 22 C: crop above the maximum, don't reject.
+    try:
+        return limitValidator.validate_python(value)
+    except ValidationError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid limit parameter: must be a positive integer",
+        )
 
 
 def bare_media_type(header: str | None) -> str:
@@ -129,6 +146,32 @@ def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
         if touches and not (kind in ("add", "replace", "test") and value == expected):
             return True
     return False
+
+
+def patch_addresses_field(patch: list, field: str) -> bool:
+    """Return whether any JSON Patch operation reads or writes a top-level field."""
+    for op in patch:
+        path = _op_member(op, "path") or ""
+        if path == "":
+            value = _op_member(op, "value")
+            if isinstance(value, dict) and field in value:
+                return True
+            continue
+        source = _op_member(op, "from") or _op_member(op, "from_") or ""
+        if field in (path.strip("/").split("/")[0], source.strip("/").split("/")[0]):
+            return True
+    return False
+
+
+def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
+    """Split `fields` selectors into include and exclude sets, ignoring empty names."""
+    includes: set[str] = set()
+    excludes: set[str] = set()
+    for field in fields:
+        name = field[1:] if field[:1] in "+- " else field
+        if name:
+            (excludes if field[:1] == "-" else includes).add(name)
+    return includes, excludes
 
 
 @attr.s
@@ -394,9 +437,9 @@ class CoreClient(AsyncBaseCoreClient):
             pass
 
         if body_limit is not None:
-            limit = int(body_limit)
+            limit = validate_limit(body_limit)
         elif query_limit:
-            limit = int(query_limit)
+            limit = validate_limit(query_limit)
         else:
             limit = default_limit
 
@@ -408,14 +451,7 @@ class CoreClient(AsyncBaseCoreClient):
             token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
-        includes, excludes = set(), set()
-        if fields:
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    include_field = field[1:] if field[0] in "+ " else field
-                    includes.add(include_field)
+        includes, excludes = parse_fields(fields) if fields else (set(), set())
 
         sort = None
         if sortby:
@@ -445,6 +481,18 @@ class CoreClient(AsyncBaseCoreClient):
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid query parameter: {e}"
+                )
+            if parsed_query is not None and not (
+                isinstance(parsed_query, dict)
+                and all(
+                    isinstance(expr, dict)
+                    and expr.keys() <= COLLECTIONS_QUERY_OPERATORS
+                    for expr in parsed_query.values()
+                )
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid query parameter: expected a JSON object of operator objects.",
                 )
 
         # Parse the filter parameter if provided
@@ -857,12 +905,7 @@ class CoreClient(AsyncBaseCoreClient):
                 base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
-            includes, excludes = set(), set()
-            for field in fields:
-                if field[0] == "-":
-                    excludes.add(field[1:])
-                else:
-                    includes.add(field[1:] if field[0] in "+ " else field)
+            includes, excludes = parse_fields(fields)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
@@ -909,9 +952,9 @@ class CoreClient(AsyncBaseCoreClient):
             pass
 
         if body_limit is not None:
-            limit = int(body_limit)
+            limit = validate_limit(body_limit)
         elif query_limit:
-            limit = int(query_limit)
+            limit = validate_limit(query_limit)
         else:
             limit = default_limit
 
@@ -1919,6 +1962,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
         collection = collection.model_dump(mode="json")
+        # Catalog membership is set by the catalog routes, and update keeps
+        # stored parent_ids.
+        collection.pop("parent_ids", None)
         request = kwargs["request"]
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
@@ -2031,6 +2077,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             raise HTTPException(
                 status_code=400,
                 detail="A patch may not change the collection type.",
+            )
+
+        if isinstance(patch, list) and patch_addresses_field(patch, "parent_ids"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
             )
 
         # When validation is DISABLED, delegate to database layer for direct execution

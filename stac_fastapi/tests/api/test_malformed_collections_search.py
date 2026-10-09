@@ -103,6 +103,53 @@ async def test_missing_body(collections_http, app_client, content):
         assert response.json() == expected
 
 
+DOUBLE_OPEN = "Double open-ended intervals are not allowed."
+MALFORMED_DATETIMES = [
+    ("garbage", "Invalid RFC3339 datetime."),
+    # CPython's own message, whose wording differs between Python versions.
+    ("2020-13-01T00:00:00Z", None),
+    ("a/b/c", "Interval string contains more than one forward slash."),
+    (
+        "2020-01-01T00:00:00Z/2021-01-01T00:00:00Z/2022-01-01T00:00:00Z",
+        "Interval string contains more than one forward slash.",
+    ),
+    (
+        "2021-01-01T00:00:00Z/2020-01-01T00:00:00Z",
+        "Start datetime cannot be before end datetime.",
+    ),
+    ("../..", DOUBLE_OPEN),
+    ("/", DOUBLE_OPEN),
+    ("", "Empty interval string is invalid."),
+    (" 2020-01-01T00:00:00Z", "Invalid RFC3339 datetime."),
+]
+
+
+@pytest.mark.parametrize("value, detail", MALFORMED_DATETIMES)
+async def test_malformed_get_datetime(collections_http, monkeypatch, value, detail):
+    params = {"datetime": value}
+    paired = await collections_http.get("/collections", params=params)
+    assert paired.status_code == 400
+    if detail is not None:
+        assert paired.json() == {"detail": detail}
+    forward = AsyncMock(side_effect=AssertionError("must reject before forwarding"))
+    monkeypatch.setattr(CoreClient, "all_collections", forward)
+    response = await collections_http.get(URL, params=params)
+    forward.assert_not_awaited()
+    assert response.status_code == 400, response.text
+    assert response.json() == paired.json()
+
+
+@pytest.mark.parametrize("value", [value for value, _ in MALFORMED_DATETIMES])
+async def test_post_datetime_unchanged(collections_http, value):
+    response = await collections_http.post(URL, json={"datetime": value})
+    # The GET-only fix must not change POST, which accepts these three.
+    if value in ("../..", "/", ""):
+        assert response.status_code == 200, response.text
+    else:
+        assert response.status_code == 400, response.text
+        assert response.json() == ERROR
+
+
 @pytest.mark.parametrize(
     "kind",
     [
@@ -177,6 +224,34 @@ async def test_populated_controls(collections_http, ctx, kind):
 
 
 @pytest.mark.parametrize(
+    "path,value,equivalent",
+    [
+        (path, value, equivalent)
+        for path in ("/collections", URL)
+        for value, equivalent in (("id,", "id"), (",", None), ("+", None))
+    ]
+    + [(URL, "", None)],
+)
+async def test_empty_fields_entries_are_ignored(
+    collections_http, ctx, path, value, equivalent
+):
+    response = await collections_http.get(path, params={"fields": value})
+    assert response.status_code == 200, response.text
+    params = {} if equivalent is None else {"fields": equivalent}
+    expected = await collections_http.get(path, params=params)
+    assert expected.status_code == 200, expected.text
+    assert response.json()["collections"] == expected.json()["collections"]
+
+
+async def test_empty_post_fields_include_is_ignored(collections_http, ctx):
+    response = await collections_http.post(URL, json={"fields": {"include": [""]}})
+    assert response.status_code == 200, response.text
+    expected = await collections_http.post(URL, json={})
+    assert expected.status_code == 200, expected.text
+    assert response.json()["collections"] == expected.json()["collections"]
+
+
+@pytest.mark.parametrize(
     "fields,error",
     [
         ({"include": "bad"}, ValidationError),
@@ -223,3 +298,47 @@ async def test_unrelated_failures_propagate(
     with pytest.raises(type(error)) as caught:
         await app_client.post(URL, json={})
     assert caught.value is error
+
+
+QUERY_ERROR = {
+    "detail": "Invalid query parameter: expected a JSON object of operator objects."
+}
+QUERY_ROUTES = [
+    "GET /collections",
+    "GET /collections-search",
+    "POST /collections-search",
+]
+
+
+async def send_query(client, route, value):
+    method, path = route.split()
+    query = json.dumps(value)
+    if method == "POST":
+        return await client.post(path, json={"query": query})
+    return await client.get(path, params={"query": query})
+
+
+@pytest.mark.parametrize("route", QUERY_ROUTES)
+@pytest.mark.parametrize(
+    "value",
+    [5, "x", [1], True, 0, False, "", [], {"title": 5}, {"title": {"bogus": 1}}],
+)
+async def test_malformed_query(collections_http, route, value):
+    response = await send_query(collections_http, route, value)
+    assert response.status_code == 400, response.text
+    assert response.json() == QUERY_ERROR
+
+
+@pytest.mark.parametrize("route", QUERY_ROUTES)
+async def test_query_still_filters(collections_http, ctx, route):
+    collection_id = ctx.collection["id"]
+    for value, expected in [
+        ({"id": {"in": [collection_id]}}, [collection_id]),
+        ({"id": {"in": ["nonexistent-id"]}}, []),
+        (None, [collection_id]),
+        ({}, [collection_id]),
+    ]:
+        response = await send_query(collections_http, route, value)
+        assert response.status_code == 200, response.text
+        ids = [c["id"] for c in response.json()["collections"]]
+        assert ids == expected, value

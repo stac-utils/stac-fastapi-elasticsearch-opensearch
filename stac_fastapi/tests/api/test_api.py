@@ -189,6 +189,22 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
 
 
 @pytest.mark.asyncio
+async def test_app_fields_extension_matching_nothing_returns_id_and_collection(
+    app_client, ctx
+):
+    params = {"collections": ["test-collection"], "fields": "doesnotexist"}
+    body = {"collections": ["test-collection"], "fields": {"include": ["doesnotexist"]}}
+    for resp in (
+        await app_client.get("/search", params=params),
+        await app_client.post("/search", json=body),
+    ):
+        assert resp.status_code == 200
+        assert resp.json()["features"] == [
+            {"id": ctx.item["id"], "collection": "test-collection"}
+        ]
+
+
+@pytest.mark.asyncio
 async def test_app_fields_extension_query(app_client, ctx, txn_client):
     item = ctx.item
     resp = await app_client.post(
@@ -1219,32 +1235,34 @@ async def test_search_count_timeout(
     test_item_id = "test-item-count-timeout"
     test_item["id"] = test_item_id
     test_item["collection"] = test_collection_id
-    await create_item(txn_client, test_item)
 
     async def slow_count(*args, **kwargs):
         await asyncio.sleep(0.01)
         return {"count": 1}
 
-    backend = os.getenv("BACKEND")
+    try:
+        await create_item(txn_client, test_item)
 
-    if backend == "opensearch":
-        from opensearchpy import AsyncOpenSearch
+        backend = os.getenv("BACKEND")
 
-        monkeypatch.setattr(AsyncOpenSearch, "count", slow_count)
+        if backend == "opensearch":
+            from opensearchpy import AsyncOpenSearch
 
-    elif backend == "elasticsearch":
-        from elasticsearch import AsyncElasticsearch
+            monkeypatch.setattr(AsyncOpenSearch, "count", slow_count)
 
-        monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
+        elif backend == "elasticsearch":
+            from elasticsearch import AsyncElasticsearch
 
-    resp = await app_client.get(f"/search?collections={test_collection_id}")
+            monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
 
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert len(resp_json["features"]) == 1
-    assert resp_json["numberReturned"] == 1
+        resp = await app_client.get(f"/search?collections={test_collection_id}")
 
-    monkeypatch.delenv("COUNT_TIMEOUT")
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert len(resp_json["features"]) == 1
+        assert resp_json["numberReturned"] == 1
+    finally:
+        await app_client.delete(f"/collections/{test_collection_id}")
 
 
 @pytest.mark.asyncio

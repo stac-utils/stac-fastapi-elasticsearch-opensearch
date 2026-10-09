@@ -13,6 +13,8 @@ import orjson
 from elasticsearch.dsl import Q, Search
 from elasticsearch.exceptions import BadRequestError
 from elasticsearch.exceptions import ConflictError as ESConflictError
+from elasticsearch.exceptions import ConnectionError as ESConnectionError
+from elasticsearch.exceptions import ConnectionTimeout as ESConnectionTimeout
 from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -244,26 +246,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         else:
             formatted_sort = [{"id": {"order": "asc"}}]
 
+        size = min(limit + 1, MAX_LIMIT)
         body = {
             "sort": formatted_sort,
-            "size": limit,
+            "size": size,
         }
 
-        # Handle search_after token - split by '|' to get all sort values
-        search_after = None
-        if token:
-            try:
-                # The token should be a pipe-separated string of sort values
-                # e.g., "2023-01-01T00:00:00Z|collection-1"
-                search_after = token.split("|")
-                # If the number of sort fields doesn't match token parts, ignore the token
-                if len(search_after) != len(formatted_sort):
-                    search_after = None
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
-                body["search_after"] = search_after
+        # Handle search_after token (opaque base64, like the catalog routes)
+        search_after = decode_token_to_search_after(token)
+        if search_after is not None and len(search_after) == len(formatted_sort):
+            body["search_after"] = search_after
 
         # Build the query part of the body
         query_parts = []
@@ -354,19 +346,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
 
         hits = response["hits"]["hits"]
+        page = hits[:limit]
         collections = [
             self.collection_serializer.db_to_stac(
                 collection=hit["_source"], request=request, extensions=self.extensions
             )
-            for hit in hits
+            for hit in page
         ]
 
         next_token = None
-        if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                # Join all sort values with '|' to create the token
-                next_token = "|".join(str(val) for val in next_token_values)
+        if len(hits) == size:
+            next_token = encode_search_after_to_token(page[-1].get("sort"))
 
         # Get the total count of collections
         matched = (
@@ -2125,6 +2115,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     """CATALOGS LOGIC"""
 
+    async def _collections_filter_query(
+        self, filter: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Translate a CQL2 JSON filter on catalog or collection documents to a query."""
+        if not filter:
+            return None
+        queryables_mapping = await self.get_collections_queryables_mapping()
+        try:
+            return filter_module.to_es(queryables_mapping, filter)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error with cql2 filter: {e}")
+
     @retry_on_connection_error
     async def get_all_catalogs(
         self,
@@ -2132,6 +2134,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Any = None,
         sort: list[dict[str, Any]] | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of catalogs from Elasticsearch, supporting pagination.
 
@@ -2140,6 +2143,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
             sort (list[dict[str, Any]] | None, optional): Optional sort parameter. Defaults to None.
+            filter (dict[str, Any] | None, optional): A CQL2 JSON filter the catalogs must match. Defaults to None.
 
         Returns:
             A tuple of (catalogs, next pagination token if any, optional count).
@@ -2159,12 +2163,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not formatted_sort:
             formatted_sort = [{"id": {"order": "asc"}}]
 
+        size = min(limit + 1, MAX_LIMIT)
         body = {
             "sort": formatted_sort,
-            "size": limit,
+            "size": size,
             "query": {"term": {"type": "Catalog"}},
             "_source": True,  # Ensure all fields including parent_ids are returned
         }
+        filter_query = await self._collections_filter_query(filter)
+        if filter_query:
+            body["query"] = {"bool": {"must": [body["query"], filter_query]}}
 
         # Handle search_after token (opaque base64, like the other catalog routes)
         search_after = decode_token_to_search_after(token)
@@ -2181,11 +2189,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         hits = response["hits"]["hits"]
-        catalogs = [hit["_source"] for hit in hits]
+        page = hits[:limit]
+        catalogs = [hit["_source"] for hit in page]
 
         next_token = None
-        if len(hits) == limit:
-            next_token = encode_search_after_to_token(hits[-1].get("sort"))
+        if len(hits) == size:
+            next_token = encode_search_after_to_token(page[-1].get("sort"))
 
         # Get the total count
         matched = (
@@ -2291,6 +2300,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         resource_type: str | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get children of a catalog (both sub-catalogs and collections).
 
@@ -2300,6 +2310,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (str | None): Pagination token.
             request (Any): The request object.
             resource_type (str | None): Type of resource to filter by (e.g. "Collection", "Catalog").
+            filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
 
         Returns:
             Tuple containing list of children, next token, and total count.
@@ -2317,6 +2328,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit=limit,
             search_after=search_after,
             resource_type=resource_type,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2331,6 +2343,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog.
 
@@ -2339,6 +2352,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): Number of results to return.
             token (str | None): Pagination token.
             request (Any): The request object.
+            filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
 
         Returns:
             Tuple containing list of collections, next token, and total count.
@@ -2355,6 +2369,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id=catalog_id,
             limit=limit,
             search_after=search_after,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2369,6 +2384,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get sub-catalogs within a catalog.
 
@@ -2377,6 +2393,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): Number of results to return.
             token (str | None): Pagination token.
             request (Any): The request object.
+            filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
 
         Returns:
             Tuple containing list of sub-catalogs, next token, and total count.
@@ -2393,6 +2410,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id=catalog_id,
             limit=limit,
             search_after=search_after,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2508,8 +2526,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime: str | None = None,
         limit: int = 10,
         sortby: str | None = None,
-        filter_expr: str | None = None,
-        filter_lang: str | None = None,
+        filter: dict[str, Any] | None = None,
         token: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
@@ -2529,6 +2546,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime_search = None
         if datetime:
             search, datetime_search = self.apply_datetime_filter(search, datetime)
+
+        if filter:
+            try:
+                search, _ = await self.apply_cql2_filter(search, filter)
+            except (ESConnectionError, ESConnectionTimeout):
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
+                )
 
         sort_param = None
 

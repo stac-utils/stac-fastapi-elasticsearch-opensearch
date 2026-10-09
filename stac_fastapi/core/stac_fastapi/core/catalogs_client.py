@@ -3,9 +3,13 @@
 import logging
 from datetime import datetime
 from typing import Any, List, Literal, Set
+from urllib.parse import urlencode
 
 import attr
+import orjson
 from fastapi import HTTPException, Request
+from pygeofilter.backends.cql2_json import to_cql2
+from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_fastapi_catalogs_extension.client import (
     AsyncBaseCatalogsClient,
     AsyncCatalogsSearchClient,
@@ -19,6 +23,7 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.queryables import get_properties_from_cql2_filter
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
     CollectionSerializer,
@@ -29,6 +34,39 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_cql2_filter(
+    filter_expr: str | None, filter_lang: str | None
+) -> dict[str, Any] | None:
+    """Parse a `filter` parameter into CQL2 JSON, as the collections route does.
+
+    Raises:
+        HTTPException: 400 if the language is not supported or the filter does not parse.
+    """
+    if not filter_expr:
+        return None
+    if filter_lang not in (None, "cql2-text", "cql2-json"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only 'cql2-json' and 'cql2-text' filter languages are supported. Got '{filter_lang}'.",
+        )
+    try:
+        if filter_lang == "cql2-json":
+            parsed = orjson.loads(filter_expr)
+        else:
+            # Like the collections route, cql2-text also accepts a JSON filter.
+            try:
+                parsed = orjson.loads(filter_expr)
+            except orjson.JSONDecodeError:
+                parsed = orjson.loads(to_cql2(parse_cql2_text(filter_expr)))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid filter parameter: {e}")
+    if not isinstance(parsed, dict):
+        raise HTTPException(
+            status_code=400, detail="Invalid filter parameter: not a CQL2 expression"
+        )
+    return parsed
 
 
 @attr.s
@@ -98,11 +136,24 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         # Filter to only allowed fields
         return {k: v for k, v in data.items() if k in allowed_fields}
 
+    @staticmethod
+    def _next_query(request: Request | None, limit: int, token: str) -> str:
+        """Build the query string of a next link: the request's parameters, new token."""
+        params = [
+            (key, value)
+            for key, value in (request.query_params.multi_items() if request else [])
+            if key not in ("limit", "token")
+        ]
+        params += [("limit", str(limit)), ("token", token)]
+        return urlencode(params)
+
     async def get_catalogs(
         self,
         limit: int | None = None,
         token: str | None = None,
         request: Request | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> Catalogs | Response:
         """Get all catalogs with pagination support."""
@@ -112,6 +163,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             limit=limit,
             request=request,
             sort=[{"field": "id", "direction": "asc"}],
+            filter=_parse_cql2_filter(filter_expr, filter_lang),
         )
 
         base_url = self._get_base_url(request)
@@ -275,7 +327,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         """Create a new catalog."""
         db_catalog_dict = self._to_dict(catalog)
         db_catalog_dict["type"] = "Catalog"
-        db_catalog_dict["parent_ids"] = db_catalog_dict.get("parent_ids", [])
+        # A catalog created here is top level. Nesting goes through
+        # POST /catalogs/{catalog_id}/catalogs, and update keeps stored parent_ids.
+        db_catalog_dict["parent_ids"] = []
 
         # Filter out dynamic links
         if "links" in db_catalog_dict:
@@ -502,6 +556,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         limit: int | None = None,
         token: str | None = None,
         request: Request | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> Collections | Response:
         """Get collections linked from a specific catalog."""
@@ -534,6 +590,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             limit=limit,
             token=token,
             request=request,
+            filter=_parse_cql2_filter(filter_expr, filter_lang),
         )
 
         collections = [
@@ -570,7 +627,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 {
                     "rel": "next",
                     "type": "application/json",
-                    "href": f"{base_url}/catalogs/{catalog_id}/collections?limit={limit}&token={next_token}",
+                    "href": f"{base_url}/catalogs/{catalog_id}/collections?{self._next_query(request, limit, next_token)}",
                 }
             )
 
@@ -593,6 +650,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         limit: int | None = None,
         token: str | None = None,
         request: Request | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> Catalogs | Response:
         """Get all sub-catalogs of a specific catalog with pagination."""
@@ -611,6 +670,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             limit=limit,
             token=token,
             request=request,
+            filter=_parse_cql2_filter(filter_expr, filter_lang),
         )
 
         base_url = self._get_base_url(request)
@@ -694,7 +754,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 {
                     "rel": "next",
                     "type": "application/json",
-                    "href": f"{base_url}/catalogs/{catalog_id}/catalogs?limit={limit}&token={next_token}",
+                    "href": f"{base_url}/catalogs/{catalog_id}/catalogs?{self._next_query(request, limit, next_token)}",
                 }
             )
 
@@ -1061,6 +1121,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         limit: int | None = 10,
         token: str | None = None,
         request: Request | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> ItemCollection | Response:
         """Get items from a collection in a catalog with search support."""
@@ -1095,12 +1157,20 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             else:
                 datetime_str = datetime.isoformat()
 
+        parsed_filter = _parse_cql2_filter(filter_expr, filter_lang)
+        if parsed_filter and self.core_client:
+            # Same check as /search when VALIDATE_QUERYABLES is on.
+            await self.core_client.queryables_cache.validate(
+                get_properties_from_cql2_filter(parsed_filter)
+            )
+
         items, total, next_token = await self.database.get_catalog_collection_items(
             catalog_id=catalog_id,
             collection_id=collection_id,
             bbox=bbox,
             datetime=datetime_str,
             limit=limit or 10,
+            filter=parsed_filter,
             token=token,
             request=request,
         )
@@ -1197,7 +1267,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 {
                     "rel": "next",
                     "type": "application/json",
-                    "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items?limit={limit}&token={next_token}",
+                    "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items?{self._next_query(request, limit, next_token)}",
                 }
             )
 
@@ -1322,6 +1392,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         token: str | None = None,
         type: Literal["Catalog", "Collection"] | None = None,
         request: Request | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> Children | Response:
         """Get all children (Catalogs and Collections) of a specific catalog."""
@@ -1341,6 +1413,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             token=token,
             request=request,
             resource_type=type,
+            filter=_parse_cql2_filter(filter_expr, filter_lang),
         )
 
         children = []
@@ -1388,7 +1461,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 {
                     "rel": "next",
                     "type": "application/json",
-                    "href": f"{base_url}/catalogs/{catalog_id}/children?limit={limit}&token={next_token}",
+                    "href": f"{base_url}/catalogs/{catalog_id}/children?{self._next_query(request, limit, next_token)}",
                 }
             )
 

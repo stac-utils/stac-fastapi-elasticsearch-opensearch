@@ -256,9 +256,9 @@ def filter_fields(  # noqa: C901
     clean_item = include_fields(item, include)
 
     # If, after including all the specified fields, there are no included properties,
-    # return just id and collection.
+    # return just the identity keys: id, and collection for items.
     if not clean_item:
-        return Item({"id": item["id"], "collection": item["collection"]})
+        return Item({key: item[key] for key in ("id", "collection") if key in item})
 
     exclude_fields(clean_item, exclude)
 
