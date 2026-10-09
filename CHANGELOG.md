@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v8.0.0rc1] - 2026-10-09
+
 ### Added
 
 - The Multi-Tenant Catalogs listing routes (`GET /catalogs`, `/catalogs/{catalog_id}/collections`, `/catalogs/{catalog_id}/catalogs`, `/catalogs/{catalog_id}/children` and `/catalogs/{catalog_id}/collections/{collection_id}/items`) accept the CQL2 `filter`, `filter-lang` and `filter-crs` query parameters when the filter extension is enabled, through the request models that stac-fastapi-catalogs-extension v1.0.0 lets servers inject. Catalog and collection listings use the collections filter and the item listing uses the item filter, as on the global routes. A filter that does not parse or cannot be translated to a query returns `400`, as on `/search`, and with `VALIDATE_QUERYABLES=true` so does an item filter on a field that is not queryable. Without a `filter` parameter the responses are unchanged. [#909](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/909)
@@ -1076,7 +1078,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0rc1...main
+[v8.0.0rc1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...v8.0.0rc1 
 [v7.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...v7.2.0
 [v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0
 [v7.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...v7.0.0
