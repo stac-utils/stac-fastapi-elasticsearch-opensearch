@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added option STAC_ITEMS_ALIAS_PREFIX environment variable to allow for multiple versions of item indices. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
+- Added lenient=True to free-text search. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
 - The Multi-Tenant Catalogs listing routes (`GET /catalogs`, `/catalogs/{catalog_id}/collections`, `/catalogs/{catalog_id}/catalogs`, `/catalogs/{catalog_id}/children` and `/catalogs/{catalog_id}/collections/{collection_id}/items`) accept the CQL2 `filter`, `filter-lang` and `filter-crs` query parameters when the filter extension is enabled, through the request models that stac-fastapi-catalogs-extension v1.0.0 lets servers inject. Catalog and collection listings use the collections filter and the item listing uses the item filter, as on the global routes. A filter that does not parse or cannot be translated to a query returns `400`, as on `/search`, and with `VALIDATE_QUERYABLES=true` so does an item filter on a field that is not queryable. Without a `filter` parameter the responses are unchanged. [#909](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/909)
 
 ### Breaking Changes
