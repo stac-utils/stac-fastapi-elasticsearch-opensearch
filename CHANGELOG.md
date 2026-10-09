@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added option ITEMS_ALIAS_PREFIX environment variable to allow for multiple version of item indices. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
+- Added option STAC_ITEMS_ALIAS_PREFIX environment variable to allow for multiple version of item indices. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
+- Added lenient=True to free-text search. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
 - The Multi-Tenant Catalogs listing routes (`GET /catalogs`, `/catalogs/{catalog_id}/collections`, `/catalogs/{catalog_id}/catalogs`, `/catalogs/{catalog_id}/children` and `/catalogs/{catalog_id}/collections/{collection_id}/items`) accept the CQL2 `filter`, `filter-lang` and `filter-crs` query parameters when the filter extension is enabled, through the request models that stac-fastapi-catalogs-extension v1.0.0 lets servers inject. Catalog and collection listings use the collections filter and the item listing uses the item filter, as on the global routes. A filter that does not parse or cannot be translated to a query returns `400`, as on `/search`, and with `VALIDATE_QUERYABLES=true` so does an item filter on a field that is not queryable. Without a `filter` parameter the responses are unchanged. [#909](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/909)
 
 ### Breaking Changes
@@ -29,7 +30,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Updated `stac-validator` from v4.5.x to v4.6.1. Removed obsolete global `QUIET_MODE` flag in favor of passing `quiet=True` directly to `get_validator()`. Enhanced error handling to unpack multi-error accumulation exceptions (`FastSTACMultiValidationError` and `FastSTACValidationError`) to surface all field failures per item during batch ingestion, providing more comprehensive validation feedback. [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853)
-- Update datetime fields default mapping to date from date_nanos. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
 
 ### Fixed
 
