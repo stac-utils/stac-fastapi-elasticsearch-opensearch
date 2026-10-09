@@ -1079,7 +1079,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added db_to_stac serializer to item_collection method in core.py.
 
 [Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0rc1...main
-[v8.0.0rc1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...v8.0.0rc1 
+[v8.0.0rc1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...v8.0.0rc1
 [v7.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...v7.2.0
 [v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0
 [v7.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...v7.0.0
