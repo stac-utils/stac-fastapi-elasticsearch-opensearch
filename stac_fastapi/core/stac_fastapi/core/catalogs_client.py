@@ -8,8 +8,6 @@ from urllib.parse import urlencode
 import attr
 import orjson
 from fastapi import HTTPException, Request
-from pygeofilter.backends.cql2_json import to_cql2
-from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_fastapi_catalogs_extension.client import (
     AsyncBaseCatalogsClient,
     AsyncCatalogsSearchClient,
@@ -23,6 +21,7 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.extensions.filter import cql2_text_to_json
 from stac_fastapi.core.queryables import get_properties_from_cql2_filter
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
@@ -59,7 +58,7 @@ def _parse_cql2_filter(
             try:
                 parsed = orjson.loads(filter_expr)
             except orjson.JSONDecodeError:
-                parsed = orjson.loads(to_cql2(parse_cql2_text(filter_expr)))
+                parsed = cql2_text_to_json(filter_expr)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid filter parameter: {e}")
     if not isinstance(parsed, dict):
