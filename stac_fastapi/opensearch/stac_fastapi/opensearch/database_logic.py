@@ -432,7 +432,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             dict: A dictionary containing the Queryables mappings.
         """
         mappings = await self.client.indices.get_mapping(
-            index=f"{ITEMS_ALIAS_PREFIX}{collection_id}",
+            index=index_alias_by_collection_id(collection_id),
         )
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
