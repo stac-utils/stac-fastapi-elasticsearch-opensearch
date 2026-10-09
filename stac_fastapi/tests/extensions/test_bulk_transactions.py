@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
+from stac_fastapi.core.validate import validate_batch_with_stac_validator
 from stac_fastapi.extensions.bulk_transactions import Items
 from stac_fastapi.sfeos_helpers.database import BulkIndexError, ItemAlreadyExistsError
 
@@ -110,6 +111,7 @@ async def test_bulk_item_insert_validation_error(
     from fastapi import HTTPException
 
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
 
     items = {}
     # Add 9 valid items
@@ -143,6 +145,48 @@ async def test_bulk_item_insert_validation_error(
     assert summary["skipped_total"] == 1
     assert summary["conflict_count"] == 0
     assert summary["database_error_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_item_insert_reports_validation_error_per_item(
+    ctx, core_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+
+    items = {}
+    for _ in range(9):
+        _item = deepcopy(ctx.item)
+        _item["id"] = str(uuid.uuid4())
+        items[_item["id"]] = _item
+
+    invalid_item = deepcopy(ctx.item)
+    invalid_item["id"] = str(uuid.uuid4())
+    invalid_item["properties"].pop("datetime", None)
+    items[invalid_item["id"]] = invalid_item
+
+    result = bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+
+    assert result == {
+        "received": 10,
+        "success": 9,
+        "skipped": 0,
+        "errors": [
+            {
+                "id": invalid_item["id"],
+                "msg": "; ".join(
+                    msg
+                    for msg, item_ids in validate_batch_with_stac_validator(
+                        [invalid_item]
+                    )[1].items()
+                    if invalid_item["id"] in item_ids
+                ),
+            }
+        ],
+    }
+
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
+    assert len(fc["features"]) >= 9
 
 
 @pytest.mark.asyncio

@@ -6,10 +6,7 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 from fastapi import HTTPException, Path, Request
-from lark.exceptions import UnexpectedInput
 from pydantic import ValidationError
-from pygeofilter.backends.cql2_json import to_cql2
-from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.shared import BBox
 from typing_extensions import Annotated
 
@@ -17,6 +14,7 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.extensions.aggregation import EsAggregationExtensionPostRequest
+from stac_fastapi.core.extensions.filter import CQL2TextError, cql2_text_to_json
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
 from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
@@ -211,13 +209,11 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         """
         if filter_lang == "cql2-text":
             try:
-                parsed_filter = parse_cql2_text(filter)
-            except UnexpectedInput:
+                return cql2_text_to_json(filter)
+            except CQL2TextError as e:
                 raise HTTPException(
-                    status_code=400,
-                    detail="Invalid filter parameter: expected valid CQL2 text.",
+                    status_code=400, detail=f"Invalid filter parameter: {e}."
                 )
-            return orjson.loads(to_cql2(parsed_filter))
         elif filter_lang == "cql2-json":
             if isinstance(filter, str):
                 # Already percent-decoded by Starlette; decoding again would corrupt

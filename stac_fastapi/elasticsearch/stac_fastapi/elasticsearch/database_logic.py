@@ -272,9 +272,14 @@ class DatabaseLogic(BaseDatabaseLogic):
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
             # Convert the filter to an Elasticsearch query using the filter module
-            es_query = filter_module.to_es(
-                await self.get_collections_queryables_mapping(), filter
-            )
+            try:
+                es_query = filter_module.to_es(
+                    await self.get_collections_queryables_mapping(), filter
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}."
+                )
             query_parts.append(es_query)
 
         # Apply query extension if provided

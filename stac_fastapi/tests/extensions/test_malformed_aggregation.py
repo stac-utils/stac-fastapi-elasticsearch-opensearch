@@ -7,9 +7,9 @@ import orjson
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from lark.exceptions import UnexpectedInput
 from pydantic import ValidationError
 
+from stac_fastapi.core.extensions.filter import CQL2TextError
 from stac_fastapi.sfeos_helpers.aggregation import client as aggregation
 
 pytestmark = pytest.mark.asyncio
@@ -26,13 +26,13 @@ CASES = [
     pytest.param(
         {"filter": "id =", "filter-lang": "cql2-text"},
         "Invalid filter parameter: expected valid CQL2 text.",
-        UnexpectedInput,
+        CQL2TextError,
         id="text-incomplete",
     ),
     pytest.param(
         {"filter": "id = @", "filter-lang": "cql2-text"},
         "Invalid filter parameter: expected valid CQL2 text.",
-        UnexpectedInput,
+        CQL2TextError,
         id="text-token",
     ),
     pytest.param(
@@ -219,7 +219,6 @@ async def test_existing_errors(aggregation_http, ctx, route):
     "stage",
     [
         "parser",
-        "serializer",
         "generated-json",
         "json",
         "value",
@@ -246,14 +245,14 @@ async def test_server_failures_propagate(
         raise error
 
     params = {"aggregations": "total_count"}
-    if stage in {"parser", "serializer", "generated-json"}:
+    if stage in {"parser", "generated-json"}:
         params["filter"] = f"id = '{ctx.item['id']}'"
         if stage == "parser":
-            monkeypatch.setattr(aggregation, "parse_cql2_text", fail)
-        elif stage == "serializer":
-            monkeypatch.setattr(aggregation, "to_cql2", fail)
+            monkeypatch.setattr(aggregation, "cql2_text_to_json", fail)
         else:
-            monkeypatch.setattr(aggregation, "to_cql2", lambda ast: "{")
+            monkeypatch.setattr(
+                aggregation, "cql2_text_to_json", lambda text: orjson.loads("{")
+            )
             error = orjson.JSONDecodeError("generated", "{", 0)
     else:
         monkeypatch.setattr(

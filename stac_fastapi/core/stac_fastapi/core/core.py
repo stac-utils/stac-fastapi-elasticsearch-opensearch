@@ -13,21 +13,20 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 from fastapi import HTTPException, Request
-from lark.exceptions import UnexpectedInput
 from overrides import overrides
 from pydantic import TypeAdapter, ValidationError
-from pygeofilter.backends.cql2_json import to_cql2
-from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic import Collection, Item, ItemCollection
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
 from starlette.responses import Response
 
+from stac_fastapi.api.models import GeoJSONResponse
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.exceptions import QueuedSuccess
+from stac_fastapi.core.extensions.filter import CQL2TextError, cql2_text_to_json
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
@@ -524,11 +523,9 @@ class CoreClient(AsyncBaseCoreClient):
                             # First try to parse as JSON
                             parsed_filter = orjson.loads(filter_expr)
                         except Exception:
-                            # If that fails, use pygeofilter to convert CQL2-text to CQL2-JSON
+                            # If that fails, convert CQL2-text to CQL2-JSON
                             try:
-                                # Parse CQL2-text and convert to CQL2-JSON
-                                parsed_ast = parse_cql2_text(filter_expr)
-                                parsed_filter = to_cql2(parsed_ast)
+                                parsed_filter = cql2_text_to_json(filter_expr)
                             except Exception as e:
                                 # If parsing fails, provide a helpful error message
                                 raise HTTPException(
@@ -547,6 +544,13 @@ class CoreClient(AsyncBaseCoreClient):
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}"
+                )
+            # The translator needs an operator: a bare TRUE or FALSE, or JSON that is
+            # not an object, would be ignored or fail in the database layer.
+            if not isinstance(parsed_filter, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid filter parameter: expected a CQL2 expression with an operator.",
                 )
 
         parsed_datetime = None
@@ -729,7 +733,7 @@ class CoreClient(AsyncBaseCoreClient):
         fields: list[str] | None = None,
         q: str | list[str] | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """List items within a specific collection.
 
         This endpoint delegates to ``get_search`` under the hood with
@@ -815,7 +819,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter_expr: str | None = None,
         filter_lang: str | None = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """Get search results from the database.
 
         Args:
@@ -896,13 +900,11 @@ class CoreClient(AsyncBaseCoreClient):
                     )
             else:
                 try:
-                    parsed_ast = parse_cql2_text(filter_expr)
-                except UnexpectedInput:
+                    base_args["filter"] = cql2_text_to_json(filter_expr)
+                except CQL2TextError as e:
                     raise HTTPException(
-                        status_code=400,
-                        detail="Invalid filter parameter: expected valid CQL2 text.",
+                        status_code=400, detail=f"Invalid filter parameter: {e}."
                     )
-                base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
             includes, excludes = parse_fields(fields)
@@ -921,7 +923,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.ItemCollection | Response:
         """
         Perform a POST search on the catalog.
 
@@ -1118,13 +1120,17 @@ class CoreClient(AsyncBaseCoreClient):
                 body=getattr(request, "postbody", None),
             )
 
-        return stac_types.ItemCollection(
+        item_collection = stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
             numberReturned=len(items),
             numberMatched=maybe_count,
         )
+        # Projected features need not be valid STAC Items, so skip response-model validation.
+        if include or exclude:
+            return GeoJSONResponse(item_collection)
+        return item_collection
 
 
 @attr.s
@@ -2239,7 +2245,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         collection; any other value that differs is reported per item in `errors`, or
         rejects the batch with `400` under `RAISE_ON_BULK_ERROR`. Without a path
         collection (direct calls), the first entry with a non-empty string `id` and
-        `collection` sets the batch collection.
+        `collection` sets the batch collection. Items that fail STAC validation
+        (`ENABLE_STAC_VALIDATOR`) follow `RAISE_ON_BULK_ERROR` in the same way as
+        admission errors: reported per item in `errors`, or a whole-batch `400`.
 
         Args:
             items: The items to insert.
@@ -2348,6 +2356,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             )
 
         # 2. VALIDATION LAYER (Use batch validator for efficiency)
+        validation_error_entries: list[dict] = []
         if get_bool_env("ENABLE_STAC_VALIDATOR"):
             from stac_fastapi.core.validate import validate_batch_with_stac_validator
 
@@ -2355,27 +2364,36 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 unique_items
             )
 
-            # Count total validation errors (validation_errors maps error_msg -> [item_ids])
-            validation_error_count = count_validation_errors(validation_errors)
+            if validation_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+                # Count total validation errors (validation_errors maps error_msg -> [item_ids])
+                validation_error_count = count_validation_errors(validation_errors)
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
+                        "summary": build_bulk_summary(
+                            raw_features=admitted_items,
+                            processed_items=unique_items,
+                            valid_items=valid_items,
+                            validation_error_count=validation_error_count,
+                        ),
+                        "errors": validation_errors,
+                    },
+                )
 
-            # This endpoint historically has strict mode enabled by default.
-            # We fail the entire batch immediately if any item is invalid.
-            if validation_errors:
-                detail = {
-                    "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
-                    "summary": build_bulk_summary(
-                        raw_features=admitted_items,
-                        processed_items=unique_items,
-                        valid_items=valid_items,
-                        validation_error_count=validation_error_count,
-                    ),
-                    "errors": validation_errors,
-                }
-                if admission_errors:
-                    detail["malformed"] = admission_errors
-                raise HTTPException(status_code=400, detail=detail)
+            messages_by_id: dict[str, list[str]] = {}
+            for msg, item_ids in validation_errors.items():
+                for item_id in item_ids:
+                    messages_by_id.setdefault(item_id, []).append(msg)
+            validation_error_entries = [
+                {"id": item["id"], "msg": "; ".join(messages_by_id[item["id"]])}
+                for item in unique_items
+                if item["id"] in messages_by_id
+            ]
         else:
             valid_items = unique_items
+
+        reported_errors = admission_errors + validation_error_entries
 
         # 3. PREPROCESSING LAYER
         processed_items = []
@@ -2391,7 +2409,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     "received": len(raw_items),
                     "success": 0,
                     "skipped": skipped_batch_duplicates + len(valid_items),
-                    "errors": admission_errors,
+                    "errors": reported_errors,
                 },
             )
 
@@ -2429,6 +2447,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": admission_errors + format_bulk_errors(all_errors),
+                "errors": reported_errors + format_bulk_errors(all_errors),
             },
         )
