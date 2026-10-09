@@ -190,8 +190,8 @@ async def test_catalog_scope_precedes_parsing(
 @pytest.mark.parametrize(
     "target,error",
     [
-        ("parse_cql2_text", RuntimeError("parser defect")),
-        ("to_cql2", ValueError("serialization defect")),
+        ("cql2_text_to_json", RuntimeError("parser defect")),
+        ("cql2_text_to_json", ValueError("conversion defect")),
         ("post_search", orjson.JSONDecodeError("downstream JSON", "x", 0)),
         ("post_search", ValueError("downstream value")),
         ("execute_search", RuntimeError("backend unavailable")),
@@ -235,15 +235,15 @@ async def test_unrelated_failures_propagate(
 async def test_generated_json_failure_propagates(
     catalogs_app_client, search_scope, monkeypatch
 ):
-    """JSON generated from an AST is not untrusted raw client JSON."""
+    """A JSON error inside the CQL2 text conversion is not raw client JSON."""
     routes, _ = search_scope
-    monkeypatch.setattr(core, "to_cql2", lambda ast: "{")
+    monkeypatch.setattr(core, "cql2_text_to_json", lambda text: orjson.loads("{"))
     with pytest.raises(orjson.JSONDecodeError):
         await catalogs_app_client.get(routes["global"], params={"filter": "id = 'a'"})
 
 
-async def test_invalid_literal_is_not_a_syntax_error(catalogs_app, search_scope):
-    """Grammar-valid literal validation remains outside the syntax-only boundary."""
+async def test_invalid_literal_is_a_client_error(catalogs_app, search_scope):
+    """A date literal that is not a date is refused like a syntax error."""
     routes, _ = search_scope
     async with AsyncClient(
         transport=ASGITransport(app=catalogs_app, raise_app_exceptions=False),
@@ -256,7 +256,10 @@ async def test_invalid_literal_is_not_a_syntax_error(catalogs_app, search_scope)
                 "filter-lang": "cql2-text",
             },
         )
-    assert response.status_code == 500
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Invalid filter parameter: DATE('2000-19-39') is not an RFC 3339 date."
+    }
 
 
 @pytest.mark.parametrize(

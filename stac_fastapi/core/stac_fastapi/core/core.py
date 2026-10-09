@@ -13,11 +13,8 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 from fastapi import HTTPException, Request
-from lark.exceptions import UnexpectedInput
 from overrides import overrides
 from pydantic import TypeAdapter, ValidationError
-from pygeofilter.backends.cql2_json import to_cql2
-from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic import Collection, Item, ItemCollection
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import BBox, MimeTypes
@@ -29,6 +26,7 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.exceptions import QueuedSuccess
+from stac_fastapi.core.extensions.filter import CQL2TextError, cql2_text_to_json
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
@@ -525,11 +523,9 @@ class CoreClient(AsyncBaseCoreClient):
                             # First try to parse as JSON
                             parsed_filter = orjson.loads(filter_expr)
                         except Exception:
-                            # If that fails, use pygeofilter to convert CQL2-text to CQL2-JSON
+                            # If that fails, convert CQL2-text to CQL2-JSON
                             try:
-                                # Parse CQL2-text and convert to CQL2-JSON
-                                parsed_ast = parse_cql2_text(filter_expr)
-                                parsed_filter = to_cql2(parsed_ast)
+                                parsed_filter = cql2_text_to_json(filter_expr)
                             except Exception as e:
                                 # If parsing fails, provide a helpful error message
                                 raise HTTPException(
@@ -548,6 +544,13 @@ class CoreClient(AsyncBaseCoreClient):
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}"
+                )
+            # The translator needs an operator: a bare TRUE or FALSE, or JSON that is
+            # not an object, would be ignored or fail in the database layer.
+            if not isinstance(parsed_filter, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid filter parameter: expected a CQL2 expression with an operator.",
                 )
 
         parsed_datetime = None
@@ -897,13 +900,11 @@ class CoreClient(AsyncBaseCoreClient):
                     )
             else:
                 try:
-                    parsed_ast = parse_cql2_text(filter_expr)
-                except UnexpectedInput:
+                    base_args["filter"] = cql2_text_to_json(filter_expr)
+                except CQL2TextError as e:
                     raise HTTPException(
-                        status_code=400,
-                        detail="Invalid filter parameter: expected valid CQL2 text.",
+                        status_code=400, detail=f"Invalid filter parameter: {e}."
                     )
-                base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
             includes, excludes = parse_fields(fields)
