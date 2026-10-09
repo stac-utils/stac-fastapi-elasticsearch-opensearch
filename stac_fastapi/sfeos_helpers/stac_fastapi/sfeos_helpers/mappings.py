@@ -272,6 +272,7 @@ class Geometry(Protocol):  # noqa
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
+ITEMS_ALIAS_PREFIX = os.getenv("STAC_ITEMS_ALIAS_PREFIX", ITEMS_INDEX_PREFIX)
 
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "\\",
@@ -292,7 +293,7 @@ _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE = str.maketrans(
     "", "", "".join(ES_INDEX_NAME_UNSUPPORTED_CHARS)
 )
 
-ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
+ITEM_INDICES = f"{ITEMS_ALIAS_PREFIX}*"
 
 DEFAULT_SORT = {
     "properties.datetime": {

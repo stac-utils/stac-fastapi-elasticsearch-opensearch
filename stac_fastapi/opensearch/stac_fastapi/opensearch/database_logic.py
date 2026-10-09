@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -81,7 +82,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ITEM_INDICES,
-    ITEMS_INDEX_PREFIX,
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
@@ -436,7 +436,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             dict: A dictionary containing the Queryables mappings.
         """
         mappings = await self.client.indices.get_mapping(
-            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+            index=index_alias_by_collection_id(collection_id),
         )
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
@@ -1667,9 +1667,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_dict = (
             collection
             if isinstance(collection, dict)
-            else collection.model_dump()
-            if hasattr(collection, "model_dump")
-            else dict(collection)
+            else (
+                collection.model_dump()
+                if hasattr(collection, "model_dump")
+                else dict(collection)
+            )
         )
 
         if collection_id != collection_dict.get("id"):
@@ -1679,15 +1681,17 @@ class DatabaseLogic(BaseDatabaseLogic):
 
             await self.create_collection(collection_dict, refresh=refresh)
 
+            source_alias = index_alias_by_collection_id(collection_id)
+            destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
+
+            # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
-                    "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
-                    },
-                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
+                    "dest": {"index": destination_alias},
+                    "source": {"index": source_alias},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,
