@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from stac_fastapi.api.models import (
+    GeoJSONResponse,
     create_get_request_model,
     create_post_request_model,
     create_request_model,
@@ -441,6 +442,8 @@ class Extensions:
                 search_get_request_model=create_get_request_model(self.search),
                 search_post_request_model=search_post_request_model,
                 conformance_classes=list(CATALOGS_SEARCH_CONFORMANCE),
+                settings=self.settings.model_dump(),
+                response_class=GeoJSONResponse,
             )
         )
         return extensions

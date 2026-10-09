@@ -4934,6 +4934,133 @@ async def test_validated_patch_collection_preserves_catalog_memberships(
     await _assert_memberships(catalogs_app_client, collection["id"], catalog_ids)
 
 
+async def _create_catalog(client, load_test_data):
+    catalog = load_test_data("test_catalog.json")
+    catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    resp = await client.post("/catalogs", json=catalog)
+    assert resp.status_code == 201
+    return catalog["id"]
+
+
+async def _assert_not_listed(client, catalog_id, collection_id):
+    resp = await client.get(f"/catalogs/{catalog_id}/collections")
+    assert resp.status_code == 200
+    assert collection_id not in {c["id"] for c in resp.json()["collections"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        "add",
+        "add-dangling",
+        "replace",
+        "add-index",
+        "remove",
+        "remove-index",
+        "copy-to",
+        "move-to",
+        "copy-from",
+        "move-from",
+        "test",
+        "root",
+    ],
+)
+async def test_patch_rejects_parent_ids_operations(
+    catalogs_app_client, txn_client, load_test_data, monkeypatch, validator, shape
+):
+    """JSON Patch may not read or write parent_ids; memberships go through catalog routes (#916)."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    other = await _create_catalog(catalogs_app_client, load_test_data)
+    op = {
+        "add": {"op": "add", "path": "/parent_ids", "value": [other]},
+        "add-dangling": {"op": "add", "path": "/parent_ids", "value": ["missing"]},
+        "replace": {"op": "replace", "path": "/parent_ids", "value": [other]},
+        "add-index": {"op": "add", "path": "/parent_ids/0", "value": other},
+        "remove": {"op": "remove", "path": "/parent_ids"},
+        "remove-index": {"op": "remove", "path": "/parent_ids/0"},
+        "copy-to": {"op": "copy", "from": "/keywords", "path": "/parent_ids"},
+        "move-to": {"op": "move", "from": "/keywords", "path": "/parent_ids"},
+        "copy-from": {"op": "copy", "from": "/parent_ids", "path": "/keywords"},
+        "move-from": {"op": "move", "from": "/parent_ids", "path": "/keywords"},
+        "test": {"op": "test", "path": "/parent_ids", "value": catalog_ids},
+        "root": {
+            "op": "replace",
+            "path": "",
+            "value": {**collection, "parent_ids": [other]},
+        },
+    }[shape]
+    document = dict(index=COLLECTIONS_INDEX, id=collection["id"])
+    before = await txn_client.database.client.get(**document)
+
+    lookup = AsyncMock(side_effect=AssertionError("Rejected patch reached lookup"))
+    with monkeypatch.context() as guarded:
+        guarded.setattr(type(txn_client.database), "find_collection", lookup)
+        resp = await catalogs_app_client.patch(
+            f"/collections/{collection['id']}",
+            json=[{"op": "add", "path": "/title", "value": "must not persist"}, op],
+            headers={"Content-Type": "application/json-patch+json"},
+        )
+
+    assert resp.status_code == 400, resp.text
+    lookup.assert_not_awaited()
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+    await _assert_memberships(catalogs_app_client, collection["id"], catalog_ids)
+    await _assert_not_listed(catalogs_app_client, other, collection["id"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize("is_unlink", [False, True])
+async def test_merge_patch_ignores_parent_ids(
+    catalogs_app_client, load_test_data, monkeypatch, validator, is_unlink
+):
+    """Merge patch drops parent_ids at request parsing; pin it so the gap stays closed."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    other = await _create_catalog(catalogs_app_client, load_test_data)
+
+    resp = await catalogs_app_client.patch(
+        f"/collections/{collection['id']}",
+        json={"title": "Merged", "parent_ids": None if is_unlink else [other]},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["title"] == "Merged"
+    await _assert_memberships(catalogs_app_client, collection["id"], catalog_ids)
+    await _assert_not_listed(catalogs_app_client, other, collection["id"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator", ["false", "true"])
+async def test_json_patch_title_keeps_catalog_memberships(
+    catalogs_app_client, load_test_data, monkeypatch, validator
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+
+    resp = await catalogs_app_client.patch(
+        f"/collections/{collection['id']}",
+        json=[{"op": "replace", "path": "/title", "value": "Patched"}],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["title"] == "Patched"
+    await _assert_memberships(catalogs_app_client, collection["id"], catalog_ids)
+
+
 @pytest.mark.asyncio
 async def test_scoped_put_collection_rejects_mismatched_body_id(
     catalogs_app_client, load_test_data
