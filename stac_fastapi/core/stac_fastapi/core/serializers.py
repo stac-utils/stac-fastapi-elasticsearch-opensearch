@@ -19,6 +19,17 @@ from stac_fastapi.types.links import ItemLinks, resolve_links
 logger = logging.getLogger(__name__)
 
 
+# Relations of the links SFEOS generates for its own collection endpoints. Like the
+# rels stac-fastapi infers (self, root, ...), a stored copy is dropped on read.
+GENERATED_COLLECTION_RELS = {"queryables", "aggregate", "aggregations"}
+
+
+def _without_generated(stored: list[dict], generated: list[dict]) -> list[dict]:
+    """Drop stored links whose rel is one of ours that this read generated."""
+    rels = GENERATED_COLLECTION_RELS & {link["rel"] for link in generated}
+    return [link for link in stored if link["rel"] not in rels]
+
+
 @attr.s
 class Serializer(abc.ABC):
     """Defines serialization methods between the API and the data model."""
@@ -403,7 +414,9 @@ class CollectionSerializer(Serializer):
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            collection_links += _without_generated(
+                resolve_links(original_links, base_url), collection_links
+            )
 
         collection["links"] = collection_links
 
@@ -478,7 +491,9 @@ class CollectionSerializer(Serializer):
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            collection_links += _without_generated(
+                resolve_links(original_links, base_url), collection_links
+            )
 
         collection["links"] = collection_links
 
