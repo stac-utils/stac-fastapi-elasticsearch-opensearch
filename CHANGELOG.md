@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `POST /catalogs` and `POST /collections` no longer read `parent_ids` from the request body. A client that nested a new catalog or collection that way now gets `201`, but the record is created with no parent and is not listed under the catalog it named. Nest with `POST /catalogs/{catalog_id}/catalogs` or `POST /catalogs/{catalog_id}/collections` instead. [#911](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/911)
 - `PATCH /collections/{collection_id}` returns `400` for any JSON Patch operation whose `path` or `from` is `/parent_ids` (or below it), including a read-only `test` or a `copy` from it, and for a root replace whose value carries `parent_ids`. Previously, with `ENABLE_STAC_VALIDATOR=false`, operations writing `/parent_ids` changed the stored membership (linking to any id, existing or not) and `remove` or `move` from it unlinked the collection; with the validator on, some of these returned `200` and were ignored. Merge patch still ignores `parent_ids`. Link and unlink with `/catalogs/{catalog_id}/collections`. [#916](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/916)
 - A CQL2 text `TIMESTAMP` or `INTERVAL` date-time with no offset, or with a space for `T`, returns `400`. Neither is valid CQL2, but both were accepted before. [#926](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/926)
+- `POST /search`, `POST /aggregate`, `POST /collections-search` and `POST /catalogs/{catalog_id}/search` return `400` for a body `datetime` with neither a start nor an end (`../..`, `/` or `""`), which they answered with `200` before. This comes from stac-pydantic 3.7.0; an interval open at one end is still accepted. [#936](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/936)
 - A CQL2 JSON `date` or `timestamp` that is not a string, such as `{"timestamp": 1}`, and a `timestamp` with no offset, with a space for `T`, or with an offset past `23:59` return `400`, as in CQL2 text. Before, a non-string value returned `200` with no results and a timestamp with no offset was accepted; a space for `T` or an offset past `23:59` returned `500` on item search and aggregation, and `200` with no results on the collection and catalog listings. `GET /catalogs/{catalog_id}/search` on a catalog with no collections now reads `filter` as CQL2 text unless `filter-lang=cql2-json`, as on a catalog with collections, so CQL2 JSON without that parameter, or CQL2 JSON that is not an object, returns `400` instead of `200`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865) [#915](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/915)
 
 ### Changed
@@ -80,6 +81,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 
 ### Updated
+
+- Updated `stac-pydantic` to `>=3.7,<3.8`. [#936](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/936)
 
 ## [v7.2.0] - 2026-09-19
 
