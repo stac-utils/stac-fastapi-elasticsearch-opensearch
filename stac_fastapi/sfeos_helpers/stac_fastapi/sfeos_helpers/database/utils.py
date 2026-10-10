@@ -303,7 +303,7 @@ def validate_datetime_operations(
     """
     for operation in operations:
         if operation.op == "remove":
-            validator(operation.path)
+            validator(operation.path.strip("/"))
         elif operation.op in ["add", "replace"]:
             path_parts = operation.path.strip("/").split("/")
             existing_value = existing_source
@@ -314,7 +314,30 @@ def validate_datetime_operations(
                     existing_value = None
                     break
             if existing_value != operation.value:
-                validator(operation.path)
+                validator(operation.path.strip("/"))
+
+
+def protect_datetime_script(script: dict, use_datetime: bool) -> None:
+    """Reject changed index dates atomically against the actual script effects."""
+    key = "__stac_datetime"
+    while key in script["source"] or key in script["params"]:
+        key += "_"
+    script["params"][key] = (
+        ["datetime"] if use_datetime else ["start_datetime", "end_datetime"]
+    )
+    properties = "ctx._source.properties instanceof Map ? ctx._source.properties : [:]"
+    script["source"] = (
+        f"def {key} = [:]; def {key}Props = {properties};"
+        f"for (def {key}Field : params.{key}) {{"
+        f"{key}[{key}Field] = [{key}Props.containsKey({key}Field),"
+        f"{key}Props.get({key}Field)];}}"
+        + script["source"]
+        + f"{key}Props = {properties};"
+        f"for (def {key}Field : params.{key}) {{"
+        f"if (!{key}[{key}Field].equals([{key}Props.containsKey({key}Field),"
+        f"{key}Props.get({key}Field)])) {{throw new IllegalArgumentException("
+        "'Updating datetime fields is not yet supported for datetime-based indexing');}}"
+    )
 
 
 def merge_to_operations(data: dict) -> list:

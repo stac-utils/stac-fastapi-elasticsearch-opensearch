@@ -45,6 +45,8 @@ jobs:
           DISABLE_SECURITY_PLUGIN: true
           DISABLE_INSTALL_DEMO_CONFIG: true
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+          # The PATCH regression matrix compiles many distinct update scripts.
+          script.context.update.max_compilations_rate: 300/5m
           action.destructive_requires_name: false
         ports:
           - 9202:9202
