@@ -18,6 +18,7 @@ from stac_fastapi.core.extensions.filter import CQL2TextError, cql2_text_to_json
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
 from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
+from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -348,15 +349,24 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 search=search, intersects=aggregate_request.intersects
             )
 
+        supported_aggregations = None
         if aggregate_request.collections:
             search = self.database.apply_collections_filter(
                 search=search, collection_ids=aggregate_request.collections
             )
+            path_collection_id = collection_id
             # validate that aggregations are supported for all collections
             for collection_id in aggregate_request.collections:
-                aggregation_info = await self.get_aggregations(
-                    collection_id=collection_id, request=request
-                )
+                try:
+                    aggregation_info = await self.get_aggregations(
+                        collection_id=collection_id, request=request
+                    )
+                except NotFoundError:
+                    if path_collection_id:  # /collections/{collection_id}/aggregate
+                        raise
+                    # like /search, skip a missing collection; it has no index to search
+                    collections = [c for c in collections if c != collection_id]
+                    continue
                 supported_aggregations = (
                     aggregation_info["aggregations"] + self.DEFAULT_AGGREGATIONS
                 )
@@ -367,7 +377,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                             status_code=400,
                             detail=f"Aggregation {agg_name} not supported by collection {collection_id}",
                         )
-        else:
+        if supported_aggregations is None:  # no collection named, or none exists
             # Validate that the aggregations requested are supported by the catalog
             aggregation_info = await self.get_aggregations(request=request)
             supported_aggregations = aggregation_info["aggregations"]

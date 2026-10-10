@@ -119,6 +119,33 @@ async def test_aggregate_search_point_does_not_intersect(app_client, ctx):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "collections,aggregation,status,value",
+    [
+        (["test-collection", "not-a-collection"], "total_count", 200, 1),
+        (["test-collection", "not-a-collection"], "platform_frequency", 200, None),
+        (["not-a-collection"], "total_count", 200, 0),
+        (["not-a-collection"], "this_is_not_an_aggregation", 400, None),
+    ],
+)
+async def test_aggregate_with_non_existent_collections(
+    app_client, ctx, collections, aggregation, status, value
+):
+    """Like /search, /aggregate ignores collections that do not exist."""
+    get = await app_client.get(
+        "/aggregate",
+        params={"collections": ",".join(collections), "aggregations": aggregation},
+    )
+    post = await app_client.post(
+        "/aggregate", json={"collections": collections, "aggregations": [aggregation]}
+    )
+    for resp in (get, post):
+        assert resp.status_code == status
+        if value is not None:
+            assert resp.json()["aggregations"][0]["value"] == value
+
+
+@pytest.mark.asyncio
 async def test_get_collection_aggregate_no_collection(app_client, ctx, load_test_data):
 
     resp = await app_client.get(
