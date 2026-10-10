@@ -140,14 +140,10 @@ async def test_malformed_get_datetime(collections_http, monkeypatch, value, deta
 
 
 @pytest.mark.parametrize("value", [value for value, _ in MALFORMED_DATETIMES])
-async def test_post_datetime_unchanged(collections_http, value):
+async def test_malformed_post_datetime(collections_http, value):
     response = await collections_http.post(URL, json={"datetime": value})
-    # The GET-only fix must not change POST, which accepts these three.
-    if value in ("../..", "/", ""):
-        assert response.status_code == 200, response.text
-    else:
-        assert response.status_code == 400, response.text
-        assert response.json() == ERROR
+    assert response.status_code == 400, response.text
+    assert response.json() == ERROR
 
 
 @pytest.mark.parametrize(

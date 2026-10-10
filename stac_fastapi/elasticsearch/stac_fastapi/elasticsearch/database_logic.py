@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -85,7 +86,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
     ITEM_INDICES,
-    ITEMS_INDEX_PREFIX,
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
@@ -440,7 +440,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             dict: A dictionary containing the Queryables mappings.
         """
         mappings = await self.client.indices.get_mapping(
-            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+            index=index_alias_by_collection_id(collection_id),
         )
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
@@ -1692,9 +1692,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_dict = (
             collection
             if isinstance(collection, dict)
-            else collection.model_dump()
-            if hasattr(collection, "model_dump")
-            else dict(collection)
+            else (
+                collection.model_dump()
+                if hasattr(collection, "model_dump")
+                else dict(collection)
+            )
         )
 
         # Handle collection ID change
@@ -1710,9 +1712,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.client.reindex(
                 body={
                     "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
+                        "index": index_alias_by_collection_id(collection_dict.get("id"))
                     },
-                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
+                    "source": {"index": index_alias_by_collection_id(collection_id)},
                     "script": {
                         "lang": "painless",
                         "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
