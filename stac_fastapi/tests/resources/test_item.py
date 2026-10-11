@@ -422,17 +422,32 @@ async def test_item_search_temporal_intersecting_window_post(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_item_search_temporal_open_window(app_client, ctx):
-    """Test POST search with open spatio-temporal query (core)"""
+@pytest.mark.parametrize("open_end", ["start", "end"])
+async def test_item_search_temporal_open_window(app_client, ctx, open_end):
+    """Test POST search with a one-sided open spatio-temporal query (core)"""
     test_item = ctx.item
+    item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
+    before = datetime_to_str(item_date - timedelta(days=2))
+    after = datetime_to_str(item_date + timedelta(days=2))
     params = {
         "collections": [test_item["collection"]],
         "intersects": test_item["geometry"],
-        "datetime": "../..",
+        "datetime": f"../{after}" if open_end == "start" else f"{before}/..",
     }
     resp = await app_client.post("/search", json=params)
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["../..", "/", ""])
+@pytest.mark.parametrize("path", ["/search", "/aggregate", "/catalogs/any/search"])
+async def test_post_search_rejects_datetime_without_ends(
+    catalogs_app_client, path, value
+):
+    resp = await catalogs_app_client.post(path, json={"datetime": value})
+    assert resp.status_code == 400, resp.text
+    assert "At least one of the start or end dates must be provided" in resp.text
 
 
 @pytest.mark.asyncio
