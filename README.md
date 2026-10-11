@@ -117,6 +117,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
     - [Root Queryables Configuration](#root-queryables-configuration)
     - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
     - [Queryables Validation](#queryables-validation)
+  - [Sortables Endpoint](#sortables-endpoint)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
     - [When to Use](#when-to-use)
@@ -1502,6 +1503,16 @@ QUERYABLES_CACHE_TTL=1800  # Optional, defaults to 1800 seconds (30 minutes)
 - **Interaction with `EXCLUDED_FROM_QUERYABLES`**: If `VALIDATE_QUERYABLES` is enabled, fields listed in `EXCLUDED_FROM_QUERYABLES` will also be considered invalid for filtering. This effectively enforces the exclusion of these fields from search queries.
 
 This feature helps prevent queries on non-queryable fields which could lead to unnecessary load on the database.
+
+## Sortables Endpoint
+
+The sortables endpoints provide a JSON Schema detailing which fields can be used in `sortby` expressions. SFEOS exposes three sortables endpoints through the sort extension:
+
+- `GET /sortables` — sortable fields for item search. Returns the core STAC sort fields (`id`, `collection`, `properties.datetime`, `properties.created`, `properties.updated`). When `ROOT_QUERYABLES_UNION=true`, the response also unions the sortable fields of every collection.
+- `GET /collections/{collection_id}/sortables` — sortable fields for the collection's items, generated from the collection's item index mapping.
+- `GET /collections-sortables` — sortable fields for collection search, generated from the collections index mapping.
+
+Only fields the backend can actually sort on are advertised: keyword, numeric, boolean, date, IP and wildcard fields, and `text` fields that have a `keyword` sub-field. A `text` field with a keyword sub-field is advertised under its public name — `sortby=-title` is internally mapped to `title.keyword`. Geo fields, nested objects and unindexed fields are not advertised, and fields listed in `EXCLUDED_FROM_QUERYABLES` (and their children) are excluded here as well.
 
 ## Datetime-Based Index Management
 

@@ -47,6 +47,7 @@ from stac_fastapi.extensions.sort import (
 )
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
+from stac_fastapi.sfeos_helpers.sort import EsAsyncBaseSortablesClient
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
@@ -66,11 +67,15 @@ def get_default_extensions_map(
     fields_extension = FieldsExtension()
     fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
 
+    sortables_client = EsAsyncBaseSortablesClient(
+        database=database_logic, settings=settings
+    )
+
     DEFAULT_EXTENSIONS = {
         "search_map": {
             "fields": fields_extension,
             "query": QueryExtension(),
-            "sort": SearchSortExtension(),
+            "sort": SearchSortExtension(client=sortables_client),
             "pagination": TokenPaginationExtension(),
             "filter": filter_extension,
             "free_text": FreeTextExtension(
@@ -81,7 +86,7 @@ def get_default_extensions_map(
             "query": QueryExtension(
                 conformance_classes=[QueryConformanceClasses.COLLECTIONS]
             ),
-            "sort": CollectionSearchSortExtension(),
+            "sort": CollectionSearchSortExtension(client=sortables_client),
             "fields": FieldsExtension(
                 conformance_classes=[FieldsConformanceClasses.COLLECTIONS]
             ),
@@ -93,7 +98,7 @@ def get_default_extensions_map(
             ),
         },
         "item_collection_map": {
-            "sort": ItemCollectionSortExtension(),
+            "sort": ItemCollectionSortExtension(client=sortables_client),
             "query": QueryExtension(
                 conformance_classes=[QueryConformanceClasses.ITEMS]
             ),

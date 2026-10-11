@@ -1004,6 +1004,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+            )
 
         count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
 
@@ -1099,6 +1106,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             db_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+            )
 
         return db_response
 

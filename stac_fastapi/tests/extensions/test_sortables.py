@@ -1,0 +1,184 @@
+import pytest
+from httpx import AsyncClient
+
+from stac_fastapi.core.models.links import SORTABLES_REL
+from stac_fastapi.extensions.sort import SortConformanceClasses
+from stac_fastapi.sfeos_helpers.sort.client import (
+    DEFAULT_SORTABLES,
+    get_sortable_properties_shared,
+)
+
+
+@pytest.mark.asyncio
+async def test_sortables(app_client: AsyncClient):
+    """GET /sortables returns the default sortable fields."""
+    resp = await app_client.get("/sortables")
+    assert resp.status_code == 200
+    sortables = resp.json()
+    assert sortables["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert sortables["$id"] == "http://test-server/sortables"
+    assert sortables["type"] == "object"
+    assert sortables["title"] == "Sortables"
+    assert sortables["properties"] == DEFAULT_SORTABLES
+    assert sortables["additionalProperties"] is True
+
+
+@pytest.mark.asyncio
+async def test_collection_sortables(app_client: AsyncClient, ctx):
+    """GET /collections/{collection_id}/sortables reflects the items index mapping."""
+    resp = await app_client.get(f"/collections/{ctx.collection['id']}/sortables")
+    assert resp.status_code == 200
+    sortables = resp.json()
+    assert sortables["$id"] == (
+        f"http://test-server/collections/{ctx.collection['id']}/sortables"
+    )
+    assert sortables["title"] == "Sortables"
+    properties = sortables["properties"]
+
+    # Sortable mapped fields
+    assert properties["id"]["type"] == "string"
+    assert properties["collection"]["type"] == "string"
+    assert properties["properties.datetime"]["format"] == "date-time"
+    assert properties["properties.eo:cloud_cover"]["type"] == "number"
+    assert properties["properties.platform"]["type"] == "string"
+
+    # Non-sortable mapped fields are not advertised
+    assert "geometry" not in properties  # geo_shape
+    assert "properties.proj:centroid" not in properties  # geo_point
+    assert "links" not in properties  # enabled: false
+
+    assert sortables["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
+async def test_collection_sortables_not_found(app_client: AsyncClient):
+    """GET /collections/{collection_id}/sortables 404s for unknown collections."""
+    resp = await app_client.get("/collections/does-not-exist/sortables")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_collections_sortables(app_client: AsyncClient):
+    """GET /collections-sortables reflects the collections index mapping."""
+    resp = await app_client.get("/collections-sortables")
+    assert resp.status_code == 200
+    sortables = resp.json()
+    assert sortables["$id"] == "http://test-server/collections-sortables"
+    assert sortables["title"] == "Sortables"
+    properties = sortables["properties"]
+
+    # Sortable mapped fields
+    assert properties["id"]["type"] == "string"
+    assert properties["title"]["type"] == "string"  # text with keyword sub-field
+    assert "temporal" in properties  # alias for sorting on the temporal extent
+    assert properties["extent.temporal.interval"]["format"] == "date-time"
+
+    # Non-sortable mapped fields are not advertised
+    assert "bbox_shape" not in properties  # geo_shape
+    assert "providers" not in properties  # enabled: false
+    assert "links" not in properties  # enabled: false
+
+    assert sortables["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
+async def test_sortables_conformance(app_client: AsyncClient):
+    """The sortables conformance URIs are advertised on /conformance."""
+    resp = await app_client.get("/conformance")
+    assert resp.status_code == 200
+    conforms_to = resp.json()["conformsTo"]
+    assert SortConformanceClasses.ITEM_SEARCH_SORTABLES in conforms_to
+    assert SortConformanceClasses.FEATURES_SORTABLES in conforms_to
+    assert SortConformanceClasses.COLLECTION_SEARCH_SORTABLES in conforms_to
+
+
+@pytest.mark.asyncio
+async def test_sortables_links(app_client: AsyncClient, ctx):
+    """Resources link to their sortables endpoint with the OGC sortables rel."""
+    landing = (await app_client.get("/")).json()
+    assert any(
+        link["rel"] == SORTABLES_REL
+        and link["href"] == "http://test-server/sortables"
+        and link["type"] == "application/schema+json"
+        for link in landing["links"]
+    )
+
+    collection = (await app_client.get(f"/collections/{ctx.collection['id']}")).json()
+    assert any(
+        link["rel"] == SORTABLES_REL
+        and link["href"]
+        == f"http://test-server/collections/{ctx.collection['id']}/sortables"
+        and link["type"] == "application/schema+json"
+        for link in collection["links"]
+    )
+
+    collections = (await app_client.get("/collections")).json()
+    assert any(
+        link["rel"] == SORTABLES_REL
+        and link["href"] == "http://test-server/collections-sortables"
+        and link["type"] == "application/schema+json"
+        for link in collections["links"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_sortby_undeclared_field_bad_request(app_client: AsyncClient, ctx):
+    """Sorting on a field not in sortables is a 400, per additionalProperties."""
+    resp = await app_client.post(
+        "/search",
+        json={"sortby": [{"field": "definitely_not_sortable", "direction": "asc"}]},
+    )
+    assert resp.status_code == 400
+
+    resp = await app_client.get(
+        f"/collections/{ctx.collection['id']}/items?sortby=geometry"
+    )
+    assert resp.status_code == 400
+
+
+def test_get_sortable_properties_shared():
+    """Only fields the engine can sort on are returned."""
+    properties = get_sortable_properties_shared(
+        {
+            "id": {"type": "keyword"},
+            "count": {"type": "long"},
+            "title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+            "description": {"type": "text"},
+            "geometry": {"type": "geo_shape"},
+            "hidden": {"type": "keyword", "enabled": False},
+            "wrapper": {
+                "type": "object",
+                "properties": {"inner": {"type": "date"}},
+            },
+            "grouped": {
+                "properties": {"scores": {"type": "float"}},
+            },
+        }
+    )
+    assert set(properties) == {
+        "id",
+        "count",
+        "title",
+        "wrapper.inner",
+        "grouped.scores",
+    }
+    assert properties["title"]["type"] == "string"
+    assert properties["wrapper.inner"]["format"] == "date-time"
+
+
+def test_get_sortable_properties_shared_exclusions():
+    """Excluded fields and their children are not returned."""
+    properties = get_sortable_properties_shared(
+        {
+            "id": {"type": "keyword"},
+            "properties": {
+                "type": "object",
+                "properties": {
+                    "secret": {"type": "keyword"},
+                    "secret_child": {"type": "keyword"},
+                },
+            },
+        },
+        excluded={"properties.secret"},
+    )
+    assert set(properties) == {"id", "properties.secret_child"}

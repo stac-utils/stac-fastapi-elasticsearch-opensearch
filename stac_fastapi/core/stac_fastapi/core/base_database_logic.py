@@ -16,6 +16,9 @@ class BaseDatabaseLogic(abc.ABC):
     Subclasses must provide implementations for these methods.
     """
 
+    client: Any
+    async_index_selector: Any
+
     @abc.abstractmethod
     async def get_all_collections(
         self,

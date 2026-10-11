@@ -31,7 +31,7 @@ from stac_fastapi.core.extensions.filter import (
     check_cql2_literals,
     cql2_text_to_json,
 )
-from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.models.links import SORTABLES_REL, PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
     get_properties_from_cql2_filter,
@@ -348,6 +348,16 @@ class CoreClient(AsyncBaseCoreClient):
                 }
             )
 
+        if self.extension_is_enabled("SearchSortExtension"):
+            landing_page["links"].append(
+                {
+                    "rel": SORTABLES_REL,
+                    "type": MimeTypes.jsonschema,
+                    "title": "Sortables",
+                    "href": urljoin(base_url, "sortables"),
+                }
+            )
+
         if self.extension_is_enabled("AggregationExtension"):
             landing_page["links"].extend(
                 [
@@ -633,6 +643,16 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        if self.extension_is_enabled("CollectionSearchSortExtension"):
+            links.append(
+                {
+                    "rel": SORTABLES_REL,
+                    "type": MimeTypes.jsonschema,
+                    "title": "Sortables",
+                    "href": urljoin(base_url, "collections-sortables"),
+                }
+            )
 
         if redis_enable:
             from stac_fastapi.core.redis_utils import redis_pagination_links
