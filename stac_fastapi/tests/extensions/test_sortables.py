@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from httpx import AsyncClient
 
@@ -5,8 +7,10 @@ from stac_fastapi.core.models.links import SORTABLES_REL
 from stac_fastapi.extensions.sort import SortConformanceClasses
 from stac_fastapi.sfeos_helpers.sort.client import (
     DEFAULT_SORTABLES,
+    SortablesCache,
     get_sortable_properties_shared,
 )
+from stac_fastapi.types.errors import NotFoundError
 
 
 @pytest.mark.asyncio
@@ -164,6 +168,64 @@ def test_get_sortable_properties_shared():
     }
     assert properties["title"]["type"] == "string"
     assert properties["wrapper.inner"]["format"] == "date-time"
+
+
+def _fake_database(calls: list[str]) -> SimpleNamespace:
+    """A database stub that records get_items_mapping calls.
+
+    Collection c1 maps a keyword and a long; c2 has no items index.
+    """
+
+    async def get_all_collection_ids() -> list[str]:
+        return ["c1", "c2"]
+
+    async def get_items_mapping(collection_id: str) -> dict:
+        calls.append(collection_id)
+        if collection_id == "c2":
+            raise NotFoundError(f"index for {collection_id} does not exist")
+        return {
+            "items_c1_000001": {
+                "mappings": {
+                    "properties": {
+                        "id": {"type": "keyword"},
+                        "properties.score": {"type": "long"},
+                    }
+                }
+            }
+        }
+
+    return SimpleNamespace(
+        async_index_selector=SimpleNamespace(
+            get_all_collection_ids=get_all_collection_ids
+        ),
+        get_items_mapping=get_items_mapping,
+    )
+
+
+@pytest.mark.asyncio
+async def test_sortables_cache_reuses_union():
+    """The union of collection sortables is computed once per TTL window."""
+    calls: list[str] = []
+    cache = SortablesCache(_fake_database(calls))
+
+    properties = await cache.get_union_properties()
+    assert properties["id"]["type"] == "string"
+    assert properties["properties.score"]["type"] == "number"
+
+    assert await cache.get_union_properties() == properties
+    assert calls == ["c1", "c2"]
+
+
+@pytest.mark.asyncio
+async def test_sortables_cache_expires():
+    """The union is recomputed once the TTL has elapsed."""
+    calls: list[str] = []
+    cache = SortablesCache(_fake_database(calls))
+    await cache.get_union_properties()
+
+    cache.cache_ttl = 0
+    await cache.get_union_properties()
+    assert calls == ["c1", "c2", "c1", "c2"]
 
 
 def test_get_sortable_properties_shared_exclusions():

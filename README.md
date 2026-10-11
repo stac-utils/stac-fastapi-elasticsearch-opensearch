@@ -1107,6 +1107,7 @@ You can customize additional settings in your `.env` file:
 |----------|-------------|---------|----------|
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
+| `SORTABLES_CACHE_TTL` | Time-to-live (in seconds) for the cached union of collection sortable fields on `GET /sortables`. Used when `ROOT_QUERYABLES_UNION` is enabled. | `1800` | Optional |
 | `ROOT_QUERYABLES_UNION` | If set to `true`, the root `/queryables` endpoint dynamically unions queryables from all available collections. | `false` | Optional |
 | `STAC_QUERYABLES_CONFIG` | Path to a static JSON file serving as an override for the root `/queryables` endpoint. Overrides `ROOT_QUERYABLES_UNION` if provided. | `None` | Optional |
 | `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
@@ -1508,7 +1509,7 @@ This feature helps prevent queries on non-queryable fields which could lead to u
 
 The sortables endpoints provide a JSON Schema detailing which fields can be used in `sortby` expressions. SFEOS exposes three sortables endpoints through the sort extension:
 
-- `GET /sortables` — sortable fields for item search. Returns the core STAC sort fields (`id`, `collection`, `properties.datetime`, `properties.created`, `properties.updated`). When `ROOT_QUERYABLES_UNION=true`, the response also unions the sortable fields of every collection.
+- `GET /sortables` — sortable fields for item search. Returns the core STAC sort fields (`id`, `collection`, `properties.datetime`, `properties.created`, `properties.updated`). When `ROOT_QUERYABLES_UNION=true`, the response also unions the sortable fields of every collection; the union is cached for `SORTABLES_CACHE_TTL` seconds (default 1800) since it walks every collection's index mapping.
 - `GET /collections/{collection_id}/sortables` — sortable fields for the collection's items, generated from the collection's item index mapping.
 - `GET /collections-sortables` — sortable fields for collection search, generated from the collections index mapping.
 

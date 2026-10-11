@@ -1,6 +1,9 @@
 """Sortables client implementation for Elasticsearch/OpenSearch backends."""
 
+import asyncio
 import logging
+import os
+import time
 from collections import deque
 from typing import Any
 
@@ -152,12 +155,69 @@ def get_sortable_properties_shared(
     return sortables
 
 
+def _mapping_properties(mappings: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Merge the properties of every index in a get_mapping response."""
+    properties: dict[str, dict[str, Any]] = {}
+    for index_mapping in mappings.values():
+        for name, field_def in (
+            index_mapping.get("mappings", {}).get("properties", {}).items()
+        ):
+            properties.setdefault(name, field_def)
+    return properties
+
+
+class SortablesCache:
+    """A time-based cache for the union of every collection's sortable fields."""
+
+    def __init__(self, database_logic: BaseDatabaseLogic) -> None:
+        """Initialize the cache with a TTL from SORTABLES_CACHE_TTL seconds."""
+        self._db_logic = database_logic
+        self._properties: dict[str, dict[str, Any]] = {}
+        self._last_updated: float = 0.0
+        self._lock = asyncio.Lock()
+        self.cache_ttl = int(os.getenv("SORTABLES_CACHE_TTL", "1800"))
+
+    async def _update_cache(self) -> None:
+        """Rebuild the union of sortable fields across all item indexes."""
+        async with self._lock:
+            if time.time() - self._last_updated < self.cache_ttl and self._properties:
+                return
+
+            collection_ids = (
+                await self._db_logic.async_index_selector.get_all_collection_ids()
+            ) or []
+            properties: dict[str, dict[str, Any]] = {}
+            for collection_id in collection_ids:
+                try:
+                    mappings = await self._db_logic.get_items_mapping(collection_id)
+                except NotFoundError:
+                    continue
+                for name, field_schema in get_sortable_properties_shared(
+                    _mapping_properties(mappings)
+                ).items():
+                    properties.setdefault(name, field_schema)
+
+            self._properties = properties
+            self._last_updated = time.time()
+
+    async def get_union_properties(self) -> dict[str, dict[str, Any]]:
+        """Return the union of sortable fields across all item indexes."""
+        if time.time() - self._last_updated >= self.cache_ttl or not self._properties:
+            await self._update_cache()
+        return self._properties
+
+
 @attr.s
 class EsAsyncBaseSortablesClient(AsyncBaseSortablesClient):
     """Elasticsearch/OpenSearch implementation of the Sortables endpoints."""
 
     database: BaseDatabaseLogic = attr.ib()
     settings: ApiBaseSettings = attr.ib()
+    sortables_cache: SortablesCache = attr.ib(init=False)
+
+    def __attrs_post_init__(self) -> None:
+        """Create the union sortables cache."""
+        self.sortables_cache = SortablesCache(self.database)
 
     @staticmethod
     def _sortables_schema(
@@ -176,43 +236,26 @@ class EsAsyncBaseSortablesClient(AsyncBaseSortablesClient):
             "additionalProperties": additional_properties,
         }
 
-    @staticmethod
-    def _mapping_properties(mappings: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        """Merge the properties of every index in a get_mapping response."""
-        properties: dict[str, dict[str, Any]] = {}
-        for index_mapping in mappings.values():
-            for name, field_def in (
-                index_mapping.get("mappings", {}).get("properties", {}).items()
-            ):
-                properties.setdefault(name, field_def)
-        return properties
-
     async def get_sortables(
         self, request: Request | None = None, **kwargs: Any
     ) -> dict[str, Any]:
         """Get the sortables available for item search.
 
         Returns the core STAC sort fields. When ROOT_QUERYABLES_UNION is
-        enabled, also unions every collection's sortable fields.
+        enabled, also unions every collection's sortable fields. The union is
+        cached for SORTABLES_CACHE_TTL seconds (default 1800) since it walks
+        every collection's index mapping.
         """
         if not self.settings.root_queryables_union:
             return self._sortables_schema(
                 request, dict(DEFAULT_SORTABLES), additional_properties=True
             )
 
-        collection_ids = (
-            await self.database.async_index_selector.get_all_collection_ids()
-        ) or []
         properties = dict(DEFAULT_SORTABLES)
-        for collection_id in collection_ids:
-            try:
-                mappings = await self.database.get_items_mapping(collection_id)
-            except NotFoundError:
-                continue
-            for name, field_schema in get_sortable_properties_shared(
-                self._mapping_properties(mappings)
-            ).items():
-                properties.setdefault(name, field_schema)
+        for name, field_schema in (
+            await self.sortables_cache.get_union_properties()
+        ).items():
+            properties.setdefault(name, field_schema)
         return self._sortables_schema(request, properties, additional_properties=False)
 
     async def get_collection_sortables(
@@ -220,7 +263,7 @@ class EsAsyncBaseSortablesClient(AsyncBaseSortablesClient):
     ) -> dict[str, Any]:
         """Get the sortables available for a collection's items."""
         mappings = await self.database.get_items_mapping(collection_id)
-        properties = get_sortable_properties_shared(self._mapping_properties(mappings))
+        properties = get_sortable_properties_shared(_mapping_properties(mappings))
         return self._sortables_schema(request, properties, additional_properties=False)
 
     async def get_collections_sortables(
@@ -231,6 +274,6 @@ class EsAsyncBaseSortablesClient(AsyncBaseSortablesClient):
             index=COLLECTIONS_INDEX
         )
         properties = get_sortable_properties_shared(
-            self._mapping_properties(getattr(response, "body", response))
+            _mapping_properties(getattr(response, "body", response))
         )
         return self._sortables_schema(request, properties, additional_properties=False)
