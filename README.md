@@ -1514,6 +1514,10 @@ The sortables endpoints provide a JSON Schema detailing which fields can be used
 
 Only fields the backend can actually sort on are advertised: keyword, numeric, boolean, date, IP and wildcard fields, and `text` fields that have a `keyword` sub-field. A `text` field with a keyword sub-field is advertised under its public name — `sortby=-title` is internally mapped to `title.keyword`. Geo fields, nested objects and unindexed fields are not advertised, and fields listed in `EXCLUDED_FROM_QUERYABLES` (and their children) are excluded here as well.
 
+Each sortables endpoint is advertised on the resource it describes with a link of relation `http://www.opengis.net/def/rel/ogc/1.0/sortables`: on the landing page for `/sortables`, on each collection for its per-collection sortables, and on the `GET /collections` response for `/collections-sortables`.
+
+The per-collection and collection-search schemas set `additionalProperties: false`, so sorting on a field they do not declare returns `400 Bad Request`. `GET /sortables` sets `additionalProperties: true` when only the non-exhaustive core fields are listed, and `false` when `ROOT_QUERYABLES_UNION=true`. In all cases, sorting on a field the backend cannot sort on (for example, an unmapped or geo field) returns `400`. See the [STAC API Sort extension](https://github.com/stac-api-extensions/sort) for the full specification.
+
 ## Datetime-Based Index Management
 
 ### Overview
