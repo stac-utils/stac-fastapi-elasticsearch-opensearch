@@ -166,8 +166,8 @@ class SpatialNode(CqlNode):
     geometry: dict[str, Any]
 
 
-class CQL2TextError(ValueError):
-    """A CQL2 text filter that does not parse, or holds an invalid literal."""
+class CQL2FilterError(ValueError):
+    """A CQL2 filter that does not parse, or holds an invalid literal."""
 
 
 def cql2_text_to_json(cql2_text: str) -> dict[str, Any]:
@@ -188,7 +188,7 @@ def cql2_text_to_json(cql2_text: str) -> dict[str, Any]:
         dict[str, Any]: The filter as CQL2 JSON.
 
     Raises:
-        CQL2TextError: If the text is not valid CQL2 text, nests too deep, or
+        CQL2FilterError: If the text is not valid CQL2 text, nests too deep, or
             a DATE, TIMESTAMP or INTERVAL holds no valid date or timestamp.
     """
     _check_depth(cql2_text)
@@ -200,12 +200,14 @@ def cql2_text_to_json(cql2_text: str) -> dict[str, Any]:
     try:
         expr = cql2.parse_text(cql2_text)
     except cql2.ParseError as e:
-        raise CQL2TextError("expected valid CQL2 text") from e
-    return _checked(expr.to_json())
+        raise CQL2FilterError("expected valid CQL2 text") from e
+    cql2_json = expr.to_json()
+    check_cql2_literals(cql2_json)
+    return _normalize_numbers(cql2_json)
 
 
 def _check_depth(cql2_text: str) -> None:
-    """Raise CQL2TextError for CQL2 text that nests too deep for cql2.
+    """Raise CQL2FilterError for CQL2 text that nests too deep for cql2.
 
     cql2 has no depth limit yet. It parses recursively, so deep nesting
     overflows the stack and kills the process, and each nested parenthesis
@@ -228,33 +230,49 @@ def _check_depth(cql2_text: str) -> None:
         elif token[0] not in "'\"":
             depth += 1
         if depth > MAX_CQL2_DEPTH or and_or > MAX_CQL2_AND_OR:
-            raise CQL2TextError(
+            raise CQL2FilterError(
                 f"expected CQL2 text nested at most {MAX_CQL2_DEPTH} levels deep"
                 f" and at most {MAX_CQL2_AND_OR} AND and OR"
             )
 
 
-def _checked(value: Any) -> Any:
-    """Write whole numbers as integers and check temporal literals."""
+def check_cql2_literals(value: Any) -> None:
+    """Raise CQL2FilterError for a CQL2 JSON date, timestamp or interval that is not RFC 3339.
+
+    Interval bounds that are not strings, such as a property, and ".." pass.
+    The walk is iterative, so JSON nested past the recursion limit is left to
+    the translator, which rejects it.
+    """
+    stack = [value]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, list):
+            stack.extend(reversed(value))
+        elif isinstance(value, dict):
+            if value.keys() == {"date"}:
+                _check_instant("DATE", value["date"], date_only=True)
+            elif value.keys() == {"timestamp"}:
+                _check_instant("TIMESTAMP", value["timestamp"], date_only=False)
+            elif value.keys() == {"interval"} and isinstance(value["interval"], list):
+                for bound in value["interval"]:
+                    if isinstance(bound, str) and bound != "..":
+                        _check_instant("INTERVAL", bound, date_only=None)
+            stack.extend(reversed(value.values()))
+
+
+def _normalize_numbers(value: Any) -> Any:
+    """Write whole numbers as integers."""
     if isinstance(value, float) and value.is_integer() and abs(value) < 2**53:
         return int(value)
     if isinstance(value, list):
-        return [_checked(element) for element in value]
+        return [_normalize_numbers(element) for element in value]
     if isinstance(value, dict):
-        if value.keys() == {"date"}:
-            _check_instant("DATE", value["date"], date_only=True)
-        elif value.keys() == {"timestamp"}:
-            _check_instant("TIMESTAMP", value["timestamp"], date_only=False)
-        elif value.keys() == {"interval"} and isinstance(value["interval"], list):
-            for bound in value["interval"]:
-                if isinstance(bound, str) and bound != "..":
-                    _check_instant("INTERVAL", bound, date_only=None)
-        return {key: _checked(element) for key, element in value.items()}
+        return {key: _normalize_numbers(element) for key, element in value.items()}
     return value
 
 
 def _check_instant(kind: str, literal: Any, date_only: bool | None) -> None:
-    """Raise CQL2TextError unless literal is an RFC 3339 date or date-time.
+    """Raise CQL2FilterError unless literal is an RFC 3339 date or date-time.
 
     date_only is True for a date, False for a date-time, None for either.
     """
@@ -272,4 +290,6 @@ def _check_instant(kind: str, literal: Any, date_only: bool | None) -> None:
             except ValueError:
                 pass
     expected = {True: "date", False: "date-time", None: "date or date-time"}
-    raise CQL2TextError(f"{kind}({literal!r}) is not an RFC 3339 {expected[date_only]}")
+    raise CQL2FilterError(
+        f"{kind}({literal!r}) is not an RFC 3339 {expected[date_only]}"
+    )

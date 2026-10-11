@@ -9,7 +9,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
-from stac_fastapi.core.extensions.filter import CQL2TextError
+from stac_fastapi.core.extensions.filter import CQL2FilterError
 from stac_fastapi.sfeos_helpers.aggregation import client as aggregation
 
 pytestmark = pytest.mark.asyncio
@@ -26,13 +26,13 @@ CASES = [
     pytest.param(
         {"filter": "id =", "filter-lang": "cql2-text"},
         "Invalid filter parameter: expected valid CQL2 text.",
-        CQL2TextError,
+        CQL2FilterError,
         id="text-incomplete",
     ),
     pytest.param(
         {"filter": "id = @", "filter-lang": "cql2-text"},
         "Invalid filter parameter: expected valid CQL2 text.",
-        CQL2TextError,
+        CQL2FilterError,
         id="text-token",
     ),
     pytest.param(

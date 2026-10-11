@@ -14,7 +14,11 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.extensions.aggregation import EsAggregationExtensionPostRequest
-from stac_fastapi.core.extensions.filter import CQL2TextError, cql2_text_to_json
+from stac_fastapi.core.extensions.filter import (
+    CQL2FilterError,
+    check_cql2_literals,
+    cql2_text_to_json,
+)
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
 from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
@@ -210,7 +214,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         if filter_lang == "cql2-text":
             try:
                 return cql2_text_to_json(filter)
-            except CQL2TextError as e:
+            except CQL2FilterError as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}."
                 )
@@ -219,14 +223,19 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 # Already percent-decoded by Starlette; decoding again would corrupt
                 # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
                 try:
-                    return orjson.loads(filter)
+                    filter = orjson.loads(filter)
                 except orjson.JSONDecodeError:
                     raise HTTPException(
                         status_code=400,
                         detail="Invalid filter parameter: expected valid CQL2 JSON.",
                     )
-            else:
-                return filter
+            try:
+                check_cql2_literals(filter)
+            except CQL2FilterError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}."
+                )
+            return filter
         else:
             raise HTTPException(
                 status_code=400,

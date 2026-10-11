@@ -103,6 +103,24 @@ async def test_update_collection_already_exists(ctx, app_client, load_test_data)
 
 
 @pytest.mark.asyncio
+async def test_collection_put_of_a_read_does_not_repeat_generated_links(
+    ctx, app_client
+):
+    """A collection read and written back with PUT keeps one copy of each link."""
+    path = f"/collections/{ctx.collection['id']}"
+    body = (await app_client.get(path)).json()
+    body["links"].append({"rel": "license", "href": "https://example.com/license"})
+
+    for _ in range(3):  # write back, then read again
+        assert (await app_client.put(path, json=body)).status_code == 200
+        body = (await app_client.get(path)).json()
+
+    links = [(link["rel"], link["href"]) for link in body["links"]]
+    assert len(links) == len(set(links)), links
+    assert ("license", "https://example.com/license") in links
+
+
+@pytest.mark.asyncio
 async def test_update_new_collection(app_client, load_test_data):
     """Test updating a collection which does not exist (same as creation)"""
     test_collection = load_test_data("test_collection.json")
