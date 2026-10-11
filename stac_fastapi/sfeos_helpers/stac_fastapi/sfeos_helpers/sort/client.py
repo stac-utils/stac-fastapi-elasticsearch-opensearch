@@ -22,6 +22,22 @@ from stac_fastapi.types.errors import NotFoundError
 
 logger = logging.getLogger(__name__)
 
+# Engine NotFoundError classes. Either or both backends may be installed, so
+# collect every available variant rather than picking one by import order.
+_ENGINE_NOT_FOUND_ERRORS: tuple[type[Exception], ...] = ()
+try:
+    from elasticsearch.exceptions import NotFoundError as _EsNotFoundError
+
+    _ENGINE_NOT_FOUND_ERRORS += (_EsNotFoundError,)
+except ImportError:
+    pass
+try:
+    from opensearchpy.exceptions import NotFoundError as _OsNotFoundError
+
+    _ENGINE_NOT_FOUND_ERRORS += (_OsNotFoundError,)
+except ImportError:
+    pass
+
 SORTABLES_JSON_SCHEMA = "https://json-schema.org/draft/2020-12/schema"
 
 # Engine field types that can appear in a sort clause. `text` fields are handled
@@ -158,10 +174,13 @@ def get_sortable_properties_shared(
 def _mapping_properties(mappings: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Merge the properties of every index in a get_mapping response."""
     properties: dict[str, dict[str, Any]] = {}
+    if not isinstance(mappings, dict):
+        return properties
     for index_mapping in mappings.values():
-        for name, field_def in (
-            index_mapping.get("mappings", {}).get("properties", {}).items()
-        ):
+        if not isinstance(index_mapping, dict):
+            continue
+        index_properties = (index_mapping.get("mappings") or {}).get("properties") or {}
+        for name, field_def in index_properties.items():
             properties.setdefault(name, field_def)
     return properties
 
@@ -173,14 +192,21 @@ class SortablesCache:
         """Initialize the cache with a TTL from SORTABLES_CACHE_TTL seconds."""
         self._db_logic = database_logic
         self._properties: dict[str, dict[str, Any]] = {}
-        self._last_updated: float = 0.0
+        self._last_updated: float | None = None
         self._lock = asyncio.Lock()
         self.cache_ttl = int(os.getenv("SORTABLES_CACHE_TTL", "1800"))
+
+    def _is_fresh(self) -> bool:
+        """Return True once populated and still within the TTL window."""
+        return (
+            self._last_updated is not None
+            and time.monotonic() - self._last_updated < self.cache_ttl
+        )
 
     async def _update_cache(self) -> None:
         """Rebuild the union of sortable fields across all item indexes."""
         async with self._lock:
-            if time.time() - self._last_updated < self.cache_ttl and self._properties:
+            if self._is_fresh():
                 return
 
             collection_ids = (
@@ -198,11 +224,11 @@ class SortablesCache:
                     properties.setdefault(name, field_schema)
 
             self._properties = properties
-            self._last_updated = time.time()
+            self._last_updated = time.monotonic()
 
     async def get_union_properties(self) -> dict[str, dict[str, Any]]:
         """Return the union of sortable fields across all item indexes."""
-        if time.time() - self._last_updated >= self.cache_ttl or not self._properties:
+        if not self._is_fresh():
             await self._update_cache()
         return self._properties
 
@@ -270,9 +296,14 @@ class EsAsyncBaseSortablesClient(AsyncBaseSortablesClient):
         self, request: Request | None = None, **kwargs: Any
     ) -> dict[str, Any]:
         """Get the sortables available for collection search."""
-        response = await self.database.client.indices.get_mapping(
-            index=COLLECTIONS_INDEX
-        )
+        try:
+            response = await self.database.client.indices.get_mapping(
+                index=COLLECTIONS_INDEX
+            )
+        except _ENGINE_NOT_FOUND_ERRORS as e:
+            raise NotFoundError(
+                f"Mapping for index {COLLECTIONS_INDEX} not found"
+            ) from e
         properties = get_sortable_properties_shared(
             _mapping_properties(getattr(response, "body", response))
         )

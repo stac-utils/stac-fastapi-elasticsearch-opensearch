@@ -228,6 +228,30 @@ async def test_sortables_cache_expires():
     assert calls == ["c1", "c2", "c1", "c2"]
 
 
+@pytest.mark.asyncio
+async def test_sortables_cache_empty_union_cached():
+    """An empty union is still cached for the TTL window."""
+    walks: list[str] = []
+
+    async def get_all_collection_ids() -> list[str]:
+        walks.append("walk")
+        return []
+
+    async def get_items_mapping(collection_id: str) -> dict:
+        raise AssertionError("no collections to walk")
+
+    database = SimpleNamespace(
+        async_index_selector=SimpleNamespace(
+            get_all_collection_ids=get_all_collection_ids
+        ),
+        get_items_mapping=get_items_mapping,
+    )
+    cache = SortablesCache(database)
+    assert await cache.get_union_properties() == {}
+    assert await cache.get_union_properties() == {}
+    assert walks == ["walk"]
+
+
 def test_get_sortable_properties_shared_exclusions():
     """Excluded fields and their children are not returned."""
     properties = get_sortable_properties_shared(
