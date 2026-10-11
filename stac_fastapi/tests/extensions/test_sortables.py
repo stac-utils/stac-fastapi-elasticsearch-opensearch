@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -83,6 +84,40 @@ async def test_collections_sortables(app_client: AsyncClient):
     assert "links" not in properties  # enabled: false
 
     assert sortables["additionalProperties"] is False
+
+
+def test_collections_sortables_route_gated_on_collection_search():
+    """`/collections-sortables` is not registered when collection search is off."""
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from stac_fastapi.opensearch.app import instantiate_api
+        from stac_fastapi.opensearch.config import (
+            AsyncOpensearchSettings as AsyncSettings,
+        )
+        from stac_fastapi.opensearch.database_logic import DatabaseLogic
+    else:
+        from stac_fastapi.elasticsearch.app import instantiate_api
+        from stac_fastapi.elasticsearch.config import (
+            AsyncElasticsearchSettings as AsyncSettings,
+        )
+        from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
+
+    api = instantiate_api(
+        settings=AsyncSettings(
+            enable_collections_search=False,
+            enable_collections_search_route=False,
+        ),
+        database_logic=DatabaseLogic(),
+    )
+    routes = set()
+    for route in api.app.routes:
+        router = getattr(route, "original_router", None)
+        if router is not None:
+            routes.update(getattr(sub, "path", "") for sub in router.routes)
+        else:
+            routes.add(getattr(route, "path", ""))
+    assert "/sortables" in routes
+    assert "/collections/{collection_id}/sortables" in routes
+    assert "/collections-sortables" not in routes
 
 
 @pytest.mark.asyncio

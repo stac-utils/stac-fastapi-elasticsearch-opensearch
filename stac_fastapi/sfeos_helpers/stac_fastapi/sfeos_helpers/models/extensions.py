@@ -54,9 +54,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_default_extensions_map(
-    key: str, database_logic: Any, session: Any, settings: Any
-) -> dict[str, ApiExtension]:
-    """Generate fresh default extensions per instance to avoid global mutations."""
+    database_logic: Any, session: Any, settings: Any
+) -> dict[str, dict[str, ApiExtension]]:
+    """Generate fresh default extensions per instance to avoid global mutations.
+
+    Builds every map in a single call so extensions shared between maps (the
+    filter and sortables clients/extensions) are the same instances.
+    """
     filter_extension = FilterExtension(
         client=EsAsyncBaseFiltersClient(database=database_logic, settings=settings)
     )
@@ -111,7 +115,7 @@ def get_default_extensions_map(
             ),
         },
     }
-    return DEFAULT_EXTENSIONS.get(key, {})
+    return DEFAULT_EXTENSIONS
 
 
 @dataclass
@@ -129,19 +133,18 @@ class Extensions:
 
     def __post_init__(self):
         """Merge fresh defaults with user-provided overrides exactly once."""
+        defaults = get_default_extensions_map(
+            database_logic=self.database_logic,
+            session=self.session,
+            settings=self.settings,
+        )
         for key in [
             "search_map",
             "collection_search_map",
             "item_collection_map",
             "extra_map",
         ]:
-            defaults = get_default_extensions_map(
-                key,
-                database_logic=self.database_logic,
-                session=self.session,
-                settings=self.settings,
-            )
-            merged = {**defaults, **getattr(self, key)}
+            merged = {**defaults.get(key, {}), **getattr(self, key)}
             setattr(self, key, merged)
 
     def _flag(self, attr_name: str, env_name: str, default: bool) -> bool:

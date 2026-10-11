@@ -98,6 +98,19 @@ from stac_fastapi.types.stac import Collection, Item
 logger = logging.getLogger(__name__)
 
 
+def _search_error_reason(e: Exception) -> str:
+    """Extract the engine error reason from a RequestError body.
+
+    The error body is not always a dict (it can be a string or None), so fall
+    back to the stringified exception when no reason can be extracted.
+    """
+    info = getattr(e, "info", None)
+    error = info.get("error") if isinstance(info, dict) else None
+    if isinstance(error, dict):
+        return error.get("reason") or str(e)
+    return error or str(e)
+
+
 async def create_index_templates() -> None:
     """
     Create index templates for the Collection and Item indices.
@@ -346,7 +359,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # e.g., "Fielddata is disabled on text fields in [title]"
             raise HTTPException(
                 status_code=400,
-                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+                detail=f"Search request error: {_search_error_reason(e)}",
             )
 
         hits = response["hits"]["hits"]
@@ -1009,7 +1022,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # e.g., "No mapping found for [field] in order to sort on"
             raise HTTPException(
                 status_code=400,
-                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+                detail=f"Search request error: {_search_error_reason(e)}",
             )
 
         count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
@@ -1111,7 +1124,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # e.g., "No mapping found for [field] in order to sort on"
             raise HTTPException(
                 status_code=400,
-                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+                detail=f"Search request error: {_search_error_reason(e)}",
             )
 
         return db_response
