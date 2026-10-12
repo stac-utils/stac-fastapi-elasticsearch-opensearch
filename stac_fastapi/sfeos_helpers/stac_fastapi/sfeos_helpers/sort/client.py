@@ -43,6 +43,7 @@ SORTABLES_JSON_SCHEMA = "https://json-schema.org/draft/2020-12/schema"
 # Engine field types that can appear in a sort clause. `text` fields are handled
 # separately: they are sortable only through a keyword multi-field, which
 # remap_sort_field_shared resolves transparently (e.g. title -> title.keyword).
+# `match_only_text` has no doc values or fielddata, so it is never sortable.
 SORTABLE_FIELD_TYPES = frozenset(
     {
         "boolean",
@@ -57,7 +58,6 @@ SORTABLE_FIELD_TYPES = frozenset(
         "ip",
         "keyword",
         "long",
-        "match_only_text",
         "scaled_float",
         "short",
         "unsigned_long",
