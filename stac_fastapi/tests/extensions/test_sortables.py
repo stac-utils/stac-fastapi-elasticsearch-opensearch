@@ -195,6 +195,10 @@ def test_get_sortable_properties_shared():
             "grouped": {
                 "properties": {"scores": {"type": "float"}},
             },
+            "nested_obj": {
+                "type": "nested",
+                "properties": {"leaf": {"type": "keyword"}},
+            },
         }
     )
     assert set(properties) == {

@@ -166,13 +166,18 @@ def get_sortable_properties_shared(
         if not isinstance(field_def, dict):
             continue
 
-        nested_properties = field_def.get("properties")
-        if isinstance(nested_properties, dict):
-            stack.extend(
-                (f"{field_fqn}.{k}", v)
-                for k, v in nested_properties.items()
-                if isinstance(v, dict) and not is_excluded(f"{field_fqn}.{k}")
-            )
+        # Object fields are flattened in the index, so their leaves sort
+        # directly. `nested` fields are separate documents: their leaves need
+        # a nested sort clause, which plain sortby cannot express, so they are
+        # not advertised.
+        if field_def.get("type") != "nested":
+            nested_properties = field_def.get("properties")
+            if isinstance(nested_properties, dict):
+                stack.extend(
+                    (f"{field_fqn}.{k}", v)
+                    for k, v in nested_properties.items()
+                    if isinstance(v, dict) and not is_excluded(f"{field_fqn}.{k}")
+                )
 
         if is_excluded(field_fqn) or not field_def.get("enabled", True):
             continue
