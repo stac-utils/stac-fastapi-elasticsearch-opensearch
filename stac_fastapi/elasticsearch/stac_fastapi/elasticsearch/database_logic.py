@@ -106,10 +106,21 @@ def _search_error_reason(e: Exception) -> str:
 
     The error body is not always a dict (it can be a string or None), so fall
     back to the stringified exception when no reason can be extracted.
+    Multi-index failures report "all shards failed" as the top-level reason;
+    the useful text (e.g. "No mapping found for [x] in order to sort on") is
+    in root_cause, so prefer it when present.
     """
     info = getattr(e, "info", None)
     error = info.get("error") if isinstance(info, dict) else None
     if isinstance(error, dict):
+        root_cause = error.get("root_cause")
+        if (
+            isinstance(root_cause, list)
+            and root_cause
+            and isinstance(root_cause[0], dict)
+            and root_cause[0].get("reason")
+        ):
+            return root_cause[0]["reason"]
         return error.get("reason") or str(e)
     return error or str(e)
 
