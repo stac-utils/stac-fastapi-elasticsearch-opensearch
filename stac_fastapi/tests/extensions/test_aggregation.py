@@ -143,6 +143,13 @@ async def test_aggregate_with_non_existent_collections(
         assert resp.status_code == status
         if value is not None:
             assert resp.json()["aggregations"][0]["value"] == value
+        if status == 200:
+            links = {
+                link["rel"]: urlparse(link["href"]).path
+                for link in resp.json()["links"]
+            }
+            assert links["self"] == "/aggregate"
+            assert "collection" not in links
 
 
 @pytest.mark.asyncio
@@ -163,6 +170,10 @@ async def test_get_collection_aggregate(app_client, ctx, load_test_data):
     )
     assert resp.status_code == 200
     assert resp.json()["aggregations"][0]["value"] == 1
+    href_self = urlparse(
+        next(link["href"] for link in resp.json()["links"] if link["rel"] == "self")
+    )
+    assert href_self.path == f"/collections/{test_collection['id']}/aggregate"
 
 
 @pytest.mark.asyncio
