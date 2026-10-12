@@ -19,6 +19,7 @@ async def test_sortables(app_client: AsyncClient):
     """GET /sortables returns the default sortable fields."""
     resp = await app_client.get("/sortables")
     assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/schema+json")
     sortables = resp.json()
     assert sortables["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert sortables["$id"] == "http://test-server/sortables"
@@ -75,8 +76,10 @@ async def test_collections_sortables(app_client: AsyncClient):
     # Sortable mapped fields
     assert properties["id"]["type"] == "string"
     assert properties["title"]["type"] == "string"  # text with keyword sub-field
-    assert "temporal" in properties  # alias for sorting on the temporal extent
     assert properties["extent.temporal.interval"]["format"] == "date-time"
+    # Alias to a sortable field is advertised with the target's schema
+    assert properties["temporal"]["type"] == "string"
+    assert properties["temporal"]["format"] == "date-time"
 
     # Non-sortable mapped fields are not advertised
     assert "bbox_shape" not in properties  # geo_shape
@@ -285,6 +288,44 @@ async def test_sortables_cache_empty_union_cached():
     assert await cache.get_union_properties() == {}
     assert await cache.get_union_properties() == {}
     assert walks == ["walk"]
+
+
+def test_get_sortable_properties_shared_aliases():
+    """Alias fields are advertised with their target field's schema."""
+    properties = get_sortable_properties_shared(
+        {
+            "temporal": {"type": "alias", "path": "extent.temporal.interval"},
+            "broken": {"type": "alias", "path": "missing.path"},
+            "shadow": {"type": "alias", "path": "geometry"},
+            "extent": {
+                "type": "object",
+                "properties": {
+                    "temporal": {
+                        "type": "object",
+                        "properties": {"interval": {"type": "date"}},
+                    }
+                },
+            },
+            "geometry": {"type": "geo_shape"},
+        }
+    )
+    assert properties["temporal"]["type"] == "string"
+    assert properties["temporal"]["format"] == "date-time"
+    assert "broken" not in properties  # unresolvable target
+    assert "shadow" not in properties  # target is not sortable
+
+
+def test_sort_post_request_spec_conformance():
+    """POST sortby requires only `field`; direction defaults to asc."""
+    from pydantic import ValidationError
+
+    from stac_fastapi.sfeos_helpers.sort.request import SortExtensionPostRequest
+
+    model = SortExtensionPostRequest(sortby=[{"field": "id"}])
+    assert model.sortby[0].direction == "asc"
+
+    with pytest.raises(ValidationError):
+        SortExtensionPostRequest(sortby=[])
 
 
 def test_get_sortable_properties_shared_exclusions():

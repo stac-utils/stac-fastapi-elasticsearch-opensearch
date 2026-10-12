@@ -45,7 +45,6 @@ SORTABLES_JSON_SCHEMA = "https://json-schema.org/draft/2020-12/schema"
 # remap_sort_field_shared resolves transparently (e.g. title -> title.keyword).
 SORTABLE_FIELD_TYPES = frozenset(
     {
-        "alias",
         "boolean",
         "byte",
         "constant_keyword",
@@ -121,6 +120,18 @@ def _to_property_schema(field_fqn: str, field_type: str | None) -> dict[str, Any
     return schema
 
 
+def _resolve_alias(
+    mapping_properties: dict[str, dict[str, Any]], field_def: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Resolve an alias field to the field definition its path points at."""
+    node: Any = {"properties": mapping_properties}
+    for part in str(field_def.get("path", "")).split("."):
+        node = node.get("properties", {}).get(part) if isinstance(node, dict) else None
+        if node is None:
+            return None
+    return node if isinstance(node, dict) else None
+
+
 def get_sortable_properties_shared(
     mapping_properties: dict[str, dict[str, Any]],
     excluded: set[str] | None = None,
@@ -163,7 +174,17 @@ def get_sortable_properties_shared(
                 if isinstance(v, dict) and not is_excluded(f"{field_fqn}.{k}")
             )
 
-        if is_excluded(field_fqn) or not _is_sortable(field_def):
+        if is_excluded(field_fqn) or not field_def.get("enabled", True):
+            continue
+
+        if field_def.get("type") == "alias":
+            # Sorting on an alias sorts on its target field, so advertise the
+            # alias under the target's type only when the target is sortable.
+            field_def = _resolve_alias(mapping_properties, field_def)
+            if field_def is None:
+                continue
+
+        if not _is_sortable(field_def):
             continue
 
         sortables[field_fqn] = _to_property_schema(field_fqn, field_def.get("type"))

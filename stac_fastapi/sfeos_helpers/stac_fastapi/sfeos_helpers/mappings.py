@@ -503,18 +503,23 @@ AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
 }
 
 ES_MAPPING_TYPE_TO_JSON: dict[
-    str, Literal["string", "number", "boolean", "object", "array", "null"]
+    str, Literal["string", "number", "boolean", "object", "array", "null", "integer"]
 ] = {
+    "boolean": "boolean",
+    "constant_keyword": "string",
     "date": "string",
     "date_nanos": "string",
+    "ip": "string",
     "keyword": "string",
     "match_only_text": "string",
     "text": "string",
+    "version": "string",
     "wildcard": "string",
     "byte": "number",
     "double": "number",
     "float": "number",
     "half_float": "number",
+    "integer": "integer",
     "long": "number",
     "scaled_float": "number",
     "short": "number",
