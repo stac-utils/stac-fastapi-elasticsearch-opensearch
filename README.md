@@ -1518,7 +1518,7 @@ Only fields the backend can actually sort on are advertised: keyword, numeric, b
 
 Each sortables endpoint is advertised on the resource it describes with a link of relation `http://www.opengis.net/def/rel/ogc/1.0/sortables`: on the landing page for `/sortables`, on each collection for its per-collection sortables, and on the `GET /collections` response for `/collections-sortables`.
 
-The per-collection and collection-search schemas set `additionalProperties: false`, so sorting on a field they do not declare returns `400 Bad Request`. `GET /sortables` sets `additionalProperties: true` when only the non-exhaustive core fields are listed, and `false` when `ROOT_QUERYABLES_UNION=true`. In all cases, sorting on a field the backend cannot sort on (for example, an unmapped or geo field) returns `400`. See the [STAC API Sort extension](https://github.com/stac-api-extensions/sort) for the full specification.
+The per-collection and collection-search schemas set `additionalProperties: false`, so sorting on a field they do not declare returns `400 Bad Request`. `GET /sortables` sets `additionalProperties: true` when only the non-exhaustive core fields are listed, and `false` when `ROOT_QUERYABLES_UNION=true`. `additionalProperties: true` means the declared list is non-exhaustive — other mapped fields sort too, and resources missing a property sort it as null — while fields with no backing index mapping return `400` as unsupported sorts. Fields listed in `EXCLUDED_FROM_QUERYABLES` return `400` under every schema even though the engine could sort on them, keeping the `false` contract. See the [STAC API Sort extension](https://github.com/stac-api-extensions/sort) for the full specification.
 
 ## Datetime-Based Index Management
 

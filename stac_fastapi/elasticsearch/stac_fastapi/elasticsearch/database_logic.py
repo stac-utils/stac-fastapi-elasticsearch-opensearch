@@ -72,6 +72,7 @@ from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
     remap_sort_field_shared,
+    validate_sort_fields_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
@@ -257,6 +258,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Format the sort parameter
         formatted_sort = []
         if sort:
+            validate_sort_fields_shared(
+                item.get("field", "") for item in sort if isinstance(item, dict)
+            )
             for item in sort:
                 field = remap_sort_field_shared(
                     item.get("field", ""), is_collection=True

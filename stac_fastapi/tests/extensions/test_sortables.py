@@ -2,10 +2,15 @@ import os
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from stac_fastapi.core.models.links import SORTABLES_REL
 from stac_fastapi.extensions.sort import SortConformanceClasses
+from stac_fastapi.sfeos_helpers.database.query import (
+    populate_sort_shared,
+    validate_sort_fields_shared,
+)
 from stac_fastapi.sfeos_helpers.sort.client import (
     DEFAULT_SORTABLES,
     SortablesCache,
@@ -307,6 +312,25 @@ def test_get_sortable_properties_shared_aliases():
     assert properties["temporal"]["format"] == "date-time"
     assert "broken" not in properties  # unresolvable target
     assert "shadow" not in properties  # target is not sortable
+
+
+def test_sortby_excluded_fields_bad_request(monkeypatch):
+    """Excluded sortby fields are a 400, per additionalProperties: false."""
+    monkeypatch.setenv("EXCLUDED_FROM_QUERYABLES", "properties.secret")
+
+    # Bare, prefixed, and child names are all rejected
+    for field in ("secret", "properties.secret", "properties.secret.level"):
+        with pytest.raises(HTTPException) as exc:
+            validate_sort_fields_shared([field])
+        assert exc.value.status_code == 400
+
+    # Non-excluded fields pass
+    validate_sort_fields_shared(["id", "properties.datetime"])
+
+    # populate_sort_shared rejects them before building sort config
+    sort_field = SimpleNamespace(field="properties.secret", direction="asc")
+    with pytest.raises(HTTPException):
+        populate_sort_shared([sort_field])
 
 
 def test_sort_post_request_spec_conformance():
