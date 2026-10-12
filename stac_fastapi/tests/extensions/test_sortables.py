@@ -211,16 +211,11 @@ def test_get_sortable_properties_shared():
 def _fake_database(calls: list[str]) -> SimpleNamespace:
     """A database stub that records get_items_mapping calls.
 
-    Collection c1 maps a keyword and a long; c2 has no items index.
+    Returns a two-index response, as get_mapping over items_* would.
     """
-
-    async def get_all_collection_ids() -> list[str]:
-        return ["c1", "c2"]
 
     async def get_items_mapping(collection_id: str) -> dict:
         calls.append(collection_id)
-        if collection_id == "c2":
-            raise NotFoundError(f"index for {collection_id} does not exist")
         return {
             "items_c1_000001": {
                 "mappings": {
@@ -229,15 +224,17 @@ def _fake_database(calls: list[str]) -> SimpleNamespace:
                         "properties.score": {"type": "long"},
                     }
                 }
-            }
+            },
+            "items_c2_000001": {
+                "mappings": {
+                    "properties": {
+                        "properties.rating": {"type": "integer"},
+                    }
+                }
+            },
         }
 
-    return SimpleNamespace(
-        async_index_selector=SimpleNamespace(
-            get_all_collection_ids=get_all_collection_ids
-        ),
-        get_items_mapping=get_items_mapping,
-    )
+    return SimpleNamespace(get_items_mapping=get_items_mapping)
 
 
 @pytest.mark.asyncio
@@ -249,9 +246,10 @@ async def test_sortables_cache_reuses_union():
     properties = await cache.get_union_properties()
     assert properties["id"]["type"] == "string"
     assert properties["properties.score"]["type"] == "number"
+    assert properties["properties.rating"]["type"] == "integer"
 
     assert await cache.get_union_properties() == properties
-    assert calls == ["c1", "c2"]
+    assert calls == ["*"]
 
 
 @pytest.mark.asyncio
@@ -263,7 +261,7 @@ async def test_sortables_cache_expires():
 
     cache.cache_ttl = 0
     await cache.get_union_properties()
-    assert calls == ["c1", "c2", "c1", "c2"]
+    assert calls == ["*", "*"]
 
 
 @pytest.mark.asyncio
@@ -271,19 +269,11 @@ async def test_sortables_cache_empty_union_cached():
     """An empty union is still cached for the TTL window."""
     walks: list[str] = []
 
-    async def get_all_collection_ids() -> list[str]:
-        walks.append("walk")
-        return []
-
     async def get_items_mapping(collection_id: str) -> dict:
-        raise AssertionError("no collections to walk")
+        walks.append("walk")
+        raise NotFoundError("no item indexes")
 
-    database = SimpleNamespace(
-        async_index_selector=SimpleNamespace(
-            get_all_collection_ids=get_all_collection_ids
-        ),
-        get_items_mapping=get_items_mapping,
-    )
+    database = SimpleNamespace(get_items_mapping=get_items_mapping)
     cache = SortablesCache(database)
     assert await cache.get_union_properties() == {}
     assert await cache.get_union_properties() == {}

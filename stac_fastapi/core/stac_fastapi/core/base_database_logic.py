@@ -17,7 +17,6 @@ class BaseDatabaseLogic(abc.ABC):
     """
 
     client: Any
-    async_index_selector: Any
 
     @abc.abstractmethod
     async def get_all_collections(

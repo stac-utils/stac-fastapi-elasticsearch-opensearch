@@ -230,21 +230,13 @@ class SortablesCache:
             if self._is_fresh():
                 return
 
-            collection_ids = (
-                await self._db_logic.async_index_selector.get_all_collection_ids()
-            ) or []
-            properties: dict[str, dict[str, Any]] = {}
-            for collection_id in collection_ids:
-                try:
-                    mappings = await self._db_logic.get_items_mapping(collection_id)
-                except NotFoundError:
-                    continue
-                for name, field_schema in get_sortable_properties_shared(
-                    _mapping_properties(mappings)
-                ).items():
-                    properties.setdefault(name, field_schema)
-
-            self._properties = properties
+            try:
+                mappings = await self._db_logic.get_items_mapping("*")
+            except NotFoundError:
+                mappings = {}
+            self._properties = get_sortable_properties_shared(
+                _mapping_properties(mappings)
+            )
             self._last_updated = time.monotonic()
 
     async def get_union_properties(self) -> dict[str, dict[str, Any]]:
@@ -290,8 +282,8 @@ class EsAsyncBaseSortablesClient(AsyncBaseSortablesClient):
 
         Returns the core STAC sort fields. When ROOT_QUERYABLES_UNION is
         enabled, also unions every collection's sortable fields. The union is
-        cached for SORTABLES_CACHE_TTL seconds (default 1800) since it walks
-        every collection's index mapping.
+        cached for SORTABLES_CACHE_TTL seconds (default 1800) since it reads
+        every item index's mapping.
         """
         if not self.settings.root_queryables_union:
             return self._sortables_schema(
