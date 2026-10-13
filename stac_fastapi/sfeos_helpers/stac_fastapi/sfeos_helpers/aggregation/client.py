@@ -22,6 +22,7 @@ from stac_fastapi.core.extensions.filter import (
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
 from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
+from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -357,15 +358,23 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 search=search, intersects=aggregate_request.intersects
             )
 
+        supported_aggregations = None
         if aggregate_request.collections:
             search = self.database.apply_collections_filter(
                 search=search, collection_ids=aggregate_request.collections
             )
             # validate that aggregations are supported for all collections
-            for collection_id in aggregate_request.collections:
-                aggregation_info = await self.get_aggregations(
-                    collection_id=collection_id, request=request
-                )
+            for col in aggregate_request.collections:
+                try:
+                    aggregation_info = await self.get_aggregations(
+                        collection_id=col, request=request
+                    )
+                except NotFoundError:
+                    if collection_id:  # /collections/{collection_id}/aggregate
+                        raise
+                    # like /search, skip a missing collection; it has no index to search
+                    collections = [c for c in collections if c != col]
+                    continue
                 supported_aggregations = (
                     aggregation_info["aggregations"] + self.DEFAULT_AGGREGATIONS
                 )
@@ -374,9 +383,9 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     if agg_name not in set([x["name"] for x in supported_aggregations]):
                         raise HTTPException(
                             status_code=400,
-                            detail=f"Aggregation {agg_name} not supported by collection {collection_id}",
+                            detail=f"Aggregation {agg_name} not supported by collection {col}",
                         )
-        else:
+        if supported_aggregations is None:  # no collection named, or none exists
             # Validate that the aggregations requested are supported by the catalog
             aggregation_info = await self.get_aggregations(request=request)
             supported_aggregations = aggregation_info["aggregations"]
@@ -479,7 +488,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": urljoin(collection_endpoint, "aggregate"),
+                        "href": urljoin(collection_endpoint + "/", "aggregate"),
                     },
                 ]
             )
