@@ -133,25 +133,10 @@ def _resolve_alias(
     return node if isinstance(node, dict) else None
 
 
-def get_sortable_properties_shared(
-    mapping_properties: dict[str, dict[str, Any]],
-    excluded: set[str] | None = None,
-) -> dict[str, dict[str, Any]]:
-    """Walk index mapping properties and keep the fields an engine can sort on.
-
-    Fields listed in the EXCLUDED_FROM_QUERYABLES environment variable are
-    excluded, along with their children. Field names are kept as document paths
-    (e.g. properties.datetime) — the same values the sortby parameter accepts.
-
-    Args:
-        mapping_properties: the "properties" section of an index mapping.
-        excluded: field names to exclude; defaults to EXCLUDED_FROM_QUERYABLES.
-
-    Returns:
-        A dict of sortable field names to their JSON Schema fragment.
-    """
-    if excluded is None:
-        excluded = get_excluded_from_queryables()
+def _iter_sortable_fields(
+    mapping_properties: dict[str, dict[str, Any]], excluded: set[str]
+) -> Iterable[tuple[str, dict[str, Any]]]:
+    """Yield (field_fqn, resolved field_def) for each engine-sortable field."""
 
     def is_excluded(path: str) -> bool:
         """Check if the path starts with any excluded prefix."""
@@ -159,7 +144,6 @@ def get_sortable_properties_shared(
             path == prefix or path.startswith(prefix + ".") for prefix in excluded
         )
 
-    sortables: dict[str, dict[str, Any]] = {}
     stack: deque[tuple[str, dict[str, Any]]] = deque(mapping_properties.items())
 
     while stack:
@@ -193,9 +177,63 @@ def get_sortable_properties_shared(
         if not _is_sortable(field_def):
             continue
 
-        sortables[field_fqn] = _to_property_schema(field_fqn, field_def.get("type"))
+        yield field_fqn, field_def
 
-    return sortables
+
+def get_sortable_properties_shared(
+    mapping_properties: dict[str, dict[str, Any]],
+    excluded: set[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Walk index mapping properties and keep the fields an engine can sort on.
+
+    Fields listed in the EXCLUDED_FROM_QUERYABLES environment variable are
+    excluded, along with their children. Field names are kept as document paths
+    (e.g. properties.datetime) — the same values the sortby parameter accepts.
+
+    Args:
+        mapping_properties: the "properties" section of an index mapping.
+        excluded: field names to exclude; defaults to EXCLUDED_FROM_QUERYABLES.
+
+    Returns:
+        A dict of sortable field names to their JSON Schema fragment.
+    """
+    if excluded is None:
+        excluded = get_excluded_from_queryables()
+
+    return {
+        field_fqn: _to_property_schema(field_fqn, field_def.get("type"))
+        for field_fqn, field_def in _iter_sortable_fields(mapping_properties, excluded)
+    }
+
+
+def get_sortable_field_types_shared(
+    mapping_properties: dict[str, dict[str, Any]],
+    excluded: set[str] | None = None,
+) -> dict[str, str]:
+    """Map each advertised sortable field to the engine type its sort uses.
+
+    Sort clauses set unmapped_type so indexes that do not map a field treat
+    their documents as null rather than failing. The value must be the field's
+    mapped engine type — sorting a field mapped as double in one index with
+    unmapped_type keyword in another still fails with incompatible sort types.
+    Text fields sort through their keyword multi-field, so they map to keyword.
+
+    Args:
+        mapping_properties: the "properties" section of an index mapping.
+        excluded: field names to exclude; defaults to EXCLUDED_FROM_QUERYABLES.
+
+    Returns:
+        A dict of sortable field names to their engine field type.
+    """
+    if excluded is None:
+        excluded = get_excluded_from_queryables()
+
+    return {
+        field_fqn: (
+            "keyword" if field_def.get("type") == "text" else field_def.get("type")
+        )
+        for field_fqn, field_def in _iter_sortable_fields(mapping_properties, excluded)
+    }
 
 
 def _merge_properties(target: dict[str, Any], source: dict[str, Any]) -> None:
@@ -234,8 +272,9 @@ class SortablesCache:
         """Initialize the cache with a TTL from SORTABLES_CACHE_TTL seconds."""
         self._db_logic = database_logic
         self._properties: dict[str, dict[str, Any]] = {}
+        self._field_types: dict[str, str] = {}
         self._collection_properties: dict[
-            str, tuple[dict[str, dict[str, Any]], float]
+            str, tuple[dict[str, dict[str, Any]], dict[str, str], float]
         ] = {}
         self._last_updated: float | None = None
         self._lock = asyncio.Lock()
@@ -258,9 +297,9 @@ class SortablesCache:
                 mappings = await self._db_logic.get_items_mapping("*")
             except NotFoundError:
                 mappings = {}
-            self._properties = get_sortable_properties_shared(
-                _mapping_properties(mappings)
-            )
+            union_properties = _mapping_properties(mappings)
+            self._properties = get_sortable_properties_shared(union_properties)
+            self._field_types = get_sortable_field_types_shared(union_properties)
             self._last_updated = time.monotonic()
 
     async def get_union_properties(self) -> dict[str, dict[str, Any]]:
@@ -269,24 +308,43 @@ class SortablesCache:
             await self._update_cache()
         return self._properties
 
+    async def get_union_field_types(self) -> dict[str, str]:
+        """Return engine field types for the union of sortable fields."""
+        if not self._is_fresh():
+            await self._update_cache()
+        return self._field_types
+
+    async def _get_collection_entry(
+        self, collection_id: str
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+        """Return a collection's cached sortable properties and field types."""
+        entry = self._collection_properties.get(collection_id)
+        if entry and time.monotonic() - entry[2] < self.cache_ttl:
+            return entry[0], entry[1]
+        async with self._lock:
+            entry = self._collection_properties.get(collection_id)
+            if entry and time.monotonic() - entry[2] < self.cache_ttl:
+                return entry[0], entry[1]
+            mappings = await self._db_logic.get_items_mapping(collection_id)
+            mapping_properties = _mapping_properties(mappings)
+            properties = get_sortable_properties_shared(mapping_properties)
+            field_types = get_sortable_field_types_shared(mapping_properties)
+            self._collection_properties[collection_id] = (
+                properties,
+                field_types,
+                time.monotonic(),
+            )
+            return properties, field_types
+
     async def get_collection_properties(
         self, collection_id: str
     ) -> dict[str, dict[str, Any]]:
         """Return the sortable fields of one collection, cached per TTL."""
-        entry = self._collection_properties.get(collection_id)
-        if entry and time.monotonic() - entry[1] < self.cache_ttl:
-            return entry[0]
-        async with self._lock:
-            entry = self._collection_properties.get(collection_id)
-            if entry and time.monotonic() - entry[1] < self.cache_ttl:
-                return entry[0]
-            mappings = await self._db_logic.get_items_mapping(collection_id)
-            properties = get_sortable_properties_shared(_mapping_properties(mappings))
-            self._collection_properties[collection_id] = (
-                properties,
-                time.monotonic(),
-            )
-            return properties
+        return (await self._get_collection_entry(collection_id))[0]
+
+    async def get_collection_field_types(self, collection_id: str) -> dict[str, str]:
+        """Return engine field types for one collection's sortable fields."""
+        return (await self._get_collection_entry(collection_id))[1]
 
     async def validate(
         self, field_names: Iterable[str], collection_id: str | None = None

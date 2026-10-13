@@ -14,6 +14,7 @@ from stac_fastapi.sfeos_helpers.database.query import (
 from stac_fastapi.sfeos_helpers.sort.client import (
     DEFAULT_SORTABLES,
     SortablesCache,
+    get_sortable_field_types_shared,
     get_sortable_properties_shared,
 )
 from stac_fastapi.types.errors import NotFoundError
@@ -214,6 +215,37 @@ async def test_sortby_union_membership(app_client: AsyncClient, ctx, monkeypatch
     assert resp.status_code == 400
 
 
+@pytest.mark.asyncio
+async def test_sortby_field_mapped_in_some_collections(
+    app_client: AsyncClient, ctx, load_test_data, txn_client
+):
+    """A field mapped in only some collections sorts all items, missing last."""
+    from ..conftest import create_collection, create_item
+
+    # A second collection whose index does not map properties.eo:cloud_cover.
+    collection_b = load_test_data("test_collection.json")
+    collection_b["id"] = "collection-b"
+    await create_collection(txn_client, collection_b)
+
+    item_b = load_test_data("test_item.json")
+    item_b["id"] = "item-b"
+    item_b["collection"] = "collection-b"
+    item_b["properties"].pop("eo:cloud_cover", None)
+    await create_item(txn_client, item_b)
+
+    # Ascending: the mapped item sorts first, the unmapped one last. A keyword
+    # unmapped_type would 400 with incompatible sort types across shards.
+    resp = await app_client.post(
+        "/search",
+        json={"sortby": [{"field": "properties.eo:cloud_cover", "direction": "asc"}]},
+    )
+    assert resp.status_code == 200
+    features = resp.json()["features"]
+    assert len(features) == 2
+    assert features[0]["id"] == ctx.item["id"]
+    assert features[1]["id"] == "item-b"
+
+
 def test_get_sortable_properties_shared():
     """Only fields the engine can sort on are returned."""
     properties = get_sortable_properties_shared(
@@ -403,6 +435,30 @@ def test_sortby_excluded_fields_bad_request(monkeypatch):
         populate_sort_shared([sort_field])
 
 
+def test_get_sortable_field_types_shared():
+    """Field types map each sortable field to the engine type sorted on."""
+    types = get_sortable_field_types_shared(
+        {
+            "id": {"type": "keyword"},
+            "count": {"type": "long"},
+            "title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+            "geometry": {"type": "geo_shape"},
+            "wrapper": {
+                "type": "object",
+                "properties": {"inner": {"type": "date_nanos"}},
+            },
+            "temporal": {"type": "alias", "path": "wrapper.inner"},
+        }
+    )
+    assert types == {
+        "id": "keyword",
+        "count": "long",
+        "title": "keyword",
+        "wrapper.inner": "date_nanos",
+        "temporal": "date_nanos",
+    }
+
+
 def test_populate_sort_shared_unmapped_type():
     """Sort clauses null-fill documents in indexes that do not map the field."""
     sort = populate_sort_shared(
@@ -414,6 +470,21 @@ def test_populate_sort_shared_unmapped_type():
         "missing": "_last",
     }
     assert sort["id"] == {"order": "asc"}
+
+    # The field's mapped type is used when known: a double field sorted with
+    # unmapped_type keyword still fails with incompatible sort types.
+    sort = populate_sort_shared(
+        [SimpleNamespace(field="properties.score", direction="desc")],
+        field_types={"properties.score": "double"},
+    )
+    assert sort["properties.score"]["unmapped_type"] == "double"
+
+    # Unknown names still fall back to keyword so they evaluate to null.
+    sort = populate_sort_shared(
+        [SimpleNamespace(field="not.mapped", direction="asc")],
+        field_types={"properties.score": "double"},
+    )
+    assert sort["not.mapped"]["unmapped_type"] == "keyword"
 
 
 def test_sort_post_request_spec_conformance():

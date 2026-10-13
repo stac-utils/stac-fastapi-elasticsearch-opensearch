@@ -919,19 +919,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search, metadata
 
     @staticmethod
-    def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
+    def populate_sort(
+        sortby: list, field_types: dict[str, str] | None = None
+    ) -> dict[str, dict[str, str]] | None:
         """Create a sort configuration for OpenSearch queries.
 
         This method delegates to the shared implementation in populate_sort_shared.
 
         Args:
             sortby (List): A list of sort specifications, each containing a field and direction.
+            field_types (dict[str, str] | None): Optional map of sortable field
+                names to their engine field type, used for unmapped_type.
 
         Returns:
             dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
                 configurations, or None if no sort was specified.
         """
-        return populate_sort_shared(sortby=sortby)
+        return populate_sort_shared(sortby=sortby, field_types=field_types)
 
     @retry_on_datetime_not_found
     @retry_on_connection_error

@@ -472,12 +472,16 @@ def validate_sort_fields_shared(field_names: Iterable[str]) -> None:
 
 
 def populate_sort_shared(
-    sortby: list, is_collection: bool = False
+    sortby: list,
+    is_collection: bool = False,
+    field_types: dict[str, str] | None = None,
 ) -> dict[str, dict[str, str]] | None:
     """Create a sort configuration for Elasticsearch/OpenSearch queries.
 
     Args:
         sortby (List): A list of sort specifications, each containing a field and direction.
+        field_types (dict[str, str] | None): Optional map of sortable field names to
+            their engine field type, used for unmapped_type. Defaults to keyword.
 
     Returns:
         dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
@@ -500,8 +504,16 @@ def populate_sort_shared(
             field_name = remap_sort_field_shared(s.field, is_collection=is_collection)
             direction = s.direction
             # Indices missing the field sort its documents as null rather than
-            # failing, so cross-collection sorts never silently drop hits.
-            sort_obj = {"order": direction, "unmapped_type": "keyword"}
+            # failing, so cross-collection sorts never silently drop hits. The
+            # unmapped type must match the field's mapped type — sorting a
+            # double field with unmapped_type keyword still fails with
+            # incompatible sort types across shards.
+            unmapped_type = "keyword"
+            if field_types:
+                unmapped_type = (
+                    field_types.get(s.field) or field_types.get(field_name) or "keyword"
+                )
+            sort_obj = {"order": direction, "unmapped_type": unmapped_type}
 
             # Inject concrete fallbacks for temporal fields using epoch milliseconds
             # to avoid Java NumberFormatException when OpenSearch tries to parse ISO strings

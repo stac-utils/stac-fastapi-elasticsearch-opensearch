@@ -1122,9 +1122,17 @@ class CoreClient(AsyncBaseCoreClient):
                 await self.sortables_cache.validate(
                     (s.field for s in sortby), collection_id=collection_ids[0]
                 )
-            elif get_bool_env("ROOT_QUERYABLES_UNION", default=False):
-                await self.sortables_cache.validate(s.field for s in sortby)
-            sort = self.database.populate_sort(sortby)
+                field_types = await self.sortables_cache.get_collection_field_types(
+                    collection_ids[0]
+                )
+            else:
+                if get_bool_env("ROOT_QUERYABLES_UNION", default=False):
+                    await self.sortables_cache.validate(s.field for s in sortby)
+                # Even where any field name is valid, the field's mapped type
+                # is needed for unmapped_type or partially-mapped fields fail
+                # with incompatible sort types across shards.
+                field_types = await self.sortables_cache.get_union_field_types()
+            sort = self.database.populate_sort(sortby, field_types=field_types)
 
         if search_request.limit:
             limit = search_request.limit
