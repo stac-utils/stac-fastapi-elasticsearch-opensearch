@@ -172,6 +172,36 @@ def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> boo
     return bool(resp["hits"]["total"]["value"])
 
 
+async def find_existing_item_ids(
+    client: Any, alias: str, doc_ids: list[str]
+) -> set[str]:
+    """Return the subset of document IDs that exist in any index under an alias.
+
+    Used to detect duplicates across all physical indexes of a collection
+    (e.g., datetime-sharded indexes), where ``_id`` uniqueness enforced by the
+    search engine only applies within a single index.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to search against.
+        doc_ids: The document IDs to look up.
+
+    Returns:
+        set[str]: The document IDs found under the alias.
+    """
+    if not doc_ids:
+        return set()
+    resp = await client.search(
+        index=alias,
+        body={
+            "query": {"ids": {"values": doc_ids}},
+            "_source": False,
+            "size": len(doc_ids),
+        },
+    )
+    return {hit["_id"] for hit in resp["hits"]["hits"]}
+
+
 def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:
     """Add bbox_shape field to a collection document for spatial queries.
 

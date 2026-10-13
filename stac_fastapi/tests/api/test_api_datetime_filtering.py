@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
+from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id, mk_item_id
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 
 
@@ -1637,3 +1637,182 @@ async def test_patch_item_datetime_different_value_allowed_use_datetime_false(
     )
     assert response.status_code == 200
     assert response.json()["properties"]["datetime"] == "2020-02-15T12:00:00Z"
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_insert_existing_id_different_datetime_index(
+    mock_datetime_env, app_client, ctx, txn_client
+):
+    """Re-ingesting an existing item id under a different datetime must conflict,
+    not silently duplicate it in another index (#571)."""
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+
+    # Different start/end range resolves to a different physical index.
+    duplicate_item = deepcopy(ctx.item)
+    duplicate_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+
+    response = await app_client.post(
+        f"/collections/{collection_id}/items", json=duplicate_item
+    )
+    assert response.status_code == 409
+
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
+    )
+    assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_feature_collection_insert_existing_id_different_datetime_index(
+    mock_datetime_env, app_client, ctx, txn_client
+):
+    """A FeatureCollection re-ingesting an existing item id under a different
+    datetime must report a conflict, not silently duplicate it (#571)."""
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+
+    new_item = deepcopy(ctx.item)
+    new_item["id"] = str(uuid.uuid4())
+
+    duplicate_item = deepcopy(ctx.item)
+    duplicate_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+
+    payload = {
+        "type": "FeatureCollection",
+        "features": [new_item, duplicate_item],
+    }
+    response = await app_client.post(
+        f"/collections/{collection_id}/items", json=payload
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert new_item["id"] in body["successfully_added"]
+    assert item_id in body["conflict_errors"]
+
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
+    )
+    assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_put_item_upsert_nonexistent_creates_for_datetime_index(
+    mock_datetime_env, app_client, ctx, load_test_data
+):
+    """PUT of an item that does not exist yet creates it instead of 404 (#571)."""
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = ctx.collection["id"]
+
+    new_item = load_test_data("test_item.json")
+    new_item["id"] = "brand-new-item"
+
+    response = await app_client.put(
+        f"/collections/{collection_id}/items/{new_item['id']}", json=new_item
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == "brand-new-item"
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_update_item_changed_datetime_bypasses_queue(
+    mock_datetime_env, app_client, ctx, monkeypatch
+):
+    """A PUT that changes the datetime fields must reach the database layer's
+    datetime validation instead of being queued (#571)."""
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+
+    collection_id = ctx.collection["id"]
+
+    updated_item = deepcopy(ctx.item)
+    updated_item["properties"]["start_datetime"] = "2020-02-10T12:30:22Z"
+
+    response = await app_client.put(
+        f"/collections/{collection_id}/items/{ctx.item['id']}", json=updated_item
+    )
+    assert response.status_code == 400
+    assert "start_datetime" in response.json()["detail"]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_queued_insert_existing_id_different_datetime_no_duplicate(
+    mock_datetime_env, app_client, ctx, txn_client, monkeypatch
+):
+    """A queued re-ingest of an existing item id under a different datetime is
+    reported as a conflict by the worker instead of duplicating (#571)."""
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    from scripts.item_queue_worker import ItemQueueWorker
+    from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, connect_redis
+
+    redis = await connect_redis()
+    if redis is None:
+        pytest.skip("Redis not configured")
+    await redis.aclose()
+
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+
+    duplicate_item = deepcopy(ctx.item)
+    duplicate_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+
+    payload = {"type": "FeatureCollection", "features": [duplicate_item]}
+    response = await app_client.post(
+        f"/collections/{collection_id}/items", json=payload
+    )
+    assert response.status_code == 202
+
+    queue_manager = await AsyncRedisQueueManager.create()
+    try:
+        pending_items = await queue_manager.get_pending_items(collection_id)
+        assert len(pending_items) == 1
+
+        worker = ItemQueueWorker()
+        await worker._init_queue_manager()
+        try:
+            await worker._flush_collection(collection_id)
+        finally:
+            await worker.queue_manager.close()
+
+        await txn_client.database.client.indices.refresh(index="_all")
+
+        count = await txn_client.database.client.count(
+            index=index_alias_by_collection_id(collection_id),
+            body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
+        )
+        assert count["count"] == 1
+
+        failed_key = queue_manager._get_failed_set_key(collection_id)
+        failed_ids = await queue_manager.redis.smembers(failed_key)
+        failed_ids_str = {
+            fid.decode("utf-8") if isinstance(fid, bytes) else fid for fid in failed_ids
+        }
+        assert item_id in failed_ids_str
+    finally:
+        await queue_manager.close()

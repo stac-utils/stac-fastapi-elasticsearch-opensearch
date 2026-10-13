@@ -1802,6 +1802,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
 
+        # Queued writes bypass the datetime-index validation in create_item and
+        # could create cross-index duplicates, so updates go straight to the
+        # database when datetime index filtering is enabled.
+        if use_queue and get_bool_env("ENABLE_DATETIME_INDEX_FILTERING", default=False):
+            use_queue = False
+
         # 1. UNIFIED PREPROCESSING LAYER
         # Runs unconditionally so DB and Queue both get the exact same standardized payload
         bulk_client = BulkTransactionsClient(
