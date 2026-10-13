@@ -21,7 +21,6 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.core import parse_search_filter
 from stac_fastapi.core.extensions.filter import (
     CQL2FilterError,
     check_cql2_literals,
@@ -1690,20 +1689,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 )
             search_request.collections = intersected
         else:
-            # If the catalog is empty (no descendant collections), return empty results immediately
-            if not allowed_collections:
-                cql2_filter = getattr(search_request, "filter_expr", None)
-                if cql2_filter is None:
-                    cql2_filter = getattr(search_request, "filter", None)
-                try:
-                    check_cql2_literals(cql2_filter)
-                except CQL2FilterError as e:
-                    raise HTTPException(
-                        status_code=400, detail=f"Invalid filter parameter: {e}."
-                    )
-                return ItemCollection(type="FeatureCollection", features=[], links=[])
-
-            # No specific collections requested, bound it to all descendant collections
+            # No specific collections requested, bound it to all descendant
+            # collections; an empty list still returns empty results while
+            # running the core search's validation (#935)
             search_request.collections = allowed_collections
 
         # Hand off to core search logic
@@ -1751,11 +1739,6 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         allowed_collections = await self.get_all_descendant_collections(
             catalog_id, request
         )
-
-        if not allowed_collections:
-            if kwargs.get("filter_expr"):
-                parse_search_filter(kwargs["filter_expr"], kwargs.get("filter_lang"))
-            return ItemCollection(type="FeatureCollection", features=[], links=[])
 
         # 2. Intersect requested collections with allowed collections
         if collections:
