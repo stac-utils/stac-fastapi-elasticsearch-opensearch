@@ -25,6 +25,12 @@ from stac_fastapi.api.models import GeoJSONResponse
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
+from stac_fastapi.core.etag import (
+    check_etag,
+    check_if_match,
+    if_match_header,
+    record_etag,
+)
 from stac_fastapi.core.exceptions import QueuedSuccess
 from stac_fastapi.core.extensions.filter import (
     CQL2FilterError,
@@ -772,7 +778,10 @@ class CoreClient(AsyncBaseCoreClient):
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
         request = kwargs["request"]
-        collection = await self.database.find_collection(collection_id=collection_id)
+        collection, version = await self.database.find_collection_with_version(
+            collection_id=collection_id
+        )
+        record_etag(request, version)
         return self.collection_serializer.db_to_stac(
             collection=collection,
             request=request,
@@ -823,7 +832,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: 404 if the collection does not exist.
         """
-        await self.get_collection(collection_id=collection_id, request=request)
+        await self.database.find_collection(collection_id=collection_id)
 
         # Delegate directly to GET search for consistency
         return await self.get_search(
@@ -857,10 +866,12 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while getting the item from the database.
             NotFoundError: If the item does not exist in the specified collection.
         """
-        base_url = str(kwargs["request"].base_url)
-        item = await self.database.get_one_item(
+        request = kwargs["request"]
+        base_url = str(request.base_url)
+        item, version = await self.database.get_one_item_with_version(
             item_id=item_id, collection_id=collection_id
         )
+        record_etag(request, version)
         return self.item_serializer.db_to_stac(item, base_url)
 
     async def get_search(
@@ -1417,7 +1428,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs.get("request")
         base_url = str(request.base_url)
         item_dict = item.model_dump(mode="json")
-        use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
+        # The queue writes with upsert semantics, so with REQUIRE_IF_MATCH a create
+        # is written directly, where an existing id gets 409.
+        use_queue = get_bool_env(
+            "ENABLE_REDIS_QUEUE", default=False
+        ) and not get_bool_env("REQUIRE_IF_MATCH", default=False)
 
         # 1. FAIL-FAST: Verify collection exists before doing any processing
         await self.database.find_collection(collection_id=collection_id)
@@ -1500,9 +1515,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 )
 
         # 4. DATABASE INSERTION LAYER
-        await self.database.create_item(
+        version = await self.database.create_item(
             preprocessed_item, base_url=base_url, upsert=False, **kwargs
         )
+        record_etag(kwargs.get("request"), version)
         return ItemSerializer.db_to_stac(preprocessed_item, base_url)
 
     async def _create_feature_collection(
@@ -1807,14 +1823,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         item_dict = item.model_dump(mode="json")
         populate_from_uri(item_dict, "id", item_id)
         populate_from_uri(item_dict, "collection", collection_id)
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
+        base_url = str(request.base_url)
 
         existing_item = await self.database.get_item_for_write(collection_id, item_id)
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_dict["properties"]["updated"] = now
 
-        use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
+        # A queued write cannot be checked against If-Match atomically, so a
+        # conditional PUT is validated and written directly.
+        use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False) and (
+            request.headers.get("if-match") is None
+        )
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
 
         # 1. UNIFIED PREPROCESSING LAYER
@@ -1835,7 +1856,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         ) and (validate_before_queue or not use_queue):
             await self._validate_single_item(processed_item)
 
-        # 3. ROUTING LAYER (Queue)
+        # 3. PRECONDITION LAYER (If-Match), checked again atomically by the write
+        version = await check_if_match(
+            request,
+            f"Item {item_id}",
+            lambda: self.database.get_one_item_with_version(
+                collection_id, item_id, include_hidden=True
+            ),
+        )
+
+        # 4. ROUTING LAYER (Queue)
         if use_queue:
             from stac_fastapi.core.utilities import queue_items_if_enabled
 
@@ -1857,10 +1887,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     payload=ItemSerializer.db_to_stac(processed_item, base_url)
                 )
 
-        # 4. DATABASE INSERTION LAYER (No Queue)
-        await self.database.create_item(
-            processed_item, base_url=base_url, upsert=True, **kwargs
+        # 5. DATABASE INSERTION LAYER (No Queue)
+        new_version = await self.database.create_item(
+            processed_item, base_url=base_url, upsert=True, version=version, **kwargs
         )
+        record_etag(request, new_version)
         return ItemSerializer.db_to_stac(processed_item, base_url)
 
     @overrides
@@ -1897,8 +1928,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             HTTPException: If the patched item fails validation (when enabled).
 
         """
-        base_url = str(kwargs["request"].base_url)
-        content_type = bare_media_type(kwargs["request"].headers.get("content-type"))
+        request = kwargs["request"]
+        base_url = str(request.base_url)
+        content_type = bare_media_type(request.headers.get("content-type"))
+        resource = f"Item {item_id}"
 
         for field, expected in (("id", item_id), ("collection", collection_id)):
             if patch_changes_field(patch, field, expected):
@@ -1909,6 +1942,31 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
+            # Request checks come before the precondition (RFC 9110, section 13.2.1).
+            if isinstance(patch, dict):
+                patch = partialItemValidator.validate_python(patch)
+            if not (
+                (
+                    isinstance(patch, list)
+                    and content_type == "application/json-patch+json"
+                )
+                or (
+                    isinstance(patch, PartialItem)
+                    and content_type
+                    in ["application/merge-patch+json", "application/json"]
+                )
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
+                )
+            version = await check_if_match(
+                request,
+                resource,
+                lambda: self.database.get_one_item_with_version(
+                    collection_id, item_id, include_hidden=True
+                ),
+            )
             item = None
             if (
                 isinstance(patch, list)
@@ -1919,6 +1977,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     item_id=item_id,
                     operations=patch,
                     base_url=base_url,
+                    version=version,
                 )
 
             if isinstance(patch, dict):
@@ -1933,9 +1992,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     item_id=item_id,
                     item=patch,
                     base_url=base_url,
+                    version=version,
                 )
 
             if item:
+                # Read back with the version, so the body and ETag agree; the
+                # patch may have hidden the item, and a write returns it anyway.
+                item, new_version = await self.database.get_one_item_with_version(
+                    collection_id, item_id, include_hidden=True
+                )
+                record_etag(request, new_version)
                 return ItemSerializer.db_to_stac(item, base_url=base_url)
 
             raise HTTPException(
@@ -1945,8 +2011,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current item state from DB
-        existing_item = await self.database.get_item_for_write(
-            item_id=item_id, collection_id=collection_id
+        existing_item, current = await self.database.get_one_item_with_version(
+            item_id=item_id, collection_id=collection_id, include_hidden=True
         )
         if not existing_item:
             raise HTTPException(
@@ -1981,13 +2047,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
+        # Request checks came first (RFC 9110, section 13.2.1); now the precondition.
+        version = check_etag(if_match_header(request, resource), current, resource)
         db_item = ItemSerializer.stac_to_db(patched_dict, base_url=base_url)
-        await self.database.create_item(
+        new_version = await self.database.create_item(
             db_item,
             base_url=base_url,
             upsert=True,
+            version=version,
             **kwargs,
         )
+        record_etag(request, new_version)
 
         return ItemSerializer.db_to_stac(db_item, base_url=base_url)
 
@@ -2002,8 +2072,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             None: Returns 204 No Content on successful deletion
         """
+        version = await check_if_match(
+            kwargs.get("request"),
+            f"Item {item_id}",
+            lambda: self.database.get_one_item_with_version(
+                collection_id, item_id, include_hidden=True
+            ),
+        )
         await self.database.delete_item(
-            item_id=item_id, collection_id=collection_id, **kwargs
+            item_id=item_id, collection_id=collection_id, version=version, **kwargs
         )
         return None
 
@@ -2037,7 +2114,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs["request"]
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
-        await self.database.create_collection(collection=collection, **kwargs)
+        version = await self.database.create_collection(collection=collection, **kwargs)
+        record_etag(request, version)
         return CollectionSerializer.db_to_stac(
             collection,
             request,
@@ -2086,12 +2164,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs["request"]
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
-        await self.database.update_collection(
+        version = await check_if_match(
+            request,
+            f"Collection {collection_id}",
+            lambda: self.database.find_collection_with_version(collection_id),
+        )
+        new_version = await self.database.update_collection(
             collection_id=collection_id,
             collection=collection,
             preserve_parent_ids=True,
+            version=version,
             **kwargs,
         )
+        record_etag(request, new_version)
 
         return CollectionSerializer.db_to_stac(
             collection,
@@ -2129,6 +2214,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         base_url = str(kwargs["request"].base_url)
         content_type = bare_media_type(kwargs["request"].headers.get("content-type"))
         request = kwargs["request"]
+        resource = f"Collection {collection_id}"
 
         changes_collection_alias = isinstance(patch, list) and any(
             _op_member(op, "path") == "collection"
@@ -2156,7 +2242,26 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
-            await self.database.find_collection(collection_id)
+            # Request checks come before the precondition (RFC 9110, section 13.2.1).
+            if isinstance(patch, dict):
+                patch = partialCollectionValidator.validate_python(patch)
+            if not (
+                (
+                    isinstance(patch, list)
+                    and content_type == "application/json-patch+json"
+                )
+                or (
+                    isinstance(patch, PartialCollection)
+                    and content_type
+                    in ["application/merge-patch+json", "application/json"]
+                )
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
+                )
+            _, current = await self.database.find_collection_with_version(collection_id)
+            version = check_etag(if_match_header(request, resource), current, resource)
             collection = None
             if (
                 isinstance(patch, list)
@@ -2166,6 +2271,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     collection_id=collection_id,
                     operations=patch,
                     base_url=base_url,
+                    version=version,
                 )
 
             if isinstance(patch, dict):
@@ -2179,9 +2285,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     collection_id=collection_id,
                     collection=patch,
                     base_url=base_url,
+                    version=version,
                 )
 
             if collection:
+                # Read back with the version, so the body and ETag agree.
+                (
+                    collection,
+                    new_version,
+                ) = await self.database.find_collection_with_version(collection_id)
+                record_etag(request, new_version)
                 return CollectionSerializer.db_to_stac(
                     collection,
                     request,
@@ -2195,7 +2308,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current collection state from DB
-        existing_collection = await self.database.find_collection(collection_id)
+        (
+            existing_collection,
+            current,
+        ) = await self.database.find_collection_with_version(collection_id)
         if not existing_collection:
             raise HTTPException(
                 status_code=404,
@@ -2232,15 +2348,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             )
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
+        # Request checks came first (RFC 9110, section 13.2.1); now the precondition.
+        version = check_etag(if_match_header(request, resource), current, resource)
         db_collection = self.database.collection_serializer.stac_to_db(
             patched_dict, request
         )
-        await self.database.update_collection(
+        new_version = await self.database.update_collection(
             collection_id=collection_id,
             collection=db_collection,
             preserve_parent_ids=True,
+            version=version,
             refresh=True,
         )
+        record_etag(request, new_version)
 
         return CollectionSerializer.db_to_stac(
             db_collection,
@@ -2264,7 +2384,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist
         """
-        await self.database.delete_collection(collection_id=collection_id, **kwargs)
+        version = await check_if_match(
+            kwargs.get("request"),
+            f"Collection {collection_id}",
+            lambda: self.database.find_collection_with_version(collection_id),
+        )
+        await self.database.delete_collection(
+            collection_id=collection_id, version=version, **kwargs
+        )
         return None
 
 
@@ -2329,6 +2456,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             raise HTTPException(
                 status_code=400,
                 detail="The /collections/{collection_id}/bulk_items endpoint is invalid when ENABLE_DATETIME_INDEX_FILTERING is set to true. Try using the /collections/{collection_id}/items endpoint.",
+            )
+        if items.method == BulkTransactionMethod.UPSERT and get_bool_env(
+            "REQUIRE_IF_MATCH", default=False
+        ):
+            raise HTTPException(
+                status_code=428,
+                detail="A bulk upsert cannot carry If-Match, which REQUIRE_IF_MATCH "
+                "requires for updates; use method 'insert', or PUT each item "
+                "with If-Match.",
             )
 
         if request:

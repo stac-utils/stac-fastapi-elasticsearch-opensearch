@@ -5,6 +5,7 @@ from typing import Any, Iterable
 
 from stac_pydantic.shared import BBox
 
+from stac_fastapi.core.etag import DocumentVersion
 from stac_fastapi.types.stac import Collection, Item
 
 
@@ -59,8 +60,24 @@ class BaseDatabaseLogic(abc.ABC):
         return await self.get_one_item(collection_id, item_id, include_hidden=True)
 
     @abc.abstractmethod
-    async def create_item(self, item: dict, refresh: bool = False) -> None:
-        """Create an item in the database."""
+    async def get_one_item_with_version(
+        self, collection_id: str, item_id: str
+    ) -> tuple[dict, DocumentVersion]:
+        """Retrieve a single item and the version of its stored document."""
+        pass
+
+    @abc.abstractmethod
+    async def create_item(
+        self,
+        item: dict,
+        refresh: bool = False,
+        version: DocumentVersion | None = None,
+        **kwargs: Any,
+    ) -> DocumentVersion | None:
+        """Create an item in the database; return the version it stored.
+
+        With `version` (If-Match), only that stored version is replaced; 412 otherwise.
+        """
         pass
 
     @abc.abstractmethod
@@ -78,6 +95,7 @@ class BaseDatabaseLogic(abc.ABC):
         item: dict,
         base_url: str,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> dict:
         """Patch a item in the database follows RF7396."""
         pass
@@ -91,13 +109,18 @@ class BaseDatabaseLogic(abc.ABC):
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> dict:
         """Patch a item in the database follows RF6902."""
         pass
 
     @abc.abstractmethod
     async def delete_item(
-        self, item_id: str, collection_id: str, refresh: bool = False
+        self,
+        item_id: str,
+        collection_id: str,
+        refresh: bool = False,
+        version: DocumentVersion | None = None,
     ) -> None:
         """Delete an item from the database."""
         pass
@@ -115,8 +138,10 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_collection(self, collection: dict, refresh: bool = False) -> None:
-        """Create a collection in the database."""
+    async def create_collection(
+        self, collection: dict, refresh: bool = False
+    ) -> DocumentVersion | None:
+        """Create a collection in the database; return the version it stored."""
         pass
 
     @abc.abstractmethod
@@ -126,6 +151,7 @@ class BaseDatabaseLogic(abc.ABC):
         collection: dict,
         base_url: str,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> dict:
         """Patch a collection in the database follows RF7396."""
         pass
@@ -138,6 +164,7 @@ class BaseDatabaseLogic(abc.ABC):
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> dict:
         """Patch a collection in the database follows RF6902."""
         pass
@@ -148,13 +175,21 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def find_collection_with_version(
+        self, collection_id: str
+    ) -> tuple[dict, DocumentVersion]:
+        """Find a collection and the version of its stored document."""
+        pass
+
+    @abc.abstractmethod
     async def update_collection(
         self,
         collection_id: str,
         collection: Collection,
         preserve_parent_ids: bool = False,
+        version: DocumentVersion | None = None,
         **kwargs: Any,
-    ) -> None:
+    ) -> DocumentVersion | None:
         """Update a collection in the database."""
         pass
 
@@ -176,7 +211,10 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def delete_collection(
-        self, collection_id: str, refresh: bool = False
+        self,
+        collection_id: str,
+        refresh: bool = False,
+        version: DocumentVersion | None = None,
     ) -> None:
         """Delete a collection from the database."""
         pass
@@ -218,8 +256,13 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
-        """Create a catalog; reject an id already used by any document."""
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False
+    ) -> DocumentVersion | None:
+        """Create a catalog; reject an id already used by any document.
+
+        Returns the version of the stored document.
+        """
         pass
 
     @abc.abstractmethod
@@ -228,12 +271,25 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
+    async def find_catalog_with_version(
+        self, catalog_id: str
+    ) -> tuple[dict, DocumentVersion]:
+        """Find a catalog and the version of its stored document."""
+        pass
+
+    @abc.abstractmethod
+    async def delete_catalog(
+        self,
+        catalog_id: str,
+        refresh: bool = False,
+        version: DocumentVersion | None = None,
+    ) -> None:
         """Delete a catalog from the database.
 
         Implementations MUST verify the document exists and is a Catalog
         before deleting, raising NotFoundError otherwise; deleting a catalog
-        must never remove Collection or Item data.
+        must never remove Collection or Item data. With `version` (If-Match),
+        only that stored version is deleted, and nothing changes otherwise.
         """
         pass
 
@@ -347,7 +403,11 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def update_catalog(
-        self, catalog_id: str, catalog: dict, refresh: bool | str = False
+        self,
+        catalog_id: str,
+        catalog: dict,
+        refresh: bool | str = False,
+        version: DocumentVersion | None = None,
     ) -> None:
         """Replace a catalog, keeping its stored parent_ids."""
         pass

@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from stac_fastapi.core.etag import DocumentVersion
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX, ITEMS_INDEX_PREFIX
 from stac_fastapi.sfeos_helpers.search_engine.selection.selectors import (
     DatetimeBasedIndexSelector,
@@ -199,7 +200,9 @@ async def test_create_arguments(
     app = owned_collection_app
     test_collection["id"] = app.prefix
     monkeypatch.delenv("DATABASE_REFRESH", raising=False)
-    index = AsyncMock()
+    index = AsyncMock(
+        return_value={"_index": COLLECTIONS_INDEX, "_seq_no": 0, "_primary_term": 1}
+    )
     exists = AsyncMock(
         side_effect=AssertionError("creation must use an authoritative write")
     )
@@ -210,7 +213,7 @@ async def test_create_arguments(
         app.database.async_index_inserter, "create_simple_index", provision
     )
     result = await app.database.create_collection(test_collection, refresh=refresh)
-    assert result is None
+    assert result == DocumentVersion(index=COLLECTIONS_INDEX, seq_no=0, primary_term=1)
     kwargs = index.call_args.kwargs
     assert kwargs["op_type"] == "create"
     assert kwargs["refresh"] == expected

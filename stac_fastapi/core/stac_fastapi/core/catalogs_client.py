@@ -21,6 +21,7 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.etag import check_if_match, record_etag
 from stac_fastapi.core.extensions.filter import (
     CQL2FilterError,
     check_cql2_literals,
@@ -348,13 +349,14 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             ]
 
         try:
-            await self.database.create_catalog(db_catalog_dict, refresh=True)
+            version = await self.database.create_catalog(db_catalog_dict, refresh=True)
         except Exception as e:
             logger.error(
                 f"Error creating catalog {db_catalog_dict.get('id')}: {e}",
                 exc_info=True,
             )
             raise
+        record_etag(request, version)
         created_obj = self.catalog_serializer.db_to_stac(
             db_catalog_dict, request, extensions=["CatalogsExtension"]
         )
@@ -369,7 +371,10 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     ) -> Catalog:
         """Get a specific catalog by ID according to the Multi-Tenant specification."""
         # 1. Fetch data from index
-        catalog_dict = await self.database.find_catalog(catalog_id)
+        catalog_dict, version = await self.database.find_catalog_with_version(
+            catalog_id
+        )
+        record_etag(request, version)
 
         # 2. Serialize database record to STAC object
         catalog_obj = self.catalog_serializer.db_to_stac(
@@ -526,14 +531,23 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 and link.get("rel") not in ("parent", "child", "children")
             ]
 
+        version = await check_if_match(
+            request,
+            f"Catalog {catalog_id}",
+            lambda: self.database.find_catalog_with_version(catalog_id),
+        )
         try:
             await self.database.update_catalog(
-                catalog_id, db_catalog_dict, refresh=True
+                catalog_id, db_catalog_dict, refresh=True, version=version
             )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error updating catalog {catalog_id}: {e}", exc_info=True)
             raise
-        updated = await self.database.find_catalog(catalog_id)
+        # Read back with the version, so the body and ETag agree.
+        updated, new_version = await self.database.find_catalog_with_version(catalog_id)
+        record_etag(request, new_version)
         updated_obj = self.catalog_serializer.db_to_stac(
             updated, request, extensions=["CatalogsExtension"]
         )
@@ -551,8 +565,17 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         **kwargs,
     ) -> None:
         """Delete a catalog."""
+        version = await check_if_match(
+            request,
+            f"Catalog {catalog_id}",
+            lambda: self.database.find_catalog_with_version(catalog_id),
+        )
         try:
-            await self.database.delete_catalog(catalog_id, refresh=True)
+            await self.database.delete_catalog(
+                catalog_id, refresh=True, version=version
+            )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error deleting catalog {catalog_id}: {e}", exc_info=True)
             raise
@@ -819,13 +842,16 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 ]
 
             try:
-                await self.database.create_catalog(db_catalog_dict, refresh=True)
+                version = await self.database.create_catalog(
+                    db_catalog_dict, refresh=True
+                )
             except Exception as e:
                 logger.error(
                     f"Error creating sub-catalog {db_catalog_dict.get('id')} under catalog {catalog_id}: {e}",
                     exc_info=True,
                 )
                 raise
+            record_etag(request, version)
             new_obj = self.catalog_serializer.db_to_stac(
                 db_catalog_dict, request, extensions=["CatalogsExtension"]
             )
@@ -942,13 +968,14 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             ]
 
         try:
-            await self.database.create_collection(col_dict, refresh=True)
+            version = await self.database.create_collection(col_dict, refresh=True)
         except Exception as e:
             logger.error(
                 f"Error creating collection {col_dict.get('id')} in catalog {catalog_id}: {e}",
                 exc_info=True,
             )
             raise
+        record_etag(request, version)
         collection_obj = self.collection_serializer.db_to_stac_in_catalog(
             col_dict,
             request,
@@ -973,10 +1000,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             raise NotFoundError(f"Catalog {catalog_id} not found")
 
         # Get collection and validate it belongs to this catalog
-        collection_dict = await self.database.get_catalog_collection(
-            catalog_id=catalog_id,
-            collection_id=collection_id,
-            request=request,
+        collection_dict, version = await self.database.find_collection_with_version(
+            collection_id
         )
 
         # Verify collection is in this catalog's parent_ids
@@ -986,6 +1011,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 f"Collection {collection_id} not linked to catalog {catalog_id}"
             )
 
+        # The same collection and version as GET /collections/{collection_id}.
+        record_etag(request, version)
         collection_obj = self.collection_serializer.db_to_stac_in_catalog(
             collection_dict,
             request,
@@ -1062,12 +1089,12 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             collection_id, collection, request=request, refresh=True
         )
 
-        # Fetch updated collection
-        updated_collection = await self.database.get_catalog_collection(
-            catalog_id=catalog_id,
-            collection_id=collection_id,
-            request=request,
-        )
+        # Read back with the version, so the body and ETag agree.
+        (
+            updated_collection,
+            new_version,
+        ) = await self.database.find_collection_with_version(collection_id)
+        record_etag(request, new_version)
 
         collection_obj = self.collection_serializer.db_to_stac_in_catalog(
             updated_collection,
@@ -1320,12 +1347,11 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 f"Collection {collection_id} not linked to catalog {catalog_id}"
             )
 
-        item_dict = await self.database.get_catalog_collection_item(
-            catalog_id=catalog_id,
-            collection_id=collection_id,
-            item_id=item_id,
-            request=request,
+        item_dict, version = await self.database.get_one_item_with_version(
+            collection_id, item_id
         )
+        # The same item and version as GET /collections/{collection_id}/items/{item_id}.
+        record_etag(request, version)
 
         # Extract base URL as string for serializer
         base_url = self._get_base_url(request)
