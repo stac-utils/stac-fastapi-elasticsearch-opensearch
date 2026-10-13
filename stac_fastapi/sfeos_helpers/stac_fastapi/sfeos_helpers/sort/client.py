@@ -5,9 +5,10 @@ import logging
 import os
 import time
 from collections import deque
-from typing import Any
+from typing import Any, Iterable
 
 import attr
+from fastapi import HTTPException
 from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
@@ -197,6 +198,22 @@ def get_sortable_properties_shared(
     return sortables
 
 
+def _merge_properties(target: dict[str, Any], source: dict[str, Any]) -> None:
+    """Deep-merge field definitions so nested properties union, not overwrite."""
+    for name, field_def in source.items():
+        existing = target.get(name)
+        if existing is None:
+            target[name] = field_def
+            continue
+        if isinstance(existing, dict) and isinstance(field_def, dict):
+            existing_properties = existing.get("properties")
+            source_properties = field_def.get("properties")
+            if isinstance(existing_properties, dict) and isinstance(
+                source_properties, dict
+            ):
+                _merge_properties(existing_properties, source_properties)
+
+
 def _mapping_properties(mappings: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Merge the properties of every index in a get_mapping response."""
     properties: dict[str, dict[str, Any]] = {}
@@ -206,8 +223,7 @@ def _mapping_properties(mappings: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if not isinstance(index_mapping, dict):
             continue
         index_properties = (index_mapping.get("mappings") or {}).get("properties") or {}
-        for name, field_def in index_properties.items():
-            properties.setdefault(name, field_def)
+        _merge_properties(properties, index_properties)
     return properties
 
 
@@ -218,6 +234,9 @@ class SortablesCache:
         """Initialize the cache with a TTL from SORTABLES_CACHE_TTL seconds."""
         self._db_logic = database_logic
         self._properties: dict[str, dict[str, Any]] = {}
+        self._collection_properties: dict[
+            str, tuple[dict[str, dict[str, Any]], float]
+        ] = {}
         self._last_updated: float | None = None
         self._lock = asyncio.Lock()
         self.cache_ttl = int(os.getenv("SORTABLES_CACHE_TTL", "1800"))
@@ -249,6 +268,53 @@ class SortablesCache:
         if not self._is_fresh():
             await self._update_cache()
         return self._properties
+
+    async def get_collection_properties(
+        self, collection_id: str
+    ) -> dict[str, dict[str, Any]]:
+        """Return the sortable fields of one collection, cached per TTL."""
+        entry = self._collection_properties.get(collection_id)
+        if entry and time.monotonic() - entry[1] < self.cache_ttl:
+            return entry[0]
+        async with self._lock:
+            entry = self._collection_properties.get(collection_id)
+            if entry and time.monotonic() - entry[1] < self.cache_ttl:
+                return entry[0]
+            mappings = await self._db_logic.get_items_mapping(collection_id)
+            properties = get_sortable_properties_shared(_mapping_properties(mappings))
+            self._collection_properties[collection_id] = (
+                properties,
+                time.monotonic(),
+            )
+            return properties
+
+    async def validate(
+        self, field_names: Iterable[str], collection_id: str | None = None
+    ) -> None:
+        """Enforce additionalProperties: false on sortby field names.
+
+        Item searches validate against the union sortables advertised by
+        GET /sortables; collection-scoped item listings validate against that
+        collection's sortables.
+
+        Args:
+            field_names: sortby field names, as document paths.
+            collection_id: validate against this collection's sortables instead
+                of the cross-collection union.
+
+        Raises:
+            HTTPException: 400 if any field is not declared in the schema.
+        """
+        if collection_id is None:
+            allowed = set(DEFAULT_SORTABLES) | set(await self.get_union_properties())
+        else:
+            allowed = set(await self.get_collection_properties(collection_id))
+        undeclared = sorted(name for name in field_names if name not in allowed)
+        if undeclared:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Undeclared sort fields: {', '.join(undeclared)}.",
+            )
 
 
 @attr.s

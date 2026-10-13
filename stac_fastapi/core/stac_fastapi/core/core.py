@@ -76,6 +76,7 @@ from stac_fastapi.sfeos_helpers.database import (
     ItemAlreadyExistsError,
     separate_bulk_conflict_errors,
 )
+from stac_fastapi.sfeos_helpers.sort.client import SortablesCache
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -251,8 +252,9 @@ class CoreClient(AsyncBaseCoreClient):
     description: str = attr.ib(default="stac-fastapi")
 
     def __attrs_post_init__(self):
-        """Initialize the queryables cache."""
+        """Initialize the queryables and sortables caches."""
         self.queryables_cache = QueryablesCache(self.database)
+        self.sortables_cache = SortablesCache(self.database)
 
     def extension_is_enabled(self, extension_name: str) -> bool:
         """Check if an extension is enabled by checking self.extensions.
@@ -1111,7 +1113,18 @@ class CoreClient(AsyncBaseCoreClient):
 
         sort = None
         if hasattr(search_request, "sortby") and getattr(search_request, "sortby"):
-            sort = self.database.populate_sort(getattr(search_request, "sortby"))
+            sortby = getattr(search_request, "sortby")
+            # Enforce additionalProperties: false sortables schemas; the union
+            # /sortables schema applies to item search, a collection's schema to
+            # its /items listing. The default (non-union) /sortables advertises
+            # additionalProperties: true, so any field name is valid there.
+            if request.url.path.endswith("/items") and len(collection_ids or []) == 1:
+                await self.sortables_cache.validate(
+                    (s.field for s in sortby), collection_id=collection_ids[0]
+                )
+            elif get_bool_env("ROOT_QUERYABLES_UNION", default=False):
+                await self.sortables_cache.validate(s.field for s in sortby)
+            sort = self.database.populate_sort(sortby)
 
         if search_request.limit:
             limit = search_request.limit

@@ -169,16 +169,47 @@ async def test_sortables_links(app_client: AsyncClient, ctx):
 
 
 @pytest.mark.asyncio
-async def test_sortby_undeclared_field_bad_request(app_client: AsyncClient, ctx):
-    """Sorting on a field not in sortables is a 400, per additionalProperties."""
+async def test_sortby_undeclared_field(app_client: AsyncClient, ctx):
+    """Unknown sort fields sort as null on /search and 400 on /items."""
+    # /sortables advertises additionalProperties: true by default, so an
+    # unmapped name is a valid sort field whose values evaluate to null.
     resp = await app_client.post(
         "/search",
         json={"sortby": [{"field": "definitely_not_sortable", "direction": "asc"}]},
     )
+    assert resp.status_code == 200
+
+    # /collections/{id}/sortables advertises false, so undeclared fields 400.
+    resp = await app_client.get(
+        f"/collections/{ctx.collection['id']}/items?sortby=properties.undeclared"
+    )
     assert resp.status_code == 400
 
+    # Mapped but unsortable fields are not in sortables either.
     resp = await app_client.get(
         f"/collections/{ctx.collection['id']}/items?sortby=geometry"
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_sortby_union_membership(app_client: AsyncClient, ctx, monkeypatch):
+    """With ROOT_QUERYABLES_UNION, sortby fields must be in the union schema."""
+    monkeypatch.setenv("ROOT_QUERYABLES_UNION", "true")
+
+    resp = await app_client.post(
+        "/search",
+        json={
+            "sortby": [
+                {"field": "properties.eo:cloud_cover", "direction": "desc"},
+                {"field": "id"},
+            ]
+        },
+    )
+    assert resp.status_code == 200
+
+    resp = await app_client.post(
+        "/search", json={"sortby": [{"field": "definitely_not_sortable"}]}
     )
     assert resp.status_code == 400
 
@@ -220,7 +251,8 @@ def test_get_sortable_properties_shared():
 def _fake_database(calls: list[str]) -> SimpleNamespace:
     """A database stub that records get_items_mapping calls.
 
-    Returns a two-index response, as get_mapping over items_* would.
+    Returns a two-index response, as get_mapping over items_* would, with
+    nested `properties` objects like real item index mappings.
     """
 
     async def get_items_mapping(collection_id: str) -> dict:
@@ -230,14 +262,27 @@ def _fake_database(calls: list[str]) -> SimpleNamespace:
                 "mappings": {
                     "properties": {
                         "id": {"type": "keyword"},
-                        "properties.score": {"type": "long"},
+                        "properties": {
+                            "type": "object",
+                            "properties": {
+                                "datetime": {"type": "date_nanos"},
+                                "score": {"type": "long"},
+                            },
+                        },
                     }
                 }
             },
             "items_c2_000001": {
                 "mappings": {
                     "properties": {
-                        "properties.rating": {"type": "integer"},
+                        "id": {"type": "keyword"},
+                        "properties": {
+                            "type": "object",
+                            "properties": {
+                                "rating": {"type": "integer"},
+                                "platform": {"type": "keyword"},
+                            },
+                        },
                     }
                 }
             },
@@ -254,11 +299,36 @@ async def test_sortables_cache_reuses_union():
 
     properties = await cache.get_union_properties()
     assert properties["id"]["type"] == "string"
+    assert properties["properties.datetime"]["format"] == "date-time"
+    # Fields nested under `properties` union across indexes, not first-wins
     assert properties["properties.score"]["type"] == "number"
     assert properties["properties.rating"]["type"] == "integer"
+    assert properties["properties.platform"]["type"] == "string"
 
     assert await cache.get_union_properties() == properties
     assert calls == ["*"]
+
+
+@pytest.mark.asyncio
+async def test_sortables_cache_collection_properties():
+    """Per-collection sortables are cached and used to validate sortby."""
+    calls: list[str] = []
+    cache = SortablesCache(_fake_database(calls))
+
+    properties = await cache.get_collection_properties("c1")
+    assert properties["properties.score"]["type"] == "number"
+    assert await cache.get_collection_properties("c1") == properties
+    assert calls == ["c1"]
+
+    await cache.validate(["properties.score"], collection_id="c1")
+    with pytest.raises(HTTPException) as exc:
+        await cache.validate(["not.declared"], collection_id="c1")
+    assert exc.value.status_code == 400
+
+    # Union validation admits core fields plus unioned collection fields
+    await cache.validate(["id", "properties.rating"])
+    with pytest.raises(HTTPException):
+        await cache.validate(["not_declared"])
 
 
 @pytest.mark.asyncio
@@ -331,6 +401,19 @@ def test_sortby_excluded_fields_bad_request(monkeypatch):
     sort_field = SimpleNamespace(field="properties.secret", direction="asc")
     with pytest.raises(HTTPException):
         populate_sort_shared([sort_field])
+
+
+def test_populate_sort_shared_unmapped_type():
+    """Sort clauses null-fill documents in indexes that do not map the field."""
+    sort = populate_sort_shared(
+        [SimpleNamespace(field="properties.score", direction="desc")]
+    )
+    assert sort["properties.score"] == {
+        "order": "desc",
+        "unmapped_type": "keyword",
+        "missing": "_last",
+    }
+    assert sort["id"] == {"order": "asc"}
 
 
 def test_sort_post_request_spec_conformance():

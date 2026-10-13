@@ -499,7 +499,9 @@ def populate_sort_shared(
         for s in sortby:
             field_name = remap_sort_field_shared(s.field, is_collection=is_collection)
             direction = s.direction
-            sort_obj = {"order": direction}
+            # Indices missing the field sort its documents as null rather than
+            # failing, so cross-collection sorts never silently drop hits.
+            sort_obj = {"order": direction, "unmapped_type": "keyword"}
 
             # Inject concrete fallbacks for temporal fields using epoch milliseconds
             # to avoid Java NumberFormatException when OpenSearch tries to parse ISO strings
