@@ -1013,7 +1013,7 @@ You can customize additional settings in your `.env` file:
 | `APP_PORT` | Server port. | `8000` | Optional |
 | `ENVIRONMENT` | Runtime environment. | `local` | Optional |
 | `WEB_CONCURRENCY` | Number of worker processes. | `10` | Optional |
-| `RELOAD` | Enable auto-reload for development. | `true` | Optional |
+| `RELOAD` | Enable auto-reload for development. | `false` | Optional |
 
 ### 2. Backend Connection (Elasticsearch / OpenSearch)
 
