@@ -942,6 +942,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         search_after = decode_search_after_token_shared(token, sort)
 
+        # An explicitly empty collection scope (e.g. catalog search on a catalog
+        # with no collections) matches nothing. Return early, after the token
+        # has been decoded so a bad token still fails validation (#935).
+        if collection_ids == []:
+            return [], 0, None
+
         search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 

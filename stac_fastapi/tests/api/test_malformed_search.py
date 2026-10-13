@@ -165,7 +165,7 @@ async def test_bbox_intersects_validation(catalogs_app_client, search_scope, rou
 async def test_catalog_scope_precedes_parsing(
     catalogs_app_client, search_scope, load_test_data
 ):
-    """Preserve scoped rejection and the early return for an empty catalog."""
+    """Scoped rejection holds, and an empty catalog still runs query parsing (#935)."""
     routes, _ = search_scope
     response = await catalogs_app_client.get(
         routes["catalog"], params={"collections": "outside-scope", "query": "{"}
@@ -181,6 +181,11 @@ async def test_catalog_scope_precedes_parsing(
         response = await catalogs_app_client.get(
             f"{path}/search", params={"query": "{"}
         )
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "Invalid query parameter: expected valid JSON."
+        }
+        response = await catalogs_app_client.get(f"{path}/search")
         assert response.status_code == 200
         assert response.json()["features"] == []
     finally:
