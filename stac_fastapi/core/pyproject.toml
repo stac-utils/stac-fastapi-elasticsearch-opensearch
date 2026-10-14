@@ -57,7 +57,7 @@ catalogs = [
     "stac-fastapi-catalogs-extension==1.0.0",
 ]
 validator = [
-    "stac-valid>=4.6.1",
+    "stac-valid>=4.6.1,<4.7",
     "jsonpatch"
 ]
 
