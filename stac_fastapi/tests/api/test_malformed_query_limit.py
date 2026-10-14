@@ -160,7 +160,7 @@ async def test_get_limit_above_maximum_is_cropped(
 
 
 async def test_catalog_scope_precedes_limit_parsing(client, load_test_data):
-    """An empty catalog returns before the query limit is read."""
+    """An empty catalog validates the query limit like a populated one (#935)."""
     catalog = load_test_data("test_catalog.json")
     catalog["id"] = f"empty-{uuid.uuid4()}"
     path = f"/catalogs/{catalog['id']}"
@@ -168,6 +168,11 @@ async def test_catalog_scope_precedes_limit_parsing(client, load_test_data):
     assert response.status_code == 201, response.text
     try:
         response = await client.post(f"{path}/search", params={"limit": "bad"}, json={})
+        assert response.status_code == 400, response.text
+        assert response.json() == {
+            "detail": "Invalid limit parameter: must be a positive integer"
+        }
+        response = await client.post(f"{path}/search", json={})
         assert response.status_code == 200, response.text
         assert response.json()["features"] == []
     finally:

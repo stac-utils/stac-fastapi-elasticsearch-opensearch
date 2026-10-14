@@ -1,8 +1,14 @@
 """Tests for Catalogs Search Extension functionality."""
 
+import json
+import os
 import uuid
+from unittest import mock
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+
+from ..conftest import build_test_app_with_catalogs
 
 
 @pytest.mark.asyncio
@@ -45,6 +51,115 @@ async def test_catalog_search_post_empty_catalog(catalogs_app_client, load_test_
     search_result = search_resp.json()
     assert search_result["type"] == "FeatureCollection"
     assert search_result["features"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params,detail",
+    [
+        ({"token": "garbage"}, "Invalid pagination token"),
+        ({"intersects": "{"}, "Invalid intersects parameter"),
+        ({"query": "{"}, "Invalid query parameter"),
+        (
+            {
+                "filter-lang": "cql2-json",
+                "filter": json.dumps(
+                    {
+                        "op": "t_intersects",
+                        "args": [
+                            {"property": "datetime"},
+                            {"interval": ["2020-01-01T00:00:00Z", ".."]},
+                        ],
+                    }
+                ),
+            },
+            "t_intersects",
+        ),
+    ],
+    ids=["bad-token", "bad-intersects", "bad-query", "unsupported-cql2-op"],
+)
+async def test_catalog_search_get_empty_catalog_still_validates(
+    catalogs_app_client, load_test_data, params, detail
+):
+    """GET search on an empty catalog rejects input like a populated one (#935)."""
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"empty-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    search_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/search", params=params
+    )
+    assert search_resp.status_code == 400, search_resp.text
+    assert detail in search_resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,detail",
+    [
+        ({"token": "garbage"}, "Invalid pagination token"),
+        (
+            {
+                "filter-lang": "cql2-json",
+                "filter": {
+                    "op": "t_intersects",
+                    "args": [
+                        {"property": "datetime"},
+                        {"interval": ["2020-01-01T00:00:00Z", ".."]},
+                    ],
+                },
+            },
+            "t_intersects",
+        ),
+    ],
+    ids=["bad-token", "unsupported-cql2-op"],
+)
+async def test_catalog_search_post_empty_catalog_still_validates(
+    catalogs_app_client, load_test_data, body, detail
+):
+    """POST search on an empty catalog rejects input like a populated one (#935)."""
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"empty-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    search_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/search", json=body
+    )
+    assert search_resp.status_code == 400, search_resp.text
+    assert detail in search_resp.text
+
+
+@pytest.mark.asyncio
+async def test_catalog_search_empty_catalog_validates_queryables(
+    catalogs_app_client, load_test_data
+):
+    """With VALIDATE_QUERYABLES, a query on a non-queryable field is a 400 (#935)."""
+    # The queryables cache reads the setting when the app is built.
+    with mock.patch.dict(os.environ, {"VALIDATE_QUERYABLES": "true"}):
+        app = build_test_app_with_catalogs()
+
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"empty-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test-server"
+    ) as client:
+        search_resp = await client.post(
+            f"/catalogs/{catalog_id}/search",
+            json={"query": {"invalid_param": {"eq": "x"}}},
+        )
+    assert search_resp.status_code == 400, search_resp.text
+    assert "Invalid query fields" in search_resp.text
 
 
 @pytest.mark.asyncio

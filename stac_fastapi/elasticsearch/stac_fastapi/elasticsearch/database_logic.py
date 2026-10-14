@@ -79,6 +79,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
     merge_to_operations,
     operations_to_script,
+    protect_datetime_script,
     validate_datetime_operations,
 )
 from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
@@ -382,7 +383,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         return collections, next_token, matched
 
     @retry_on_connection_error
-    async def get_one_item(self, collection_id: str, item_id: str) -> dict:
+    async def get_one_item(
+        self, collection_id: str, item_id: str, *, include_hidden: bool = False
+    ) -> dict:
         """Retrieve a single item from the database.
 
         Args:
@@ -405,7 +408,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
             HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
 
-            if HIDE_ITEM_PATH:
+            if HIDE_ITEM_PATH and not include_hidden:
                 query = add_hidden_filter(base_query, HIDE_ITEM_PATH)
             else:
                 query = base_query
@@ -944,6 +947,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         search_after = decode_search_after_token_shared(token, sort)
 
+        # An explicitly empty collection scope (e.g. catalog search on a catalog
+        # with no collections) matches nothing. Return early, after the token
+        # has been decoded so a bad token still fails validation (#935).
+        if collection_ids == []:
+            return [], 0, None
+
         query = search.query.to_dict() if search.query else None
 
         # Special case for cql2-json index selection
@@ -1430,6 +1439,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 script = operations_to_script(
                     script_operations, create_nest=create_nest
                 )
+                if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+                    protect_datetime_script(
+                        script, self.async_index_inserter.use_datetime
+                    )
                 document_index = search_response["hits"]["hits"][0]["_index"]
                 await self.client.update(
                     index=document_index,
@@ -1446,7 +1459,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
 
-        item = await self.get_one_item(collection_id, item_id)
+        item = await self.get_item_for_write(collection_id, item_id)
 
         if new_collection_id:
             item["collection"] = new_collection_id

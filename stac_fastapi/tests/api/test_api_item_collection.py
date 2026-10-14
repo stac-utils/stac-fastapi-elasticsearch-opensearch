@@ -375,7 +375,7 @@ async def test_create_item_collection_mismatch_rejected(
     assert resp.status_code == 400
     resp_json = resp.json()
     assert (
-        "Collection ID from path does not match Collection ID from Item"
+        "Collection ID from path does not match Collection ID from request body"
         in resp_json["detail"]
     )
 
