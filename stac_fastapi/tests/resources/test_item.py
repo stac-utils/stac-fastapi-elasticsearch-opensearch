@@ -350,6 +350,19 @@ async def test_item_search_by_id_post(app_client, ctx, txn_client):
 
 
 @pytest.mark.asyncio
+async def test_item_search_empty_collections_list(app_client, ctx):
+    """POST /search with an empty collections array matches nothing (#935)."""
+    resp = await app_client.post("/search", json={"collections": []})
+    assert resp.status_code == 200
+    assert resp.json()["features"] == []
+
+    # GET /search?collections= is unchanged: an empty value is no constraint.
+    resp = await app_client.get("/search", params={"collections": ""})
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_item_search_spatial_query_post(app_client, ctx):
     """Test POST search with spatial query (core)"""
     test_item = ctx.item
