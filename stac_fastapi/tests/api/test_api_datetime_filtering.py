@@ -1542,9 +1542,9 @@ async def test_insert_existing_id_different_datetime_index(
     # the split via is_index_oversized so the duplicate lands in a genuinely
     # separate index rather than merely widening the existing index's range.
     duplicate_item = deepcopy(ctx.item)
-    duplicate_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
-    duplicate_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
-    duplicate_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
 
     with patch(
         "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
@@ -1576,9 +1576,9 @@ async def test_feature_collection_insert_existing_id_different_datetime_index(
     new_item["id"] = str(uuid.uuid4())
 
     duplicate_item = deepcopy(ctx.item)
-    duplicate_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
-    duplicate_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
-    duplicate_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
 
     payload = {
         "type": "FeatureCollection",
@@ -1664,9 +1664,9 @@ async def test_queued_insert_existing_id_different_datetime_no_duplicate(
     item_id = ctx.item["id"]
 
     duplicate_item = deepcopy(ctx.item)
-    duplicate_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
-    duplicate_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
-    duplicate_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
 
     payload = {"type": "FeatureCollection", "features": [duplicate_item]}
     response = await app_client.post(
@@ -1736,9 +1736,9 @@ async def test_insert_existing_id_unrefreshed_no_duplicate(
     # Re-ingest the same id under a datetime that resolves to a different
     # physical index (forced split).
     duplicate_item = deepcopy(existing)
-    duplicate_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
-    duplicate_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
-    duplicate_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
 
     with patch(
         "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
@@ -1780,9 +1780,9 @@ async def test_put_item_changed_datetime_unrefreshed_no_duplicate(
     )
 
     updated_item = deepcopy(existing)
-    updated_item["properties"]["start_datetime"] = "2015-02-08T12:30:22Z"
-    updated_item["properties"]["datetime"] = "2015-02-12T12:30:22Z"
-    updated_item["properties"]["end_datetime"] = "2015-02-16T12:30:22Z"
+    updated_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    updated_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    updated_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
 
     response = await app_client.put(
         f"/collections/{collection_id}/items/{existing['id']}", json=updated_item
