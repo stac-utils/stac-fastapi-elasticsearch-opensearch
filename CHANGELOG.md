@@ -14,12 +14,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Breaking Changes
 
 - `BaseDatabaseLogic` has three new abstract methods, `get_one_item_with_version`, `find_collection_with_version` and `find_catalog_with_version`, and its write methods take a `version` argument. Subclasses that do not inherit from the Elasticsearch or OpenSearch `DatabaseLogic` must implement them. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
+- Uvicorn's auto-reload is now off unless `RELOAD` is `true`, `1`, `yes` or `y`. Before, an unset or unrecognized value turned it on, so the published Docker images, `python -m stac_fastapi.<backend>.app` and the `stac-fastapi-elasticsearch` and `stac-fastapi-opensearch` commands ran in development mode. The compose files for development already set `RELOAD=true`. [#940](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/940)
 
 ### Fixed
 
 - A collection's item index is now named `items_<collection>_<uuid>` when it is created, as datetime indices already are, instead of `items_<collection>-000001`. Existing indices keep working through their alias. A collection deleted and created again no longer reuses an index name, whose sequence numbers restart, so an `ETag` from before the recreation cannot match. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
 
-## [v8.0.0rc1] - 2026-10-09
+## [v8.0.0rc1] - 2026-10-14
 
 ### Added
 
