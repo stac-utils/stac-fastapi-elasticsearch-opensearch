@@ -442,6 +442,42 @@ async def test_an_item_hidden_since_the_last_refresh_is_not_returned(
     assert (await app_client.get(url)).status_code == 404
 
 
+HIDDEN_SHAPES = [
+    {"hidden": True},
+    {"hidden": False},
+    {"hidden": "false"},
+    {"hidden": [True]},
+    {"hidden": [True, False]},
+    {"hidden": [[False]]},
+    {"hidden": []},
+    {"hidden": None},
+    [{"hidden": True}],
+    [{"hidden": True}, {"hidden": False}],
+]
+
+
+@pytest.mark.parametrize("private", HIDDEN_SHAPES, ids=[str(s) for s in HIDDEN_SHAPES])
+async def test_is_hidden_agrees_with_the_search_filter(ctx, private):
+    """The real-time read must decide as the engine's filter does, for every shape."""
+    from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
+    from stac_fastapi.sfeos_helpers.database.utils import add_hidden_filter, is_hidden
+
+    path = "properties._private.hidden"
+    index = index_alias_by_collection_id(ctx.item["collection"])
+    doc_id = f"parity-{uuid.uuid4()}"
+    source = {**deepcopy(ctx.item), "id": doc_id}
+    source["properties"]["_private"] = private
+    await database.client.index(index=index, id=doc_id, body=source, refresh=True)
+
+    response = await database.client.search(
+        index=index,
+        body={"query": add_hidden_filter({"term": {"_id": doc_id}}, path), "size": 0},
+    )
+    visible_to_search = response["hits"]["total"]["value"] == 1
+
+    assert is_hidden(source, path) is (not visible_to_search)
+
+
 async def test_require_if_match_refuses_bulk_upsert(
     app_client, ctx, monkeypatch, load_test_data
 ):

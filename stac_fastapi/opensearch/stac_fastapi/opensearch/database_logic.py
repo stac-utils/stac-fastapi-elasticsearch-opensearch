@@ -49,6 +49,7 @@ from stac_fastapi.sfeos_helpers.database import (
     delete_item_index_shared,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
+    index_behind_alias,
     mk_actions,
     mk_item_id,
     populate_sort_shared,
@@ -2073,6 +2074,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the deletion attempt
         logger.info(f"Deleting collection {collection_id} with refresh={refresh}")
 
+        if version is not None and not await index_behind_alias(
+            self.client, COLLECTIONS_INDEX, version.index
+        ):
+            raise precondition_failed(f"Collection {collection_id}")
         try:
             await self.client.delete(
                 index=version.index if version else COLLECTIONS_INDEX,
@@ -2470,6 +2475,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         # collections index is shared with Collection documents.
         await self.find_catalog(catalog_id)
         if version is not None:
+            if not await index_behind_alias(
+                self.client, COLLECTIONS_INDEX, version.index
+            ):
+                raise precondition_failed(f"Catalog {catalog_id}")
             try:
                 await self.client.delete(
                     index=version.index,

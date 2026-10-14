@@ -25,6 +25,16 @@ PATH = "properties._private.hidden"
         ({"properties._private.hidden": True}, True),
         ({"properties._private": {"hidden": False}}, False),
         ({"properties": {"_private": "not an object"}}, False),
+        ({"properties": {"_private": [{"hidden": True}]}}, True),
+        ({"properties": {"_private": [{"hidden": True}, {"hidden": False}]}}, False),
+        ({"properties": {"_private": {"hidden": None}, "_private.hidden": True}}, True),
+        (
+            {"properties": {"_private": {"hidden": True}, "_private.hidden": False}},
+            False,
+        ),
+        ({"properties": {"_private": {"hidden": [[False]]}}}, False),
+        ({"properties": {"_private": {"hidden": [[True]]}}}, True),
+        ({"properties": [{"_private": {"hidden": True}}]}, True),
     ],
 )
 def test_is_hidden_matches_the_search_filter(source, hidden):
