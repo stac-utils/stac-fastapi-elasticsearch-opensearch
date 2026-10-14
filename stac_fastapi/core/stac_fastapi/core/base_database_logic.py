@@ -408,8 +408,11 @@ class BaseDatabaseLogic(abc.ABC):
         catalog: dict,
         refresh: bool | str = False,
         version: DocumentVersion | None = None,
-    ) -> None:
-        """Replace a catalog, keeping its stored parent_ids."""
+    ) -> DocumentVersion | None:
+        """Replace a catalog, keeping its stored parent_ids; return the version stored.
+
+        With `version` (If-Match), only that stored version is replaced; 412 otherwise.
+        """
         pass
 
     @abc.abstractmethod
