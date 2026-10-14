@@ -36,7 +36,7 @@ dependencies = [
     "stac-fastapi.types==7.0.0",
     "stac-fastapi.api==7.0.0",
     "stac-fastapi.extensions==7.0.0",
-    "orjson>=3.11,<3.13",
+    "orjson>=3.11,<3.14",
     "overrides>=7.4,<7.8",
     "cql2>=0.6.0,<0.7.0",
     "jsonschema~=4.26.0",
