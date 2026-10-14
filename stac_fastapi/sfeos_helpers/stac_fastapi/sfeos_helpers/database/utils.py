@@ -176,7 +176,8 @@ async def find_item_in_alias(
         doc_id: The document ID to look up.
 
     Returns:
-        dict | None: The stored ``_source`` if found, None otherwise.
+        dict | None: The matching ``mget`` hit (carrying ``_index``, ``_id``,
+            ``_source``, ...) if found, None otherwise.
 
     Raises:
         The search engine's NotFoundError when no index carries the alias.
@@ -190,10 +191,8 @@ async def find_item_in_alias(
         }
     )
     for doc in resp.get("docs", []):
-        if doc.get("found"):
-            source = doc.get("_source")
-            if source is not None:
-                return source
+        if doc.get("found") and doc.get("_source") is not None:
+            return doc
     return None
 
 

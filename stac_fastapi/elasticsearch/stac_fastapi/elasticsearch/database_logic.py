@@ -444,18 +444,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         if isinstance(self.async_index_inserter, DatetimeIndexInserter):
             try:
-                source = await find_item_in_alias(
+                hit = await find_item_in_alias(
                     self.client,
                     index_alias_by_collection_id(collection_id),
                     mk_item_id(item_id, collection_id),
                 )
             except ESNotFoundError:
-                source = None
-            if source is None:
+                hit = None
+            if hit is None:
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
-            return source
+            return hit["_source"]
         return await super().get_item_for_write(collection_id, item_id)
 
     async def get_queryables_mapping(self, collection_id: str = "*") -> dict:
@@ -1305,6 +1305,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
 
+        existing_index = None
         if isinstance(self.async_index_inserter, DatetimeIndexInserter):
             # ``_id`` uniqueness is enforced per index only, so an item
             # re-ingested with a datetime that resolves to a different physical
@@ -1313,13 +1314,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             # A missing alias means no index exists yet, so nothing can be a
             # duplicate.
             try:
-                existing_item = await find_item_in_alias(
+                hit = await find_item_in_alias(
                     self.client,
                     index_alias_by_collection_id(collection_id),
                     mk_item_id(item_id, collection_id),
                 )
             except ESNotFoundError:
-                existing_item = None
+                hit = None
+            existing_item = hit.get("_source") if hit else None
+            existing_index = hit.get("_index") if hit else None
             if not upsert:
                 if existing_item is not None:
                     raise ItemAlreadyExistsError(item_id, collection_id)
@@ -1352,9 +1355,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Prepare the item for insertion
         item = await self.async_prep_create_item(item=item, base_url=base_url)
 
-        target_index = await self.async_index_inserter.get_target_index(
-            collection_id, item
-        )
+        # An update must overwrite the document where it already lives;
+        # re-routing by datetime could send it to a newer physical index after
+        # a rollover and leave the original copy behind (#571).
+        if upsert and existing_index:
+            target_index = existing_index
+        else:
+            target_index = await self.async_index_inserter.get_target_index(
+                collection_id, item
+            )
         # Index the item in the database
         try:
             await self.client.index(

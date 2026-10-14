@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - With `ENABLE_DATETIME_INDEX_FILTERING=true`, re-ingesting an existing item `id` — via `POST /collections/{collection_id}/items` with a single Item or a FeatureCollection, or through the Redis item queue — no longer writes a second copy when the new `datetime` resolves to a different physical index; it is reported as a `409` conflict (queued items go to the dead-letter queue). `PUT` item updates now bypass the item queue so the datetime-field validation is applied. [#571](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/571)
+- With `ENABLE_DATETIME_INDEX_FILTERING=true`, a `PUT` item update that does not change `datetime` now overwrites the document in the physical index that already holds it instead of routing to the current write target, so an index rollover between the original write and the update no longer leaves a duplicate copy under the collection alias. [#571](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/571)
 
 ### Breaking Changes
 

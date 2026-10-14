@@ -1848,3 +1848,54 @@ async def test_bulk_async_intra_batch_duplicate_id_no_duplicate(
         body={"query": {"term": {"_id": mk_item_id(first["id"], collection_id)}}},
     )
     assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_put_item_after_index_rollover_no_duplicate(
+    datetime_filtering_env, app_client, ctx, txn_client
+):
+    """A PUT on an item whose physical index has rolled over must overwrite
+    the document in place, not write a second copy to the new index (#571)."""
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+    doc_id = mk_item_id(item_id, collection_id)
+    alias = index_alias_by_collection_id(collection_id)
+    client = txn_client.database.client
+
+    # Simulate a rollover: a second physical index that sorts after the one
+    # holding ctx.item, so datetime target resolution would pick it.
+    await client.indices.create(
+        index=f"items_{collection_id}-{uuid.uuid4()}",
+        body={
+            "aliases": {
+                alias: {},
+                f"items_datetime_{collection_id}_2020-02-20-2020-02-28": {},
+            }
+        },
+    )
+
+    # Clear the shared alias cache so the target is resolved from the
+    # post-rollover index layout deterministically.
+    selector = txn_client.database.async_index_selector
+    if hasattr(selector, "cache_manager") and hasattr(
+        selector.cache_manager, "clear_cache"
+    ):
+        await selector.cache_manager.clear_cache()
+
+    # PUT the original item with a benign non-datetime change. Datetime
+    # routing would send it to the new index; it must instead be written back
+    # to the index where it already lives.
+    updated_item = deepcopy(ctx.item)
+    updated_item["properties"]["gsd"] = 99
+    response = await app_client.put(
+        f"/collections/{collection_id}/items/{item_id}", json=updated_item
+    )
+    assert response.status_code == 200
+
+    await client.indices.refresh(index="_all")
+    count = await client.count(
+        index=alias,
+        body={"query": {"term": {"_id": doc_id}}},
+    )
+    assert count["count"] == 1
