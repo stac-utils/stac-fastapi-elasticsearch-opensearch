@@ -2466,6 +2466,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         if orphans["count"]:
             await unlink_catalog_children_shared(self.client, catalog_id)
 
+    @retry_on_connection_error
     async def delete_catalog(
         self,
         catalog_id: str,
@@ -2491,11 +2492,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         # Verify the document exists and is a Catalog before deleting; the
         # collections index is shared with Collection documents.
-        try:
-            await self.find_catalog(catalog_id)
-        except NotFoundError:
-            await self.unlink_catalog_orphans(catalog_id)
-            raise
+        await self.find_catalog(catalog_id)
         if version is not None:
             try:
                 await self.client.delete(

@@ -1945,17 +1945,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             # Request checks come before the precondition (RFC 9110, section 13.2.1).
             if isinstance(patch, dict):
                 patch = partialItemValidator.validate_python(patch)
-            if not (
-                (
-                    isinstance(patch, list)
-                    and content_type == "application/json-patch+json"
-                )
-                or (
-                    isinstance(patch, PartialItem)
-                    and content_type
-                    in ["application/merge-patch+json", "application/json"]
-                )
-            ):
+            json_patch = (
+                isinstance(patch, list)
+                and content_type == "application/json-patch+json"
+            )
+            merge_patch = isinstance(patch, PartialItem) and content_type in [
+                "application/merge-patch+json",
+                "application/json",
+            ]
+            if not (json_patch or merge_patch):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
@@ -1967,44 +1965,29 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     collection_id, item_id, include_hidden=True
                 ),
             )
-            item = None
-            if (
-                isinstance(patch, list)
-                and content_type == "application/json-patch+json"
-            ):
-                item = await self.database.json_patch_item(
+            if json_patch:
+                await self.database.json_patch_item(
                     collection_id=collection_id,
                     item_id=item_id,
                     operations=patch,
                     base_url=base_url,
                     version=version,
                 )
-
-            if isinstance(patch, PartialItem) and content_type in [
-                "application/merge-patch+json",
-                "application/json",
-            ]:
-                item = await self.database.merge_patch_item(
+            else:
+                await self.database.merge_patch_item(
                     collection_id=collection_id,
                     item_id=item_id,
                     item=patch,
                     base_url=base_url,
                     version=version,
                 )
-
-            if item:
-                # Read back with the version, so the body and ETag agree; the
-                # patch may have hidden the item, and a write returns it anyway.
-                item, new_version = await self.database.get_one_item_with_version(
-                    collection_id, item_id, include_hidden=True
-                )
-                record_etag(request, new_version)
-                return ItemSerializer.db_to_stac(item, base_url=base_url)
-
-            raise HTTPException(
-                status_code=400,
-                detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
+            # Read back with the version, so the body and ETag agree; the
+            # patch may have hidden the item, and a write returns it anyway.
+            item, new_version = await self.database.get_one_item_with_version(
+                collection_id, item_id, include_hidden=True
             )
+            record_etag(request, new_version)
+            return ItemSerializer.db_to_stac(item, base_url=base_url)
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current item state from DB
@@ -2242,62 +2225,44 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             # Request checks come before the precondition (RFC 9110, section 13.2.1).
             if isinstance(patch, dict):
                 patch = partialCollectionValidator.validate_python(patch)
-            if not (
-                (
-                    isinstance(patch, list)
-                    and content_type == "application/json-patch+json"
-                )
-                or (
-                    isinstance(patch, PartialCollection)
-                    and content_type
-                    in ["application/merge-patch+json", "application/json"]
-                )
-            ):
+            json_patch = (
+                isinstance(patch, list)
+                and content_type == "application/json-patch+json"
+            )
+            merge_patch = isinstance(patch, PartialCollection) and content_type in [
+                "application/merge-patch+json",
+                "application/json",
+            ]
+            if not (json_patch or merge_patch):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
                 )
             _, current = await self.database.find_collection_with_version(collection_id)
             version = check_etag(if_match_header(request, resource), current, resource)
-            collection = None
-            if (
-                isinstance(patch, list)
-                and content_type == "application/json-patch+json"
-            ):
-                collection = await self.database.json_patch_collection(
+            if json_patch:
+                await self.database.json_patch_collection(
                     collection_id=collection_id,
                     operations=patch,
                     base_url=base_url,
                     version=version,
                 )
-
-            if isinstance(patch, PartialCollection) and content_type in [
-                "application/merge-patch+json",
-                "application/json",
-            ]:
-                collection = await self.database.merge_patch_collection(
+            else:
+                await self.database.merge_patch_collection(
                     collection_id=collection_id,
                     collection=patch,
                     base_url=base_url,
                     version=version,
                 )
-
-            if collection:
-                # Read back with the version, so the body and ETag agree.
-                (
-                    collection,
-                    new_version,
-                ) = await self.database.find_collection_with_version(collection_id)
-                record_etag(request, new_version)
-                return CollectionSerializer.db_to_stac(
-                    collection,
-                    request,
-                    extensions=self.database.extensions,
-                )
-
-            raise HTTPException(
-                status_code=400,
-                detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
+            # Read back with the version, so the body and ETag agree.
+            collection, new_version = await self.database.find_collection_with_version(
+                collection_id
+            )
+            record_etag(request, new_version)
+            return CollectionSerializer.db_to_stac(
+                collection,
+                request,
+                extensions=self.database.extensions,
             )
 
         # When validation is ENABLED, do all logic in core.py

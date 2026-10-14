@@ -742,17 +742,34 @@ def add_hidden_filter(
         return hidden_filter
 
 
+def _resolve(source: Any, parts: list[str]) -> tuple[bool, Any]:
+    """Follow a dotted path through nested objects or flat dotted keys, as the engine does."""
+    if not parts:
+        return True, source
+    if not isinstance(source, dict):
+        return False, None
+    for i in range(1, len(parts) + 1):
+        key = ".".join(parts[:i])
+        if key in source:
+            found, value = _resolve(source[key], parts[i:])
+            if found:
+                return True, value
+    return False, None
+
+
 def is_hidden(source: dict[str, Any], hide_item_path: str | None) -> bool:
     """Tell whether a stored document is hidden, as `add_hidden_filter` decides it.
 
-    A document is visible when the field at `hide_item_path` is absent or
-    `False`; any other value hides it.
+    Visible when the field is absent, null or an empty list, or when any of its
+    values is false (`false`, `"false"` or `""`, which a boolean mapping coerces
+    to false; a term query matches any element of a list). Hidden otherwise.
     """
     if not hide_item_path:
         return False
-    value: Any = source
-    for part in hide_item_path.split("."):
-        if not isinstance(value, dict) or part not in value:
-            return False
-        value = value[part]
-    return value is not None and value is not False and value != []
+    found, value = _resolve(source, hide_item_path.split("."))
+    values = [
+        v for v in (value if isinstance(value, list) else [value]) if v is not None
+    ]
+    if not found or not values:
+        return False
+    return not any(v is False or v in ("false", "") for v in values)

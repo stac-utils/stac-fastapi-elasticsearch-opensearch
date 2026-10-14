@@ -41,11 +41,7 @@ class IndexOperations:
 
         # Idempotent: when the alias exists, the collection has its index already.
         if await client.indices.exists_alias(name=alias_name):
-            aliases_info = await client.indices.get_alias(name=alias_name)
-            for name, info in aliases_info.items():
-                if info.get("aliases", {}).get(alias_name, {}).get("is_write_index"):
-                    return name
-            return next(iter(aliases_info))
+            return next(iter(await client.indices.get_alias(name=alias_name)))
 
         # A name of its own per creation, as datetime indices get, so a collection
         # deleted and created again never reuses an index name (ETags hash it).

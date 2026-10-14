@@ -571,16 +571,15 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 f"Catalog {catalog_id}",
                 lambda: self.database.find_catalog_with_version(catalog_id),
             )
+            await self.database.delete_catalog(
+                catalog_id, refresh=True, version=version
+            )
         except NotFoundError:
             # The catalog is gone, maybe from a delete whose cleanup failed. Unlink
             # the children that still reference it, then 404; nothing is deleted,
             # so a catalog created again under the id in the meantime is safe.
             await self.database.unlink_catalog_orphans(catalog_id)
             raise
-        try:
-            await self.database.delete_catalog(
-                catalog_id, refresh=True, version=version
-            )
         except HTTPException:
             raise
         except Exception as e:
