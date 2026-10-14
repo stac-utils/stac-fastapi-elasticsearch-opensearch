@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - With `ENABLE_DATETIME_INDEX_FILTERING=true`, re-ingesting an existing item `id` — via `POST /collections/{collection_id}/items` with a single Item or a FeatureCollection, or through the Redis item queue — no longer writes a second copy when the new `datetime` resolves to a different physical index; it is reported as a `409` conflict (queued items go to the dead-letter queue). `PUT` item updates now bypass the item queue so the datetime-field validation is applied. [#571](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/571)
 
+### Breaking Changes
+
+- Uvicorn's auto-reload is now off unless `RELOAD` is `true`, `1`, `yes` or `y`. Before, an unset or unrecognized value turned it on, so the published Docker images, `python -m stac_fastapi.<backend>.app` and the `stac-fastapi-elasticsearch` and `stac-fastapi-opensearch` commands ran in development mode. The compose files for development already set `RELOAD=true`. [#940](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/940)
+
 ## [v8.0.0rc1] - 2026-10-09
 
 ### Added
