@@ -394,17 +394,6 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_catalog_collection_item(
-        self,
-        catalog_id: str,
-        collection_id: str,
-        item_id: str,
-        request: Any,
-    ) -> Any:
-        """Get an item from a collection in a catalog."""
-        pass
-
-    @abc.abstractmethod
     async def update_catalog(
         self,
         catalog_id: str,

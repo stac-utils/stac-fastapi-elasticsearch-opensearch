@@ -2706,20 +2706,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
     @retry_on_connection_error
-    async def get_catalog_collection_item(
-        self,
-        catalog_id: str,
-        collection_id: str,
-        item_id: str,
-        request: Any,
-    ) -> Any:
-        """Get a specific item from a collection within a catalog.
-
-        Hierarchy validation is already performed by CatalogsClient.
-        """
-        return await self.get_one_item(collection_id, item_id)
-
-    @retry_on_connection_error
     async def update_catalog(
         self,
         catalog_id: str,

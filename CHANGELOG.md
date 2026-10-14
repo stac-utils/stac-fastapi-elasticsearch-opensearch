@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Breaking Changes
 
-- `BaseDatabaseLogic` has three new abstract methods, `get_one_item_with_version`, `find_collection_with_version` and `find_catalog_with_version`, and its write methods take a `version` argument. Subclasses that do not inherit from the Elasticsearch or OpenSearch `DatabaseLogic` must implement them. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
+- `BaseDatabaseLogic` has three new abstract methods, `get_one_item_with_version`, `find_collection_with_version` and `find_catalog_with_version`, and its write methods take a `version` argument. Subclasses that do not inherit from the Elasticsearch or OpenSearch `DatabaseLogic` must implement them. `get_catalog_collection_item` is removed from `BaseDatabaseLogic` and both backends; the catalog-scoped item read uses `get_one_item_with_version`, and nothing else called it. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
 - Uvicorn's auto-reload is now off unless `RELOAD` is `true`, `1`, `yes` or `y`. Before, an unset or unrecognized value turned it on, so the published Docker images, `python -m stac_fastapi.<backend>.app` and the `stac-fastapi-elasticsearch` and `stac-fastapi-opensearch` commands ran in development mode. The compose files for development already set `RELOAD=true`. [#940](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/940)
 
 ### Fixed
