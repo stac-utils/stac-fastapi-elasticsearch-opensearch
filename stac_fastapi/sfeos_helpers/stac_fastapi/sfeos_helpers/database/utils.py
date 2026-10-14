@@ -189,9 +189,11 @@ async def find_item_in_alias(
             ]
         }
     )
-    for doc in resp["docs"]:
+    for doc in resp.get("docs", []):
         if doc.get("found"):
-            return doc["_source"]
+            source = doc.get("_source")
+            if source is not None:
+                return source
     return None
 
 
@@ -220,7 +222,7 @@ async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bo
             ]
         }
     )
-    return any(doc.get("found") for doc in resp["docs"])
+    return any(doc.get("found") for doc in resp.get("docs", []))
 
 
 def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
@@ -248,7 +250,7 @@ def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> boo
             ]
         }
     )
-    return any(doc.get("found") for doc in resp["docs"])
+    return any(doc.get("found") for doc in resp.get("docs", []))
 
 
 async def find_existing_item_ids(
@@ -287,7 +289,7 @@ async def find_existing_item_ids(
                 ]
             }
         )
-        existing.update(doc["_id"] for doc in resp["docs"] if doc.get("found"))
+        existing.update(doc["_id"] for doc in resp.get("docs", []) if doc.get("found"))
     return existing
 
 
