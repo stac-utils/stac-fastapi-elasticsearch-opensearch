@@ -12,8 +12,8 @@ from fastapi import FastAPI
 @pytest.mark.parametrize(
     "dotenv, environment, expected",
     [
-        (None, {}, ("0.0.0.0", 8000, True)),
-        ("", {}, ("0.0.0.0", 8000, True)),
+        (None, {}, ("0.0.0.0", 8000, False)),
+        ("", {}, ("0.0.0.0", 8000, False)),
         (
             "APP_HOST=127.0.0.2\nAPP_PORT=8766\nRELOAD=false\n",
             {},
@@ -34,17 +34,17 @@ from fastapi import FastAPI
             {"APP_PORT": "8765"},
             ("127.0.0.2", 8765, False),
         ),
-        ("APP_PORT=8766\n", {}, ("0.0.0.0", 8766, True)),
-        ("APP_PORT=invalid\nRELOAD=invalid\n", {}, ("0.0.0.0", 8000, True)),
+        ("APP_PORT=8766\n", {}, ("0.0.0.0", 8766, False)),
+        ("APP_PORT=invalid\nRELOAD=invalid\n", {}, ("0.0.0.0", 8000, False)),
         (
             None,
             {"APP_PORT": "invalid", "RELOAD": "invalid"},
-            ("0.0.0.0", 8000, True),
+            ("0.0.0.0", 8000, False),
         ),
         (
-            "APP_PORT=8766\nRELOAD=false\n",
+            "APP_PORT=8766\nRELOAD=true\n",
             {"APP_PORT": "invalid", "RELOAD": "invalid"},
-            ("0.0.0.0", 8000, True),
+            ("0.0.0.0", 8000, False),
         ),
         (
             "APP_PORT=invalid\nRELOAD=invalid\n",
@@ -52,13 +52,13 @@ from fastapi import FastAPI
             ("0.0.0.0", 8765, False),
         ),
         (
-            "APP_PORT=8766\nRELOAD=false\n",
+            "APP_PORT=8766\nRELOAD=true\n",
             {"APP_PORT": "", "RELOAD": ""},
-            ("0.0.0.0", 8000, True),
+            ("0.0.0.0", 8000, False),
         ),
-        (None, {"APP_HOST": ""}, ("0.0.0.0", 8000, True)),
-        (None, {"APP_PORT": "0"}, ("0.0.0.0", 8000, True)),
-        (None, {"APP_PORT": "65536"}, ("0.0.0.0", 8000, True)),
+        (None, {"APP_HOST": ""}, ("0.0.0.0", 8000, False)),
+        (None, {"APP_PORT": "0"}, ("0.0.0.0", 8000, False)),
+        (None, {"APP_PORT": "65536"}, ("0.0.0.0", 8000, False)),
         *[
             (f"RELOAD={value}\n", {}, ("0.0.0.0", 8000, expected))
             for value, expected in [
