@@ -1344,6 +1344,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             if version
             else await self.async_index_inserter.get_target_index(collection_id, item)
         )
+        if version and not await self.client.indices.exists(index=version.index):
+            # The index is gone, so the version's document is too; writing would
+            # create an empty index under the old name. A deletion in the moment
+            # between this check and the write still can; the write then gets
+            # 409 (no such document), which becomes 412.
+            raise precondition_failed(f"Item {item_id}")
         # Index the item in the database
         try:
             response = await self.client.index(
@@ -1466,9 +1472,12 @@ class DatabaseLogic(BaseDatabaseLogic):
                         script, self.async_index_inserter.use_datetime
                     )
                 document_index = search_response["hits"]["hits"][0]["_index"]
+                if version and document_index != version.index:
+                    # The version's document is gone; a replacement lives in
+                    # another index, so the tag no longer matches.
+                    raise precondition_failed(f"Item {item_id}")
                 await self.client.update(
-                    # A conditional write stays bound to the version's index.
-                    index=version.index if version else document_index,
+                    index=document_index,
                     id=mk_item_id(item_id, collection_id),
                     body={"script": script},
                     refresh=True,

@@ -396,6 +396,7 @@ async def test_a_delete_that_fails_after_the_catalog_is_gone_can_be_retried(
     """The children stay linked to a removed catalog; a retry unlinks them."""
     import sys
 
+    monkeypatch.setenv("REQUIRE_IF_MATCH", "true")  # the retry must carry If-Match
     parent, _ = await _create_catalog(catalogs_app_client, load_test_data)
     child, _ = await _create_catalog(
         catalogs_app_client, load_test_data, parent_id=parent["id"]
@@ -419,7 +420,9 @@ async def test_a_delete_that_fails_after_the_catalog_is_gone_can_be_retried(
     assert failed
     assert parent["id"] in (await database.find_catalog(child["id"]))["parent_ids"]
 
-    response = await catalogs_app_client.delete(f"/catalogs/{parent['id']}")
+    response = await catalogs_app_client.delete(
+        f"/catalogs/{parent['id']}", headers={"If-Match": etag}
+    )
 
     assert response.status_code == 404, response.text
     assert parent["id"] not in (await database.find_catalog(child["id"])).get(

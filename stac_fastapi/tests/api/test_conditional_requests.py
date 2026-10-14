@@ -365,6 +365,63 @@ async def test_conditional_put_writes_to_the_index_that_holds_the_item(
     assert _title(stored.json(), "item") == "replaced"
 
 
+@pytest.mark.parametrize("validator", ["false", "true"])
+async def test_a_patch_whose_item_was_recreated_elsewhere_returns_412(
+    app_client, ctx, monkeypatch, validator
+):
+    """Between the check and the write, the collection is deleted and created
+    again with the same item: the replacement lives in another index and must
+    not be patched with the old tag."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    url = _url(ctx, "item")
+    etag = await _etag(app_client, url)
+    client_cls = type(database.client)
+    originals = {name: getattr(client_cls, name) for name in ("search", "index")}
+    recreated = []
+
+    async def recreate():
+        recreated.append(True)
+        response = await app_client.delete(_url(ctx, "collection"))
+        assert response.status_code in (200, 204), response.text
+        response = await app_client.post("/collections", json=ctx.collection)
+        assert response.status_code == 201, response.text
+        response = await app_client.post(
+            f"/collections/{ctx.collection['id']}/items", json=ctx.item
+        )
+        assert response.status_code == 201, response.text
+
+    def hooked(name):
+        async def call(self, *args, **kwargs):
+            body = kwargs.get("body") or {}
+            # The write's own lookup (no version asked for), or the write itself.
+            trigger = (
+                name == "search"
+                and not body.get("seq_no_primary_term")
+                and ctx.item["id"] in str(body.get("query", {}))
+            ) or (name == "index" and "if_seq_no" in kwargs)
+            if trigger and not recreated:
+                await recreate()
+            return await originals[name](self, *args, **kwargs)
+
+        return call
+
+    for name in originals:
+        monkeypatch.setattr(client_cls, name, hooked(name))
+    response = await _write(
+        app_client, "PATCH", url, ctx, "item", "stale", {"If-Match": etag}
+    )
+    for name, original in originals.items():
+        monkeypatch.setattr(client_cls, name, original)
+
+    assert recreated, "the collection was not recreated during the write"
+    assert response.status_code == 412, response.text
+    stored = await app_client.get(url)
+    assert stored.status_code == 200
+    assert _title(stored.json(), "item") == _title(ctx.item, "item")
+    # A recreation in the moment between the existence check and the write can
+    # still leave an empty index under the old name; that window is accepted.
+
+
 async def test_require_if_match_refuses_bulk_upsert(
     app_client, ctx, monkeypatch, load_test_data
 ):
