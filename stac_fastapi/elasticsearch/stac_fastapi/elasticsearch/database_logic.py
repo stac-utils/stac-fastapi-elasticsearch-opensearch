@@ -51,6 +51,7 @@ from stac_fastapi.sfeos_helpers.database import (
     decode_search_after_token_shared,
     delete_item_index_shared,
     find_existing_item_ids,
+    find_item_in_alias,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
     mk_actions,
@@ -1276,18 +1277,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             # A missing alias means no index exists yet, so nothing can be a
             # duplicate.
             try:
-                item_exists = await check_item_exists_in_alias(
+                existing_item = await find_item_in_alias(
                     self.client,
                     index_alias_by_collection_id(collection_id),
                     mk_item_id(item_id, collection_id),
                 )
             except ESNotFoundError:
-                item_exists = False
+                existing_item = None
             if not upsert:
-                if item_exists:
+                if existing_item is not None:
                     raise ItemAlreadyExistsError(item_id, collection_id)
-            elif item_exists:
-                existing_item = await self.get_one_item(collection_id, item_id)
+            elif existing_item is not None:
                 primary_datetime_name = self.async_index_inserter.primary_datetime_name
 
                 existing_primary_datetime = existing_item.get("properties", {}).get(
