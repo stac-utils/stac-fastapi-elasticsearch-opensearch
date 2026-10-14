@@ -1607,10 +1607,10 @@ async def test_feature_collection_insert_existing_id_different_datetime_index(
 
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
-async def test_put_item_upsert_nonexistent_creates_for_datetime_index(
+async def test_put_item_nonexistent_returns_404_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data
 ):
-    """PUT of an item that does not exist yet creates it instead of 404 (#571)."""
+    """PUT of an item that does not exist returns 404, as on main (#881)."""
     collection_id = ctx.collection["id"]
 
     new_item = load_test_data("test_item.json")
@@ -1619,8 +1619,7 @@ async def test_put_item_upsert_nonexistent_creates_for_datetime_index(
     response = await app_client.put(
         f"/collections/{collection_id}/items/{new_item['id']}", json=new_item
     )
-    assert response.status_code == 200
-    assert response.json()["id"] == "brand-new-item"
+    assert response.status_code == 404
 
 
 @pytest.mark.datetime_filtering

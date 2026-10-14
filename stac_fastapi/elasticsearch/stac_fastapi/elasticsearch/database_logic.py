@@ -431,6 +431,33 @@ class DatabaseLogic(BaseDatabaseLogic):
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
 
+    async def get_item_for_write(self, collection_id: str, item_id: str) -> dict:
+        """Retrieve an item for a write without applying read visibility filters.
+
+        Under datetime index filtering, ``_id`` uniqueness is enforced per
+        physical index and a just-written document may not be visible to
+        ``_search`` yet, so the lookup uses a real-time ``mget`` over the
+        collection alias's concrete indexes instead of a search query.
+
+        Raises:
+            NotFoundError: If the specified Item does not exist in the Collection.
+        """
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            try:
+                source = await find_item_in_alias(
+                    self.client,
+                    index_alias_by_collection_id(collection_id),
+                    mk_item_id(item_id, collection_id),
+                )
+            except ESNotFoundError:
+                source = None
+            if source is None:
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            return source
+        return await super().get_item_for_write(collection_id, item_id)
+
     async def get_queryables_mapping(self, collection_id: str = "*") -> dict:
         """Retrieve mapping of Queryables for search.
 
