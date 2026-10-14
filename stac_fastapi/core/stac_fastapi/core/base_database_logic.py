@@ -58,6 +58,23 @@ class BaseDatabaseLogic(abc.ABC):
         """Retrieve an item for a write without applying read visibility filters."""
         return await self.get_one_item(collection_id, item_id, include_hidden=True)
 
+    async def get_item_hit_for_write(self, collection_id: str, item_id: str) -> dict:
+        """Retrieve the write-lookup hit for an item.
+
+        Returns a dict like ``{"_source": <item>, "_index": <index>}`` where
+        ``_index`` is the concrete index holding the document, or ``None``
+        when the backend's lookup does not expose it. Callers that then write
+        via ``create_item`` can pass the result back as ``existing_hit`` so
+        the existence check is not repeated.
+
+        Raises:
+            NotFoundError: If the item does not exist in the collection.
+        """
+        return {
+            "_source": await self.get_item_for_write(collection_id, item_id),
+            "_index": None,
+        }
+
     @abc.abstractmethod
     async def create_item(self, item: dict, refresh: bool = False) -> None:
         """Create an item in the database."""

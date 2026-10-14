@@ -4,6 +4,7 @@ This module provides utility functions for working with database operations
 in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
+import asyncio
 import logging
 import os
 from functools import wraps
@@ -181,6 +182,13 @@ async def find_item_in_alias(
 
     Raises:
         The search engine's NotFoundError when no index carries the alias.
+
+    Note:
+        This is a check-then-act: a concurrent write can insert the same
+        ``_id`` into another index after this returns but before the caller's
+        write lands. The search engine cannot enforce uniqueness across
+        indexes, so closing that window entirely would require external
+        locking.
     """
     resp = await client.mget(
         body={
@@ -263,7 +271,7 @@ async def find_existing_item_ids(
 
     Uses per-index ``mget`` calls, which are real-time (seeing unrefreshed
     documents) and not subject to ``max_result_window``, so arbitrarily large
-    batches are safe.
+    batches are safe. The per-index lookups run concurrently.
 
     Args:
         client: The async Elasticsearch/OpenSearch client.
@@ -275,11 +283,19 @@ async def find_existing_item_ids(
 
     Raises:
         The search engine's NotFoundError when no index carries the alias.
+
+    Note:
+        This is a check-then-act: a concurrent write can insert the same
+        ``_id`` into another index after this returns but before the caller's
+        write lands. The search engine cannot enforce uniqueness across
+        indexes, so closing that window entirely would require external
+        locking.
     """
     if not doc_ids:
         return set()
-    existing: set[str] = set()
-    for index in await _alias_index_names(client, alias):
+    indices = await _alias_index_names(client, alias)
+
+    async def _find_in_index(index: str) -> set[str]:
         resp = await client.mget(
             body={
                 "docs": [
@@ -288,7 +304,13 @@ async def find_existing_item_ids(
                 ]
             }
         )
-        existing.update(doc["_id"] for doc in resp.get("docs", []) if doc.get("found"))
+        return {doc["_id"] for doc in resp.get("docs", []) if doc.get("found")}
+
+    existing: set[str] = set()
+    for found_ids in await asyncio.gather(
+        *(_find_in_index(index) for index in indices)
+    ):
+        existing.update(found_ids)
     return existing
 
 

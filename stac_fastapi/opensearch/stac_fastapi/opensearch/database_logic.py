@@ -430,13 +430,16 @@ class DatabaseLogic(BaseDatabaseLogic):
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
 
-    async def get_item_for_write(self, collection_id: str, item_id: str) -> dict:
-        """Retrieve an item for a write without applying read visibility filters.
+    async def get_item_hit_for_write(self, collection_id: str, item_id: str) -> dict:
+        """Retrieve the write-lookup hit for an item, including its index.
 
         Under datetime index filtering, ``_id`` uniqueness is enforced per
         physical index and a just-written document may not be visible to
         ``_search`` yet, so the lookup uses a real-time ``mget`` over the
         collection alias's concrete indexes instead of a search query.
+
+        Returns:
+            dict: The ``mget`` hit carrying ``_index``, ``_id`` and ``_source``.
 
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
@@ -454,6 +457,22 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
+            return hit
+        return await super().get_item_hit_for_write(collection_id, item_id)
+
+    async def get_item_for_write(self, collection_id: str, item_id: str) -> dict:
+        """Retrieve an item for a write without applying read visibility filters.
+
+        Under datetime index filtering, ``_id`` uniqueness is enforced per
+        physical index and a just-written document may not be visible to
+        ``_search`` yet, so the lookup uses a real-time ``mget`` over the
+        collection alias's concrete indexes instead of a search query.
+
+        Raises:
+            NotFoundError: If the specified Item does not exist in the Collection.
+        """
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            hit = await self.get_item_hit_for_write(collection_id, item_id)
             return hit["_source"]
         return await super().get_item_for_write(collection_id, item_id)
 
@@ -1275,6 +1294,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         item: Item,
         base_url: str = "",
         upsert: bool = False,
+        existing_hit: dict | None = None,
         **kwargs: Any,
     ):
         """Database logic for creating one item.
@@ -1285,6 +1305,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             upsert (bool, optional): If False (default), performs an insert-only operation
                 that rejects duplicates (op_type="create"). If True, performs an upsert
                 that overwrites existing items (op_type="index").
+            existing_hit (dict, optional): A write-lookup hit already fetched via
+                ``get_item_hit_for_write``. When given, the existing-document check
+                reuses it instead of querying the alias again.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -1317,14 +1340,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             # collection alias, which spans all of its datetime-sharded indexes.
             # A missing alias means no index exists yet, so nothing can be a
             # duplicate.
-            try:
-                hit = await find_item_in_alias(
-                    self.client,
-                    index_alias_by_collection_id(collection_id),
-                    mk_item_id(item_id, collection_id),
-                )
-            except OSNotFoundError:
-                hit = None
+            if existing_hit is not None:
+                hit = existing_hit
+            else:
+                try:
+                    hit = await find_item_in_alias(
+                        self.client,
+                        index_alias_by_collection_id(collection_id),
+                        mk_item_id(item_id, collection_id),
+                    )
+                except OSNotFoundError:
+                    hit = None
             existing_item = hit.get("_source") if hit else None
             existing_index = hit.get("_index") if hit else None
             if not upsert:

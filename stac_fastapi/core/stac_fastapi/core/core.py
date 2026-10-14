@@ -1809,7 +1809,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         populate_from_uri(item_dict, "collection", collection_id)
         base_url = str(kwargs["request"].base_url)
 
-        existing_item = await self.database.get_item_for_write(collection_id, item_id)
+        existing_hit = await self.database.get_item_hit_for_write(
+            collection_id, item_id
+        )
+        existing_item = existing_hit["_source"]
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_dict["properties"]["updated"] = now
@@ -1865,7 +1868,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # 4. DATABASE INSERTION LAYER (No Queue)
         await self.database.create_item(
-            processed_item, base_url=base_url, upsert=True, **kwargs
+            processed_item,
+            base_url=base_url,
+            upsert=True,
+            existing_hit=existing_hit,
+            **kwargs,
         )
         return ItemSerializer.db_to_stac(processed_item, base_url)
 
@@ -1951,9 +1958,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current item state from DB
-        existing_item = await self.database.get_item_for_write(
+        existing_hit = await self.database.get_item_hit_for_write(
             item_id=item_id, collection_id=collection_id
         )
+        existing_item = existing_hit["_source"] if existing_hit else None
         if not existing_item:
             raise HTTPException(
                 status_code=404,
@@ -1992,6 +2000,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             db_item,
             base_url=base_url,
             upsert=True,
+            existing_hit=existing_hit,
             **kwargs,
         )
 
