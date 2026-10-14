@@ -1796,3 +1796,55 @@ async def test_put_item_changed_datetime_unrefreshed_no_duplicate(
         body={"query": {"term": {"_id": existing_doc_id}}},
     )
     assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_bulk_async_intra_batch_duplicate_id_no_duplicate(
+    mock_datetime_env, app_client, ctx, txn_client, load_test_data
+):
+    """Two same-id items in a single bulk batch must not both be written.
+
+    The second copy is reported as a synthetic 409 conflict even though neither
+    item exists in the database yet, because _id uniqueness is only enforced per
+    physical index and the two datetimes may resolve to different shards (#571).
+    The spy on prepare_bulk_actions asserts the duplicate never reaches the bulk
+    request, independent of index routing.
+    """
+    collection_id = ctx.collection["id"]
+
+    first = deepcopy(ctx.item)
+    first["id"] = "intra-batch-duplicate"
+    second = deepcopy(first)
+    second["properties"]["datetime"] = "2020-02-13T00:00:00Z"
+
+    inserter = txn_client.database.async_index_inserter
+    real_prepare = inserter.prepare_bulk_actions
+    seen_batches = []
+
+    async def spy_prepare(cid, items, op_type="create"):
+        seen_batches.append([i["id"] for i in items])
+        return await real_prepare(cid, items, op_type)
+
+    inserter.prepare_bulk_actions = spy_prepare
+
+    success, errors = await txn_client.database.bulk_async(
+        collection_id,
+        [first, second],
+        op_type="create",
+        refresh="wait_for",
+    )
+
+    assert seen_batches == [[first["id"]]]
+    assert success == 1
+    assert len(errors) == 1
+    conflict = errors[0]["create"]
+    assert conflict["status"] == 409
+    assert conflict["_id"] == mk_item_id(first["id"], collection_id)
+    assert conflict["_index"] == index_alias_by_collection_id(collection_id)
+
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": mk_item_id(first["id"], collection_id)}}},
+    )
+    assert count["count"] == 1

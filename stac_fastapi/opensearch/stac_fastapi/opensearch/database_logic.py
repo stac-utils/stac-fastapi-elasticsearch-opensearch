@@ -2079,28 +2079,32 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # No index exists under the alias yet, so nothing can be a
                 # duplicate.
                 existing_ids = set()
-            if existing_ids:
-                new_items = []
-                for item in processed_items:
-                    doc_id = mk_item_id(item["id"], item["collection"])
-                    if doc_id in existing_ids:
-                        preexisting_conflicts.append(
-                            {
-                                "create": {
-                                    "_index": alias,
-                                    "_id": doc_id,
-                                    "status": 409,
-                                    "error": {
-                                        "type": "version_conflict_engine_exception",
-                                        "reason": f"[{doc_id}]: version conflict, document already exists",
-                                        "index": alias,
-                                    },
-                                }
+            # Two items in this batch sharing an id but resolving to different
+            # physical indexes would both pass the per-index op_type="create"
+            # check, so dedupe within the batch as well; first occurrence wins.
+            seen_in_batch: set[str] = set()
+            new_items = []
+            for item in processed_items:
+                doc_id = mk_item_id(item["id"], item["collection"])
+                if doc_id in existing_ids or doc_id in seen_in_batch:
+                    preexisting_conflicts.append(
+                        {
+                            "create": {
+                                "_index": alias,
+                                "_id": doc_id,
+                                "status": 409,
+                                "error": {
+                                    "type": "version_conflict_engine_exception",
+                                    "reason": f"[{doc_id}]: version conflict, document already exists",
+                                    "index": alias,
+                                },
                             }
-                        )
-                    else:
-                        new_items.append(item)
-                processed_items = new_items
+                        }
+                    )
+                else:
+                    seen_in_batch.add(doc_id)
+                    new_items.append(item)
+            processed_items = new_items
 
         if processed_items:
             actions = await self.async_index_inserter.prepare_bulk_actions(
