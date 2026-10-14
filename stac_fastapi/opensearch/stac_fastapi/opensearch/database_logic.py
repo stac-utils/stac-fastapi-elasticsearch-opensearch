@@ -448,7 +448,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 )
 
             hit = response["hits"]["hits"][0]
-            return hit["_source"], DocumentVersion.from_hit(hit)
+            # The search found the document and applied the hidden filter, but
+            # its version is as of the last refresh. A get by id is real time,
+            # so the tag names the current version even before a refresh.
+            document = await self.client.get(index=hit["_index"], id=hit["_id"])
+            return document["_source"], DocumentVersion.from_hit(document)
         except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"

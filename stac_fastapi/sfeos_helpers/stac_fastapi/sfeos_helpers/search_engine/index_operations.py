@@ -50,7 +50,9 @@ class IndexOperations:
         # A name of its own per creation, as datetime indices get, so a collection
         # deleted and created again never reuses an index name (ETags hash it).
         # The alias marks it as the write index, so a concurrent create of another
-        # name is refused (400, ignored) instead of adding a second index.
+        # name is refused by the engine (an alias has one write index) instead
+        # of adding a second index. Hard to reach: create_collection writes the
+        # collection document first, with op_type=create.
         index_name = self.create_index_name(collection_id)
         aliases = {alias_name: {"is_write_index": True}}
         if hasattr(client, "options"):

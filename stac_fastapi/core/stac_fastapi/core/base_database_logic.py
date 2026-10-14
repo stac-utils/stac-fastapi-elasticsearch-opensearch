@@ -61,9 +61,12 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def get_one_item_with_version(
-        self, collection_id: str, item_id: str
+        self, collection_id: str, item_id: str, *, include_hidden: bool = False
     ) -> tuple[dict, DocumentVersion]:
-        """Retrieve a single item and the version of its stored document."""
+        """Retrieve a single item and the version of its stored document.
+
+        With `include_hidden`, HIDE_ITEM_PATH does not apply, as for a write.
+        """
         pass
 
     @abc.abstractmethod

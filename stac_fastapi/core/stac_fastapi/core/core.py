@@ -1980,9 +1980,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     version=version,
                 )
 
-            if isinstance(patch, dict):
-                patch = partialItemValidator.validate_python(patch)
-
             if isinstance(patch, PartialItem) and content_type in [
                 "application/merge-patch+json",
                 "application/json",
@@ -2273,9 +2270,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     base_url=base_url,
                     version=version,
                 )
-
-            if isinstance(patch, dict):
-                patch = partialCollectionValidator.validate_python(patch)
 
             if isinstance(patch, PartialCollection) and content_type in [
                 "application/merge-patch+json",
