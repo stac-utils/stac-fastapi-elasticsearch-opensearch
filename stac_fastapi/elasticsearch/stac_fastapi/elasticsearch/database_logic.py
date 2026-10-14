@@ -76,6 +76,7 @@ from stac_fastapi.sfeos_helpers.database.query import (
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
+    is_hidden,
     merge_to_operations,
     operations_to_script,
     protect_datetime_script,
@@ -453,6 +454,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             # its version is as of the last refresh. A get by id is real time,
             # so the tag names the current version even before a refresh.
             document = await self.client.get(index=hit["_index"], id=hit["_id"])
+            # The search filtered as of the last refresh; the current document
+            # may have become hidden since.
+            if not include_hidden and is_hidden(document["_source"], HIDE_ITEM_PATH):
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
             return document["_source"], DocumentVersion.from_hit(document)
         except ESNotFoundError:
             raise NotFoundError(
@@ -1847,7 +1854,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if not preserve_parent_ids:
                 try:
                     response = await self.client.index(
-                        index=COLLECTIONS_INDEX,
+                        index=version.index if version else COLLECTIONS_INDEX,
                         id=collection_id,
                         document=collection_dict,
                         refresh=refresh,
@@ -1876,7 +1883,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     collection_dict["parent_ids"] = existing["_source"]["parent_ids"]
                 try:
                     response = await self.client.index(
-                        index=COLLECTIONS_INDEX,
+                        index=existing["_index"],
                         id=collection_id,
                         document=collection_dict,
                         refresh=refresh,
@@ -2018,7 +2025,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             await self.client.update(
-                index=COLLECTIONS_INDEX,
+                index=version.index if version else COLLECTIONS_INDEX,
                 id=collection_id,
                 script=script,
                 refresh=True,
@@ -2086,7 +2093,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         await self.find_collection(collection_id=collection_id)
         try:
             await self.client.delete(
-                index=COLLECTIONS_INDEX,
+                index=version.index if version else COLLECTIONS_INDEX,
                 id=collection_id,
                 refresh=refresh,
                 **(version.write_kwargs() if version else {}),
@@ -2443,6 +2450,22 @@ class DatabaseLogic(BaseDatabaseLogic):
         return response["_source"], DocumentVersion.from_hit(response)
 
     @retry_on_connection_error
+    async def unlink_catalog_orphans(self, catalog_id: str) -> None:
+        """Unlink children that still reference a catalog that no longer exists.
+
+        A delete that failed after it removed the catalog leaves them linked;
+        a retry calls this. Nothing is deleted: the id must name no document
+        at all, and a child must still reference it.
+        """
+        if await self.client.exists(index=COLLECTIONS_INDEX, id=catalog_id):
+            return
+        orphans = await self.client.count(
+            index=COLLECTIONS_INDEX,
+            body={"query": {"term": {"parent_ids": catalog_id}}},
+        )
+        if orphans["count"]:
+            await unlink_catalog_children_shared(self.client, catalog_id)
+
     async def delete_catalog(
         self,
         catalog_id: str,
@@ -2471,21 +2494,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         try:
             await self.find_catalog(catalog_id)
         except NotFoundError:
-            # A delete that failed after the catalog was removed left its children
-            # linked to it. A retry unlinks them, and only them: the id must name
-            # no document at all, and a child must still reference it.
-            if not await self.client.exists(index=COLLECTIONS_INDEX, id=catalog_id):
-                orphans = await self.client.count(
-                    index=COLLECTIONS_INDEX,
-                    body={"query": {"term": {"parent_ids": catalog_id}}},
-                )
-                if orphans["count"]:
-                    await unlink_catalog_children_shared(self.client, catalog_id)
+            await self.unlink_catalog_orphans(catalog_id)
             raise
         if version is not None:
             try:
                 await self.client.delete(
-                    index=COLLECTIONS_INDEX,
+                    index=version.index,
                     id=catalog_id,
                     refresh=refresh,
                     **version.write_kwargs(),
@@ -2820,10 +2834,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if existing["_source"].get("type") != "Catalog":
                 raise NotFoundError(f"Catalog {catalog_id} not found")
             current = DocumentVersion.from_hit(existing)
-            if version is not None and (current.seq_no, current.primary_term) != (
-                version.seq_no,
-                version.primary_term,
-            ):
+            if version is not None and current.etag != version.etag:
                 raise precondition_failed(f"Catalog {catalog_id}")
 
             catalog.pop("parent_ids", None)
@@ -2831,7 +2842,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 catalog["parent_ids"] = existing["_source"]["parent_ids"]
             try:
                 response = await self.client.index(
-                    index=COLLECTIONS_INDEX,
+                    index=existing["_index"],
                     id=catalog_id,
                     document=catalog,
                     refresh=refresh,

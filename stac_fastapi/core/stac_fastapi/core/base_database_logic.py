@@ -297,6 +297,15 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def unlink_catalog_orphans(self, catalog_id: str) -> None:
+        """Unlink children that still reference a catalog that no longer exists.
+
+        Nothing is deleted. A retry of a catalog delete whose cleanup failed
+        calls this, with or without If-Match.
+        """
+        pass
+
+    @abc.abstractmethod
     async def get_catalog_children(
         self,
         catalog_id: str,

@@ -572,10 +572,10 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 lambda: self.database.find_catalog_with_version(catalog_id),
             )
         except NotFoundError:
-            # The catalog is gone, maybe from a delete whose cleanup failed. The
-            # database delete unlinks children that still reference it, then 404,
-            # so a retry that carries the original If-Match recovers too.
-            await self.database.delete_catalog(catalog_id, refresh=True)
+            # The catalog is gone, maybe from a delete whose cleanup failed. Unlink
+            # the children that still reference it, then 404; nothing is deleted,
+            # so a catalog created again under the id in the meantime is safe.
+            await self.database.unlink_catalog_orphans(catalog_id)
             raise
         try:
             await self.database.delete_catalog(

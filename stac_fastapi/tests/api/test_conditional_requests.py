@@ -422,6 +422,26 @@ async def test_a_patch_whose_item_was_recreated_elsewhere_returns_412(
     # still leave an empty index under the old name; that window is accepted.
 
 
+async def test_an_item_hidden_since_the_last_refresh_is_not_returned(
+    app_client, ctx, monkeypatch
+):
+    """The search sees the last refreshed version; the real-time read must
+    recheck the hidden field on the current document."""
+    monkeypatch.setenv("HIDE_ITEM_PATH", "properties._private.hidden")
+    url = _url(ctx, "item")
+    assert (await app_client.get(url)).status_code == 200
+    from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
+
+    await database.client.update(
+        index=index_alias_by_collection_id(ctx.item["collection"]),
+        id=f"{ctx.item['id']}|{ctx.item['collection']}",
+        body={"doc": {"properties": {"_private": {"hidden": True}}}},
+        refresh=False,
+    )
+
+    assert (await app_client.get(url)).status_code == 404
+
+
 async def test_require_if_match_refuses_bulk_upsert(
     app_client, ctx, monkeypatch, load_test_data
 ):

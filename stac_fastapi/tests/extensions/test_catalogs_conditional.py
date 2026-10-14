@@ -428,3 +428,42 @@ async def test_a_delete_that_fails_after_the_catalog_is_gone_can_be_retried(
     assert parent["id"] not in (await database.find_catalog(child["id"])).get(
         "parent_ids", []
     )
+
+
+@pytest.mark.asyncio
+async def test_a_catalog_created_again_under_the_id_survives_a_stale_retry(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """Recovery after a failed cleanup unlinks orphans; it never deletes."""
+    import sys
+
+    parent, _ = await _create_catalog(catalogs_app_client, load_test_data)
+    child, _ = await _create_catalog(
+        catalogs_app_client, load_test_data, parent_id=parent["id"]
+    )
+    etag = await _etag(catalogs_app_client, parent["id"])
+    module = sys.modules[type(database).__module__]
+    original = module.unlink_catalog_children_shared
+
+    async def fail(client, catalog_id):
+        raise RuntimeError("cleanup lost its connection")
+
+    monkeypatch.setattr(module, "unlink_catalog_children_shared", fail)
+    with pytest.raises(RuntimeError):
+        await catalogs_app_client.delete(
+            f"/catalogs/{parent['id']}", headers={"If-Match": etag}
+        )
+    monkeypatch.setattr(module, "unlink_catalog_children_shared", original)
+    # Another request creates a catalog again under the same id.
+    response = await catalogs_app_client.post("/catalogs", json=parent)
+    assert response.status_code == 201, response.text
+
+    response = await catalogs_app_client.delete(
+        f"/catalogs/{parent['id']}", headers={"If-Match": etag}
+    )
+
+    assert response.status_code == 412, response.text
+    assert (
+        await catalogs_app_client.get(f"/catalogs/{parent['id']}")
+    ).status_code == 200
+    assert parent["id"] in (await database.find_catalog(child["id"]))["parent_ids"]

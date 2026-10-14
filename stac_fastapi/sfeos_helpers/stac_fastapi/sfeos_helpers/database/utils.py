@@ -740,3 +740,19 @@ def add_hidden_filter(
         return {"bool": {"must": [query, hidden_filter]}}
     else:
         return hidden_filter
+
+
+def is_hidden(source: dict[str, Any], hide_item_path: str | None) -> bool:
+    """Tell whether a stored document is hidden, as `add_hidden_filter` decides it.
+
+    A document is visible when the field at `hide_item_path` is absent or
+    `False`; any other value hides it.
+    """
+    if not hide_item_path:
+        return False
+    value: Any = source
+    for part in hide_item_path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return False
+        value = value[part]
+    return value is not None and value is not False and value != []
