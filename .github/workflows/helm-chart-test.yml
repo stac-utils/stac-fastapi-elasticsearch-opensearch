@@ -57,12 +57,12 @@ jobs:
           version: ${{ env.HELM_VERSION }}
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
+        uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
       - name: Set up Kind
-        uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           node_image: kindest/node:${{ matrix.kubernetes-version }}
@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: test-report-${{ matrix.backend }}-k8s-${{ matrix.kubernetes-version }}
           path: test-report-*.json
@@ -104,7 +104,7 @@ jobs:
         uses: ./.github/actions/setup-helm-repos
 
       - name: Run Checkov security scan
-        uses: bridgecrewio/checkov-action@cc0e17d456ef1713bbfd963ebac19dc776775cb2 # master
+        uses: bridgecrewio/checkov-action@d0dd2e9434b4428060edba72d050c135273bd677 # master
         with:
           directory: helm-chart/
           framework: kubernetes
@@ -113,6 +113,6 @@ jobs:
 
       - name: Upload Checkov results
         if: always()
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           sarif_file: reports/results.sarif
