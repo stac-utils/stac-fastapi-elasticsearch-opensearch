@@ -1826,7 +1826,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs["request"]
         base_url = str(request.base_url)
 
-        existing_item = await self.database.get_item_for_write(collection_id, item_id)
+        # With If-Match, one read gives the stored item and the version to check.
+        if request.headers.get("if-match") is None:
+            existing_item = await self.database.get_item_for_write(
+                collection_id, item_id
+            )
+            current = None
+        else:
+            existing_item, current = await self.database.get_one_item_with_version(
+                collection_id, item_id, include_hidden=True
+            )
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_dict["properties"]["updated"] = now
@@ -1857,13 +1866,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             await self._validate_single_item(processed_item)
 
         # 3. PRECONDITION LAYER (If-Match), checked again atomically by the write
-        version = await check_if_match(
-            request,
-            f"Item {item_id}",
-            lambda: self.database.get_one_item_with_version(
-                collection_id, item_id, include_hidden=True
-            ),
-        )
+        resource = f"Item {item_id}"
+        version = check_etag(if_match_header(request, resource), current, resource)
 
         # 4. ROUTING LAYER (Queue)
         if use_queue:

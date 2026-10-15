@@ -1799,6 +1799,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         if collection_id != collection_dict.get("id"):
+            if version is not None:
+                # A create, a reindex and a delete: no one conditional write covers
+                # it. No route renames (PUT and PATCH refuse an id change).
+                raise ValueError("A conditional update cannot change the collection id")
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
@@ -1833,6 +1837,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 add_bbox_shape_to_collection(collection_dict)
 
             if not preserve_parent_ids:
+                if version is not None and not await index_behind_alias(
+                    self.client, COLLECTIONS_INDEX, version.index
+                ):
+                    raise precondition_failed(f"Collection {collection_id}")
                 try:
                     response = await self.client.index(
                         index=version.index if version else COLLECTIONS_INDEX,
@@ -2006,6 +2014,10 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         script = operations_to_script(script_operations, create_nest=create_nest)
 
+        if version is not None and not await index_behind_alias(
+            self.client, COLLECTIONS_INDEX, version.index
+        ):
+            raise precondition_failed(f"Collection {collection_id}")
         try:
             await self.client.update(
                 index=version.index if version else COLLECTIONS_INDEX,

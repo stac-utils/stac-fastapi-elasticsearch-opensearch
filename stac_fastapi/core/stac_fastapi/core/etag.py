@@ -29,7 +29,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from stac_fastapi.core.utilities import get_bool_env
 
 # Empty list elements are ignored, as RFC 9110, section 5.6.1.2 asks.
-ENTITY_TAG = re.compile(r'[\s,]*(W/)?("[\x21\x23-\x7e\x80-\xff]*")\s*(?:,|$)')
+ENTITY_TAG = re.compile(r'[ \t,]*(W/)?("[\x21\x23-\x7e\x80-\xff]*")[ \t]*(?:,|$)')
 CODED_TAG = re.compile(r'"(\d+-\d+-[0-9a-f]{8})-[a-z][a-z0-9.]*"')
 
 
@@ -131,14 +131,17 @@ async def check_if_match(
 ) -> DocumentVersion | None:
     """Evaluate If-Match before an update or delete that has not read the resource.
 
-    `read` returns the stored document and its version; it is awaited only when
-    the request has If-Match, so its NotFoundError gives a missing resource 404.
+    `read` returns the stored document and its version. It is awaited when the
+    request has If-Match or REQUIRE_IF_MATCH is on, before either is evaluated, so
+    a missing resource answers 404 first (RFC 9110, section 13.2.1).
     """
-    if_match = if_match_header(request, resource)
-    if if_match is None:
+    headers = getattr(request, "headers", None) or {}
+    if headers.get("if-match") is None and not get_bool_env(
+        "REQUIRE_IF_MATCH", default=False
+    ):
         return None
     _, current = await read()
-    return check_etag(if_match, current, resource)
+    return check_etag(if_match_header(request, resource), current, resource)
 
 
 def record_etag(request: Any, version: DocumentVersion | None) -> None:

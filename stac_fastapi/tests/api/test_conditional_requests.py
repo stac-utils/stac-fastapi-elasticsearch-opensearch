@@ -1,11 +1,14 @@
 """ETag and If-Match on single items and collections (optimistic locking)."""
 
 import re
+import sys
 import uuid
 from copy import deepcopy
 
 import pytest
 from stac_pydantic import api
+
+from stac_fastapi.core.etag import if_match_holds
 
 from ..conftest import MockRequest, create_collection, create_item, database
 
@@ -213,21 +216,55 @@ async def test_if_match_that_does_not_match_returns_412(
     assert _title((await app_client.get(url)).json(), resource) != "must not persist"
 
 
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "headers", [{"If-Match": "*"}, {}], ids=["if-match", "no-if-match"]
+)
 @pytest.mark.parametrize("method", ["PUT", "PATCH", "DELETE"])
 @pytest.mark.parametrize("resource", RESOURCES)
-async def test_if_match_on_a_missing_resource_returns_404(
-    app_client, ctx, resource, method
+async def test_a_missing_resource_returns_404_before_the_precondition(
+    app_client, ctx, monkeypatch, resource, method, headers, validator
 ):
+    """RFC 9110, section 13.2.1: a 404 wins over 412 and 428 on every route."""
+    monkeypatch.setenv("REQUIRE_IF_MATCH", "true")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
     if resource == "collection":
         ctx.collection["id"] = "missing-collection"
     else:
         ctx.item["id"] = "missing-item"
 
     response = await _write(
-        app_client, method, _url(ctx, resource), ctx, resource, "x", {"If-Match": "*"}
+        app_client, method, _url(ctx, resource), ctx, resource, "x", headers
     )
 
     assert response.status_code == 404, response.text
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+async def test_a_collection_write_after_an_alias_move_returns_412(
+    app_client, ctx, monkeypatch, method
+):
+    """A write bound to the version's index must not land in a detached index."""
+    url = _url(ctx, "collection")
+    etag = await _etag(app_client, url)
+
+    async def moved(*args):
+        return False
+
+    module = sys.modules[type(database).__module__]
+    monkeypatch.setattr(module, "index_behind_alias", moved)
+    response = await _write(
+        app_client, method, url, ctx, "collection", "detached", {"If-Match": etag}
+    )
+
+    assert response.status_code == 412, response.text
+    assert _title((await app_client.get(url)).json(), "collection") != "detached"
+
+
+async def test_if_match_allows_only_space_and_tab_around_tags():
+    """RFC 9110, section 5.6.3: optional whitespace is space or tab."""
+    assert if_match_holds(' \t"1-2-ab12cd34" ,\t', '"1-2-ab12cd34"')
+    assert not if_match_holds('"1-2-ab12cd34"\r\n', '"1-2-ab12cd34"')
 
 
 @pytest.mark.parametrize("validator", ["false", "true"])

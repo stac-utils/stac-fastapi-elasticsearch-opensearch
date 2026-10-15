@@ -576,8 +576,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             )
         except NotFoundError:
             # The catalog is gone, maybe from a delete whose cleanup failed. Unlink
-            # the children that still reference it, then 404; nothing is deleted,
-            # so a catalog created again under the id in the meantime is safe.
+            # the children that still reference it, then 404; nothing is deleted.
+            # A catalog created again under the id between the existence check and
+            # the unlink can lose children linked to it in that moment.
             await self.database.unlink_catalog_orphans(catalog_id)
             raise
         except HTTPException:
