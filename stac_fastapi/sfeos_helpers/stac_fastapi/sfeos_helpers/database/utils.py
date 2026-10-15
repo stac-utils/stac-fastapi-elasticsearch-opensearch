@@ -293,6 +293,7 @@ async def find_existing_item_ids(
     """
     if not doc_ids:
         return set()
+    doc_ids = list(dict.fromkeys(doc_ids))
     indices = await _alias_index_names(client, alias)
 
     async def _find_in_index(index: str) -> set[str]:

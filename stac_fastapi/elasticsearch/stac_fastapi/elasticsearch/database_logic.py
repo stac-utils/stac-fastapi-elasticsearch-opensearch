@@ -1477,19 +1477,38 @@ class DatabaseLogic(BaseDatabaseLogic):
                 script_operations.append(operation)
 
         try:
-            search_response = await self.client.search(
-                index=index_alias_by_collection_id(collection_id),
-                body={
-                    "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
-                    "size": 1,
-                },
-            )
-            if search_response["hits"]["total"]["value"] == 0:
-                raise NotFoundError(
-                    f"Item {item_id} does not exist inside Collection {collection_id}"
+            if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+                # Real-time mget over the alias's concrete indexes so a patch
+                # on a document that has not been refreshed yet still finds it.
+                try:
+                    hit = await find_item_in_alias(
+                        self.client,
+                        index_alias_by_collection_id(collection_id),
+                        mk_item_id(item_id, collection_id),
+                    )
+                except ESNotFoundError:
+                    hit = None
+                if hit is None:
+                    raise NotFoundError(
+                        f"Item {item_id} does not exist inside Collection {collection_id}"
+                    )
+                existing_source = hit["_source"]
+                document_index = hit["_index"]
+            else:
+                search_response = await self.client.search(
+                    index=index_alias_by_collection_id(collection_id),
+                    body={
+                        "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
+                        "size": 1,
+                    },
                 )
+                if search_response["hits"]["total"]["value"] == 0:
+                    raise NotFoundError(
+                        f"Item {item_id} does not exist inside Collection {collection_id}"
+                    )
+                existing_source = search_response["hits"]["hits"][0]["_source"]
+                document_index = search_response["hits"]["hits"][0]["_index"]
 
-            existing_source = search_response["hits"]["hits"][0]["_source"]
             validate_datetime_operations(
                 operations,
                 existing_source,
@@ -1505,7 +1524,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                     protect_datetime_script(
                         script, self.async_index_inserter.use_datetime
                     )
-                document_index = search_response["hits"]["hits"][0]["_index"]
                 await self.client.update(
                     index=document_index,
                     id=mk_item_id(item_id, collection_id),
