@@ -23,6 +23,7 @@ The following organizations have contributed time and/or funding to support the 
 <a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="80" hspace="20" vspace="10"></a>
 <a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="85" hspace="20" vspace="10"></a>
 <a href="https://www.fao.org/home"><img src="assets/fao-logo-blue-3lines-en.svg" alt="UN FAO" height="75" hspace="20" vspace="10"></a>
+<p></p>
 <a href="https://www.fao.org/home"><img src="assets/staclabs-icon-black.png" alt="UN FAO" height="75" hspace="20" vspace="10"></a>
 </p>
 
