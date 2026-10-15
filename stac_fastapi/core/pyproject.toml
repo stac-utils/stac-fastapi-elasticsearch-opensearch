@@ -29,14 +29,14 @@ keywords = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "fastapi>=0.109,<0.143",
+    "fastapi>=0.109,<0.144",
     "attrs>=23.2.0",
     "pydantic>=2.4.1,<3.0.0",
     "stac_pydantic>=3.7,<3.8",
     "stac-fastapi.types==7.0.0",
     "stac-fastapi.api==7.0.0",
     "stac-fastapi.extensions==7.0.0",
-    "orjson>=3.11,<3.13",
+    "orjson>=3.11,<3.14",
     "overrides>=7.4,<7.8",
     "cql2>=0.6.0,<0.7.0",
     "jsonschema~=4.26.0",
