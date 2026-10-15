@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Uvicorn's auto-reload is now off unless `RELOAD` is `true`, `1`, `yes` or `y`. Before, an unset or unrecognized value turned it on, so the published Docker images, `python -m stac_fastapi.<backend>.app` and the `stac-fastapi-elasticsearch` and `stac-fastapi-opensearch` commands ran in development mode. The compose files for development already set `RELOAD=true`. [#940](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/940)
+
+## [v8.0.0rc1] - 2026-10-09
+
 ### Added
 
 - Added option STAC_ITEMS_ALIAS_PREFIX environment variable to allow for multiple versions of item indices. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
@@ -34,6 +40,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `POST /search`, `POST /aggregate`, `POST /collections-search` and `POST /catalogs/{catalog_id}/search` return `400` for a body `datetime` with neither a start nor an end (`../..`, `/` or `""`), which they answered with `200` before. This comes from stac-pydantic 3.7.0; an interval open at one end is still accepted. [#936](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/936)
 - `POST /search` with `"collections": []` returns an empty FeatureCollection instead of all items; an explicitly empty collection scope matches nothing, as it already did on the catalog search routes. `GET /search?collections=` is unchanged because an empty value parses to no constraint. [#935](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/935)
 - A CQL2 JSON `date` or `timestamp` that is not a string, such as `{"timestamp": 1}`, and a `timestamp` with no offset, with a space for `T`, or with an offset past `23:59` return `400`, as in CQL2 text. Before, a non-string value returned `200` with no results and a timestamp with no offset was accepted; a space for `T` or an offset past `23:59` returned `500` on item search and aggregation, and `200` with no results on the collection and catalog listings. `GET /catalogs/{catalog_id}/search` on a catalog with no collections now reads `filter` as CQL2 text unless `filter-lang=cql2-json`, as on a catalog with collections, so CQL2 JSON without that parameter, or CQL2 JSON that is not an object, returns `400` instead of `200`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865) [#915](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/915)
+- `PUT /collections/{collection_id}/items/{item_id}` returns `404` for an item that doesn't exist, instead of creating it. The item is looked up in the search index, so a `PUT` right after a `POST` needs `DATABASE_REFRESH=true` or `wait_for`. With `ENABLE_REDIS_QUEUE=true`, a `PUT` returns `404` until the queue worker has indexed the item. [#881](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/881)
+- With `ENABLE_DATETIME_INDEX_FILTERING=true`, a queued `PUT` and any `PATCH` (JSON Patch or merge patch, including JSON Patch `copy`/`move` and replacing all of `properties`) return `400` when they change the datetime fields the index uses, as a direct `PUT` already did. To correct a date, delete the item and create it again. [#881](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/881)
+- `PUT` returns `400` when the body's `id` or `collection` differs from the path, and `POST /collections/{collection_id}/items` returns `400` for a FeatureCollection whose features name another collection. [#881](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/881)
 
 ### Changed
 
@@ -43,10 +52,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Items hidden by `HIDE_ITEM_PATH` can be updated: `PUT` and `PATCH` find them, so they can be edited or unhidden. `HIDE_ITEM_PATH` now controls read visibility only. [#881](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/881)
 - `GET`/`POST /catalogs/{catalog_id}/search` on a catalog with no collections now runs the same request validation as on a populated catalog: an invalid `token`, `intersects`, `query` or CQL2 `filter` (including an unsupported operator) returns `400` instead of `200` with no features, and a `query` or `filter` field that is not queryable returns `400` with `VALIDATE_QUERYABLES=true`. A GET `collections` parameter outside the catalog's scope now returns `403`, as it does with `POST` and on populated catalogs. A valid request still returns `200` with an empty FeatureCollection. [#935](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/935)
 - `/aggregate` links: with `collections` set, the response no longer carries a `collection` link to the last entry, and `self` is `/aggregate`. On `/collections/{collection_id}/aggregate`, `self` is that path, not `/collections/aggregate`. [#931](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/931)
 - `fields` no longer returns `500` when it meets response-model validation. `GET`/`POST /catalogs/{catalog_id}/search` with any settings, and `GET`/`POST /search` and `GET /collections/{collection_id}/items` with `ENABLE_RESPONSE_MODELS=true`, now return `200` with the requested projection. Responses with a non-empty `include` or `exclude` skip response-model validation, since projected features need not be valid STAC Items. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
-- `POST /catalogs` and `POST /collections` now ignore `parent_ids` in the request body, as the update routes already do. `POST /catalogs` always creates a top-level catalog, and nesting goes through `POST /catalogs/{catalog_id}/catalogs` and `POST /catalogs/{catalog_id}/collections`. [#911](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/911)
 - A collection read and written back with `PUT` no longer gets another copy of its `queryables`, `aggregate` and `aggregations` links on each round trip. Stored links with these relations are dropped on read when the server generates them, as stac-fastapi already does for `self` and `root`. [#930](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/930)
 - CQL2 text: `NOT LIKE`, `NOT IN` and `NOT BETWEEN` now return the items that do not match; before, they returned the items that match. `NOT` before a parenthesized condition, such as `NOT (a OR b)`, no longer returns `400`. [#926](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/926)
 - A CQL2 text `DATE` that is not an RFC 3339 date, or a `TIMESTAMP` that is not an RFC 3339 date-time, returns `400` on every route. Before, `DATE('2000-19-39')` returned `500` on item search and aggregation, and `TIMESTAMP('2020-13-01T00:00:00Z')` was read as January 13. A `TIMESTAMP` is checked as written, so an offset past `23:59` such as `+25:00`, which returned `500` on item search and aggregation, also returns `400`. [#926](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/926)
@@ -80,14 +89,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Catalog writes no longer overwrite concurrent writes in Elasticsearch and OpenSearch. Linking and unlinking a sub-catalog (`POST /catalogs/{catalog_id}/catalogs` with `{"id"}`, `DELETE /catalogs/{catalog_id}/catalogs/{sub_catalog_id}`) update only `parent_ids` in one atomic scripted update. `PUT /catalogs/{catalog_id}` keeps the stored `parent_ids` and writes conditionally on the version read, retrying on a concurrent link or unlink. Both return `409` if conflicts persist. `create_catalog` is now create-only. [#813](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/813)
 - Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
-- Fixed `make image-es-os` not rebuilding the dev image (recipe indented with spaces) and disabled the compose rate limit for OpenSearch `make test-*` targets so local catalogs tests don't fail with 429. ([#893](https://github.com/stac-utils/stac-fastapi/pull/893))
+- Fixed `make image-es-os` not rebuilding the dev image (recipe indented with spaces) and disabled the compose rate limit for OpenSearch `make test-*` targets so local catalogs tests don't fail with 429. [#893](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/893)
 - `GET /collections`, `GET /collections-search` and `POST /collections-search` now return `200` instead of `500` when the `fields` includes match nothing in a collection, such as `fields=doesnotexist`. Each such collection is returned as `{"id": ...}`, as item search keeps `id` and `collection` for items. Item search output is unchanged. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - GET `/search`, `/catalogs/{catalog_id}/search`, `/collections/{collection_id}/items`, `/collections` and `/collections-search`, and `POST /collections-search`, now ignore an empty or sign-only `fields` entry. An empty entry returned `500`, and a bare `+` returned `500` or features with only `id` and `collection`. Now `fields=a,` behaves like `fields=a` and `fields=,` like no `fields`. Valid selectors are unchanged. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
-
 
 ### Updated
 
 - Updated `stac-pydantic` to `>=3.7,<3.8`. [#936](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/936)
+- Replaced `pygeofilter` with `cql2>=0.6.0,<0.7.0`. [#926](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/926)
+- Capped `stac-valid` at `<4.7`; it had no upper bound since [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853).
 
 ## [v7.2.0] - 2026-09-19
 
@@ -1089,7 +1099,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0rc1...main
+[v8.0.0rc1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...v8.0.0rc1
 [v7.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...v7.2.0
 [v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0
 [v7.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...v7.0.0

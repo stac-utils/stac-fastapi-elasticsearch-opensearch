@@ -138,7 +138,7 @@ def instantiate_api(
 
     title = os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch")
     description = os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch")
-    api_version = os.getenv("STAC_FASTAPI_VERSION", "7.2.0")
+    api_version = os.getenv("STAC_FASTAPI_VERSION", "8.0.0rc1")
 
     app_config_local = {
         "title": title,
@@ -233,9 +233,9 @@ def run() -> None:
             port = 8000
         if not (0 < port <= 65535):
             port = 8000
-        reload = os.getenv("RELOAD", getattr(settings, "reload", True))
-        # Match get_bool_env's false values; missing or invalid values default to true.
-        reload = str(reload).lower() not in ("false", "0", "no", "n")
+        reload = os.getenv("RELOAD", getattr(settings, "reload", False))
+        # Match get_bool_env's true values; missing or invalid values default to false.
+        reload = str(reload).lower() in ("true", "1", "yes", "y")
 
         uvicorn.run(
             "stac_fastapi.opensearch.app:create_app",
