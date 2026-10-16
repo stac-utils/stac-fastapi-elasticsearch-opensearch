@@ -245,6 +245,9 @@ async def test_a_collection_write_after_an_alias_move_returns_412(
     app_client, ctx, monkeypatch, method
 ):
     """A write bound to the version's index must not land in a detached index."""
+    # With the validator on, a PATCH goes through update_collection, which reads
+    # through the alias and never calls index_behind_alias.
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
     url = _url(ctx, "collection")
     etag = await _etag(app_client, url)
 
