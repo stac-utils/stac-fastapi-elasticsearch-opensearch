@@ -21,7 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Relations of the links SFEOS generates for its own collection endpoints. Like the
 # rels stac-fastapi infers (self, root, ...), a stored copy is dropped on read.
-GENERATED_COLLECTION_RELS = {"queryables", "aggregate", "aggregations"}
+GENERATED_COLLECTION_RELS = {
+    "queryables",
+    "aggregate",
+    "aggregations",
+    "canonical",
+    "duplicate",
+    "related",
+}
 
 
 def _without_generated(stored: list[dict], generated: list[dict]) -> list[dict]:

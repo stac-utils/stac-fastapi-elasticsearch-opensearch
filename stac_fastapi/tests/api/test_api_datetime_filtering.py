@@ -1,12 +1,22 @@
-import os
+import sys
 import uuid
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
-from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
+_repo_root = Path(__file__).resolve()
+while _repo_root != _repo_root.parent and not (_repo_root / "scripts").is_dir():
+    _repo_root = _repo_root.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from stac_fastapi.sfeos_helpers.database import (  # noqa: E402
+    index_alias_by_collection_id,
+    mk_item_id,
+)
+from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX  # noqa: E402
 
 
 @pytest.mark.datetime_filtering
@@ -14,9 +24,6 @@ from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     item["properties"]["start_datetime"] = "2012-02-12T12:30:22Z"
@@ -44,9 +51,6 @@ async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
 async def test_create_item_uses_existing_datetime_index_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client, monkeypatch
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
 
@@ -78,9 +82,6 @@ async def test_create_item_with_different_date_same_index_for_datetime_index(
     txn_client,
     ctx,
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     item["properties"]["start_datetime"] = "2020-02-11T12:30:22Z"
@@ -109,9 +110,6 @@ async def test_create_item_with_different_date_same_index_for_datetime_index(
 async def test_create_new_index_when_size_limit_exceeded_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     item["properties"]["start_datetime"] = "2020-02-11T12:30:22Z"
@@ -152,9 +150,6 @@ async def test_create_new_index_when_size_limit_exceeded_for_datetime_index(
 async def test_create_item_fails_without_datetime_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     item["properties"]["start_datetime"] = None
@@ -169,9 +164,6 @@ async def test_create_item_fails_without_datetime_for_datetime_index(
 async def test_bulk_create_items_with_same_date_range_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     base_item = load_test_data("test_item.json")
     items_dict = {}
 
@@ -210,9 +202,6 @@ async def test_bulk_create_items_with_same_date_range_for_datetime_index(
 async def test_bulk_create_items_with_different_date_ranges_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     base_item = load_test_data("test_item.json")
     items_dict = {}
 
@@ -255,9 +244,6 @@ async def test_bulk_create_items_with_different_date_ranges_for_datetime_index(
 async def test_bulk_create_items_with_size_limit_exceeded_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -315,9 +301,6 @@ async def test_bulk_create_items_with_size_limit_exceeded_for_datetime_index(
 async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -375,9 +358,6 @@ async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_in
 async def test_bulk_create_items_and_retrieve_by_id_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -430,9 +410,6 @@ async def test_bulk_create_items_and_retrieve_by_id_for_datetime_index(
 async def test_patch_collection_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -487,9 +464,6 @@ async def test_patch_collection_for_datetime_index(
 async def test_put_collection_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -547,9 +521,6 @@ async def test_put_collection_for_datetime_index(
 async def test_patch_item_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -606,9 +577,6 @@ async def test_patch_item_for_datetime_index(
 async def test_patch_item_datetime_field_blocked_use_datetime_false(
     mock_datetime_env, app_client, load_test_data, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -632,11 +600,8 @@ async def test_patch_item_datetime_field_blocked_use_datetime_false(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_patch_item_datetime_field_blocked_use_datetime_true(
-    app_client, load_test_data, ctx, txn_client, monkeypatch
+    datetime_filtering_env, app_client, load_test_data, ctx, txn_client, monkeypatch
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     monkeypatch.setenv("USE_DATETIME", "true")
     if hasattr(txn_client.database.async_index_selector, "cache_manager"):
         await txn_client.database.async_index_selector.cache_manager.clear_cache()
@@ -658,9 +623,6 @@ async def test_patch_item_datetime_field_blocked_use_datetime_true(
 async def test_patch_item_non_datetime_field_allowed(
     mock_datetime_env, app_client, load_test_data, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -716,9 +678,6 @@ async def test_patch_item_change_collection_is_rejected(app_client, txn_client, 
 async def test_put_item_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -776,9 +735,6 @@ async def test_put_item_for_datetime_index(
 async def test_create_new_item_in_new_collection_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     new_collection = load_test_data("test_collection.json")
     new_collection["id"] = "new-collection"
 
@@ -809,8 +765,6 @@ async def test_create_new_item_in_new_collection_for_datetime_index(
 async def test_create_item_with_invalid_datetime_ordering_should_fail(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client, monkeypatch
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
 
     new_collection = load_test_data("test_collection.json")
@@ -832,9 +786,6 @@ async def test_create_item_with_invalid_datetime_ordering_should_fail(
 async def test_update_item_with_changed_end_datetime(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     new_collection = load_test_data("test_collection.json")
     new_collection["id"] = "new-collection"
 
@@ -861,9 +812,6 @@ async def test_update_item_with_changed_end_datetime(
 async def test_update_item_with_changed_datetime(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     new_collection = load_test_data("test_collection.json")
     new_collection["id"] = "new-collection"
 
@@ -900,9 +848,6 @@ async def test_update_item_with_changed_datetime(
 async def test_search_item_by_datetime_range_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     new_collection = load_test_data("test_collection.json")
     new_collection["id"] = "new-collection"
 
@@ -928,9 +873,6 @@ async def test_search_item_by_datetime_range_with_stac_query(
 async def test_search_item_by_start_datetime_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     new_collection = load_test_data("test_collection.json")
     new_collection["id"] = "new-collection"
 
@@ -955,9 +897,6 @@ async def test_search_item_by_start_datetime_with_stac_query(
 async def test_search_item_not_found_outside_datetime_range(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     new_collection = load_test_data("test_collection.json")
     new_collection["id"] = "new-collection"
 
@@ -982,9 +921,6 @@ async def test_search_item_not_found_outside_datetime_range(
 async def test_search_item_after_datetime_update_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     new_collection = load_test_data("test_collection.json")
     new_collection["id"] = "new-collection"
 
@@ -1016,9 +952,6 @@ async def test_search_item_after_datetime_update_with_stac_query(
 async def test_search_item_by_multiple_collections_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     collection1 = load_test_data("test_collection.json")
     collection1["id"] = "collection-1"
 
@@ -1055,9 +988,6 @@ async def test_search_item_by_multiple_collections_with_stac_query(
 async def test_create_item_with_the_same_date_change_alias_name_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
 
@@ -1082,14 +1012,12 @@ async def test_create_item_with_the_same_date_change_alias_name_for_datetime_ind
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_create_item_with_datetime_field_creates_single_alias(
+    datetime_filtering_env,
     app_client,
     ctx,
     load_test_data,
     txn_client,
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     item["properties"]["start_datetime"] = None
@@ -1118,11 +1046,8 @@ async def test_create_item_with_datetime_field_creates_single_alias(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_alias_created_for_past_date(
-    app_client, ctx, load_test_data, txn_client
+    datetime_filtering_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     dt = "2012-02-12T12:30:22Z"
@@ -1148,11 +1073,8 @@ async def test_datetime_index_alias_created_for_past_date(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_reuses_existing_index_for_default_date(
-    app_client, ctx, load_test_data, txn_client
+    datetime_filtering_env, app_client, ctx, load_test_data, txn_client
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
 
@@ -1177,11 +1099,8 @@ async def test_datetime_index_reuses_existing_index_for_default_date(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_groups_same_year_dates_in_single_index(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     dt = "2022-02-12T12:30:22Z"
@@ -1208,11 +1127,8 @@ async def test_datetime_index_groups_same_year_dates_in_single_index(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_rejects_item_without_datetime_field(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     item["properties"]["datetime"] = None
@@ -1225,11 +1141,8 @@ async def test_datetime_index_rejects_item_without_datetime_field(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_bulk_insert_with_same_date_range(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     base_item = load_test_data("test_item.json")
     items_dict = {}
 
@@ -1265,11 +1178,8 @@ async def test_datetime_index_bulk_insert_with_same_date_range(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_bulk_insert_with_different_date_ranges(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
-
     base_item = load_test_data("test_item.json")
     items_dict = {}
 
@@ -1306,11 +1216,8 @@ async def test_datetime_index_bulk_insert_with_different_date_ranges(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_bulk_insert_allows_item_retrieval(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -1360,11 +1267,8 @@ async def test_datetime_index_bulk_insert_allows_item_retrieval(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_collection_patch_operation(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -1416,11 +1320,8 @@ async def test_datetime_index_collection_patch_operation(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_collection_put_operation(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -1475,11 +1376,8 @@ async def test_datetime_index_collection_put_operation(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_item_patch_operation(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -1533,11 +1431,8 @@ async def test_datetime_index_item_patch_operation(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_datetime_index_item_put_operation(
-    app_client, load_test_data, txn_client, ctx
+    datetime_filtering_env, app_client, load_test_data, txn_client, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -1594,9 +1489,6 @@ async def test_datetime_index_item_put_operation(
 async def test_patch_item_datetime_same_value_allowed_use_datetime_false(
     mock_datetime_env, app_client, load_test_data, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -1625,9 +1517,6 @@ async def test_patch_item_datetime_same_value_allowed_use_datetime_false(
 async def test_patch_item_datetime_different_value_allowed_use_datetime_false(
     mock_datetime_env, app_client, load_test_data, ctx
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
-
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
@@ -1637,3 +1526,376 @@ async def test_patch_item_datetime_different_value_allowed_use_datetime_false(
     )
     assert response.status_code == 200
     assert response.json()["properties"]["datetime"] == "2020-02-15T12:00:00Z"
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_insert_existing_id_different_datetime_index(
+    mock_datetime_env, app_client, ctx, txn_client
+):
+    """Re-ingesting an existing item id under a different datetime must conflict,
+    not silently duplicate it in another index (#571)."""
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+
+    # Different start/end range resolves to a different physical index. Force
+    # the split via is_index_oversized so the duplicate lands in a genuinely
+    # separate index rather than merely widening the existing index's range.
+    duplicate_item = deepcopy(ctx.item)
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
+
+    with patch(
+        "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
+    ) as mock_get_size:
+        mock_get_size.return_value = True
+        response = await app_client.post(
+            f"/collections/{collection_id}/items", json=duplicate_item
+        )
+    assert response.status_code == 409
+
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
+    )
+    assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_feature_collection_insert_existing_id_different_datetime_index(
+    mock_datetime_env, app_client, ctx, txn_client
+):
+    """A FeatureCollection re-ingesting an existing item id under a different
+    datetime must report a conflict, not silently duplicate it (#571)."""
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+
+    new_item = deepcopy(ctx.item)
+    new_item["id"] = str(uuid.uuid4())
+
+    duplicate_item = deepcopy(ctx.item)
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
+
+    payload = {
+        "type": "FeatureCollection",
+        "features": [new_item, duplicate_item],
+    }
+    # Force a split so the duplicate lands in a separate physical index, which
+    # is the case only alias-wide detection can catch (#571).
+    with patch(
+        "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
+    ) as mock_get_size:
+        mock_get_size.return_value = True
+        response = await app_client.post(
+            f"/collections/{collection_id}/items", json=payload
+        )
+    assert response.status_code == 201
+    body = response.json()
+    assert new_item["id"] in body["successfully_added"]
+    assert item_id in body["conflict_errors"]
+
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
+    )
+    assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_put_item_nonexistent_returns_404_for_datetime_index(
+    mock_datetime_env, app_client, ctx, load_test_data
+):
+    """PUT of an item that does not exist returns 404, as on main (#881)."""
+    collection_id = ctx.collection["id"]
+
+    new_item = load_test_data("test_item.json")
+    new_item["id"] = "brand-new-item"
+
+    response = await app_client.put(
+        f"/collections/{collection_id}/items/{new_item['id']}", json=new_item
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_update_item_changed_datetime_bypasses_queue(
+    mock_datetime_env, app_client, ctx, monkeypatch
+):
+    """A PUT that changes the datetime fields must reach the database layer's
+    datetime validation instead of being queued (#571)."""
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+
+    collection_id = ctx.collection["id"]
+
+    updated_item = deepcopy(ctx.item)
+    updated_item["properties"]["start_datetime"] = "2020-02-10T12:30:22Z"
+
+    response = await app_client.put(
+        f"/collections/{collection_id}/items/{ctx.item['id']}", json=updated_item
+    )
+    assert response.status_code == 400
+    assert "start_datetime" in response.json()["detail"]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_queued_insert_existing_id_different_datetime_no_duplicate(
+    mock_datetime_env, app_client, ctx, txn_client, monkeypatch
+):
+    """A queued re-ingest of an existing item id under a different datetime is
+    reported as a conflict by the worker instead of duplicating (#571)."""
+    from scripts.item_queue_worker import ItemQueueWorker
+    from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, connect_redis
+
+    redis = await connect_redis()
+    if redis is None:
+        pytest.skip("Redis not configured")
+    await redis.aclose()
+
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+
+    duplicate_item = deepcopy(ctx.item)
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
+
+    payload = {"type": "FeatureCollection", "features": [duplicate_item]}
+    response = await app_client.post(
+        f"/collections/{collection_id}/items", json=payload
+    )
+    assert response.status_code == 202
+
+    queue_manager = await AsyncRedisQueueManager.create()
+    try:
+        pending_items = await queue_manager.get_pending_items(collection_id)
+        assert len(pending_items) == 1
+
+        worker = ItemQueueWorker()
+        await worker._init_queue_manager()
+        try:
+            # Force a split so the queued duplicate lands in a separate
+            # physical index, where only alias-wide detection catches it
+            # (#571).
+            with patch(
+                "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
+            ) as mock_get_size:
+                mock_get_size.return_value = True
+                await worker._flush_collection(collection_id)
+        finally:
+            await worker.queue_manager.close()
+
+        await txn_client.database.client.indices.refresh(index="_all")
+
+        count = await txn_client.database.client.count(
+            index=index_alias_by_collection_id(collection_id),
+            body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
+        )
+        assert count["count"] == 1
+
+        failed_key = queue_manager._get_failed_set_key(collection_id)
+        failed_ids = await queue_manager.redis.smembers(failed_key)
+        failed_ids_str = {
+            fid.decode("utf-8") if isinstance(fid, bytes) else fid for fid in failed_ids
+        }
+        assert item_id in failed_ids_str
+    finally:
+        await queue_manager.close()
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_insert_existing_id_unrefreshed_no_duplicate(
+    mock_datetime_env, app_client, ctx, txn_client
+):
+    """A same-id insert must conflict even when the existing document has not
+    been refreshed yet; _search only sees refreshed docs, mget is real-time
+    (#571)."""
+    collection_id = ctx.collection["id"]
+
+    # Write the document directly with refresh=False so it is invisible to
+    # search but visible to real-time gets.
+    existing = deepcopy(ctx.item)
+    existing["id"] = str(uuid.uuid4())
+    existing_doc_id = mk_item_id(existing["id"], collection_id)
+    target_index = await txn_client.database.async_index_inserter.get_target_index(
+        collection_id, existing
+    )
+    await txn_client.database.client.index(
+        index=target_index, id=existing_doc_id, body=existing, refresh=False
+    )
+
+    # Re-ingest the same id under a datetime that resolves to a different
+    # physical index (forced split).
+    duplicate_item = deepcopy(existing)
+    duplicate_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    duplicate_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    duplicate_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
+
+    with patch(
+        "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
+    ) as mock_get_size:
+        mock_get_size.return_value = True
+        response = await app_client.post(
+            f"/collections/{collection_id}/items", json=duplicate_item
+        )
+    assert response.status_code == 409
+
+    await txn_client.database.client.indices.refresh(index="_all")
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": existing_doc_id}}},
+    )
+    assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_put_item_changed_datetime_unrefreshed_no_duplicate(
+    mock_datetime_env, app_client, ctx, txn_client
+):
+    """A PUT that changes the datetime of an unrefreshed existing item must
+    still hit datetime-field validation instead of upserting a second copy
+    into another index (#571)."""
+    collection_id = ctx.collection["id"]
+
+    # Write the document directly with refresh=False so it is invisible to
+    # search but visible to real-time gets.
+    existing = deepcopy(ctx.item)
+    existing["id"] = str(uuid.uuid4())
+    existing_doc_id = mk_item_id(existing["id"], collection_id)
+    target_index = await txn_client.database.async_index_inserter.get_target_index(
+        collection_id, existing
+    )
+    await txn_client.database.client.index(
+        index=target_index, id=existing_doc_id, body=existing, refresh=False
+    )
+
+    updated_item = deepcopy(existing)
+    updated_item["properties"]["start_datetime"] = "2021-02-08T12:30:22Z"
+    updated_item["properties"]["datetime"] = "2021-02-12T12:30:22Z"
+    updated_item["properties"]["end_datetime"] = "2021-02-16T12:30:22Z"
+
+    response = await app_client.put(
+        f"/collections/{collection_id}/items/{existing['id']}", json=updated_item
+    )
+    assert response.status_code == 400
+    assert "start_datetime" in response.json()["detail"]
+
+    await txn_client.database.client.indices.refresh(index="_all")
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": existing_doc_id}}},
+    )
+    assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_bulk_async_intra_batch_duplicate_id_no_duplicate(
+    mock_datetime_env, app_client, ctx, txn_client, load_test_data
+):
+    """Two same-id items in a single bulk batch must not both be written.
+
+    The second copy is reported as a synthetic 409 conflict even though neither
+    item exists in the database yet, because _id uniqueness is only enforced per
+    physical index and the two datetimes may resolve to different shards (#571).
+    The spy on prepare_bulk_actions asserts the duplicate never reaches the bulk
+    request, independent of index routing.
+    """
+    collection_id = ctx.collection["id"]
+
+    first = deepcopy(ctx.item)
+    first["id"] = "intra-batch-duplicate"
+    second = deepcopy(first)
+    second["properties"]["datetime"] = "2020-02-13T00:00:00Z"
+
+    inserter = txn_client.database.async_index_inserter
+    real_prepare = inserter.prepare_bulk_actions
+    seen_batches = []
+
+    async def spy_prepare(cid, items, op_type="create"):
+        seen_batches.append([i["id"] for i in items])
+        return await real_prepare(cid, items, op_type)
+
+    inserter.prepare_bulk_actions = spy_prepare
+
+    success, errors = await txn_client.database.bulk_async(
+        collection_id,
+        [first, second],
+        op_type="create",
+        refresh="wait_for",
+    )
+
+    assert seen_batches == [[first["id"]]]
+    assert success == 1
+    assert len(errors) == 1
+    conflict = errors[0]["create"]
+    assert conflict["status"] == 409
+    assert conflict["_id"] == mk_item_id(first["id"], collection_id)
+    assert conflict["_index"] == index_alias_by_collection_id(collection_id)
+
+    count = await txn_client.database.client.count(
+        index=index_alias_by_collection_id(collection_id),
+        body={"query": {"term": {"_id": mk_item_id(first["id"], collection_id)}}},
+    )
+    assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_put_item_after_index_rollover_no_duplicate(
+    datetime_filtering_env, app_client, ctx, txn_client
+):
+    """A PUT on an item whose physical index has rolled over must overwrite
+    the document in place, not write a second copy to the new index (#571)."""
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
+    doc_id = mk_item_id(item_id, collection_id)
+    alias = index_alias_by_collection_id(collection_id)
+    client = txn_client.database.client
+
+    # Simulate a rollover: a second physical index that sorts after the one
+    # holding ctx.item, so datetime target resolution would pick it.
+    await client.indices.create(
+        index=f"items_{collection_id}-{uuid.uuid4()}",
+        body={
+            "aliases": {
+                alias: {},
+                f"items_datetime_{collection_id}_2020-02-20-2020-02-28": {},
+            }
+        },
+    )
+
+    # Clear the shared alias cache so the target is resolved from the
+    # post-rollover index layout deterministically.
+    selector = txn_client.database.async_index_selector
+    if hasattr(selector, "cache_manager") and hasattr(
+        selector.cache_manager, "clear_cache"
+    ):
+        await selector.cache_manager.clear_cache()
+
+    # PUT the original item with a benign non-datetime change. Datetime
+    # routing would send it to the new index; it must instead be written back
+    # to the index where it already lives.
+    updated_item = deepcopy(ctx.item)
+    updated_item["properties"]["gsd"] = 99
+    response = await app_client.put(
+        f"/collections/{collection_id}/items/{item_id}", json=updated_item
+    )
+    assert response.status_code == 200
+
+    await client.indices.refresh(index="_all")
+    count = await client.count(
+        index=alias,
+        body={"query": {"term": {"_id": doc_id}}},
+    )
+    assert count["count"] == 1

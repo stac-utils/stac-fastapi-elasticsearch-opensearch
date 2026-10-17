@@ -59,6 +59,27 @@ class BaseDatabaseLogic(abc.ABC):
         """Retrieve an item for a write without applying read visibility filters."""
         return await self.get_one_item(collection_id, item_id, include_hidden=True)
 
+    async def get_item_hit_for_write(self, collection_id: str, item_id: str) -> dict:
+        """Retrieve the write-lookup hit for an item, including its version.
+
+        Returns a hit dict carrying ``_source``, ``_index``, ``_seq_no`` and
+        ``_primary_term``, so callers that then write via ``create_item`` can
+        pass the result back as ``existing_hit`` (the existence check is not
+        repeated) or read the stored version from it.
+
+        Raises:
+            NotFoundError: If the item does not exist in the collection.
+        """
+        item, version = await self.get_one_item_with_version(
+            collection_id, item_id, include_hidden=True
+        )
+        return {
+            "_source": item,
+            "_index": version.index,
+            "_seq_no": version.seq_no,
+            "_primary_term": version.primary_term,
+        }
+
     @abc.abstractmethod
     async def get_one_item_with_version(
         self, collection_id: str, item_id: str, *, include_hidden: bool = False

@@ -4,6 +4,7 @@ This module provides utility functions for working with database operations
 in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
+import asyncio
 import logging
 import os
 from functools import wraps
@@ -126,50 +127,192 @@ class BulkIndexError(Exception):
         super().__init__(message)
 
 
-async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
-    """Check if an item exists across all indexes for an alias.
+async def _alias_index_names(client: Any, alias: str) -> list[str]:
+    """Return the concrete index names behind an alias.
 
     Args:
         client: The async Elasticsearch/OpenSearch client.
-        alias: The index alias to search against.
+        alias: The index alias to resolve.
+
+    Returns:
+        list[str]: The concrete index names carrying the alias.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+    """
+    resp = await client.indices.get_alias(name=alias)
+    return list(resp.keys())
+
+
+def _alias_index_names_sync(client: Any, alias: str) -> list[str]:
+    """Return the concrete index names behind an alias (sync).
+
+    Args:
+        client: The sync Elasticsearch/OpenSearch client.
+        alias: The index alias to resolve.
+
+    Returns:
+        list[str]: The concrete index names carrying the alias.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+    """
+    resp = client.indices.get_alias(name=alias)
+    return list(resp.keys())
+
+
+async def find_item_in_alias(
+    client: Any, alias: str, doc_id: str
+) -> dict[str, Any] | None:
+    """Real-time lookup of a document across all indexes under an alias.
+
+    Uses ``mget`` over the alias's concrete indexes, which is real-time and
+    therefore sees documents that have not been refreshed yet. This matters
+    for duplicate checks and update validation when ``DATABASE_REFRESH`` is
+    false.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to look the document up under.
+        doc_id: The document ID to look up.
+
+    Returns:
+        dict | None: The matching ``mget`` hit (carrying ``_index``, ``_id``,
+            ``_source``, ...) if found, None otherwise.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+
+    Note:
+        This is a check-then-act: a concurrent write can insert the same
+        ``_id`` into another index after this returns but before the caller's
+        write lands. The search engine cannot enforce uniqueness across
+        indexes, so closing that window entirely would require external
+        locking.
+    """
+    resp = await client.mget(
+        body={
+            "docs": [
+                {"_index": index, "_id": doc_id}
+                for index in await _alias_index_names(client, alias)
+            ]
+        }
+    )
+    for doc in resp.get("docs", []):
+        if doc.get("found") and doc.get("_source") is not None:
+            return doc
+    return None
+
+
+async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias.
+
+    Uses ``mget`` over the alias's concrete indexes so the check is real-time
+    and sees documents that have not been refreshed yet.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to check against.
         doc_id: The document ID to check for existence.
 
     Returns:
         bool: True if the item exists in any index under the alias, False otherwise.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
     """
-    resp = await client.search(
-        index=alias,
+    resp = await client.mget(
         body={
-            "query": {"ids": {"values": [doc_id]}},
-            "_source": False,
-            "size": 0,
-            "terminate_after": 1,
-        },
+            "docs": [
+                {"_index": index, "_id": doc_id, "_source": False}
+                for index in await _alias_index_names(client, alias)
+            ]
+        }
     )
-    return bool(resp["hits"]["total"]["value"])
+    return any(doc.get("found") for doc in resp.get("docs", []))
 
 
 def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
     """Check if an item exists across all indexes for an alias (sync).
 
+    Uses ``mget`` over the alias's concrete indexes so the check is real-time
+    and sees documents that have not been refreshed yet.
+
     Args:
         client: The sync Elasticsearch/OpenSearch client.
-        alias: The index alias to search against.
+        alias: The index alias to check against.
         doc_id: The document ID to check for existence.
 
     Returns:
         bool: True if the item exists in any index under the alias, False otherwise.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
     """
-    resp = client.search(
-        index=alias,
+    resp = client.mget(
         body={
-            "query": {"ids": {"values": [doc_id]}},
-            "_source": False,
-            "size": 0,
-            "terminate_after": 1,
-        },
+            "docs": [
+                {"_index": index, "_id": doc_id, "_source": False}
+                for index in _alias_index_names_sync(client, alias)
+            ]
+        }
     )
-    return bool(resp["hits"]["total"]["value"])
+    return any(doc.get("found") for doc in resp.get("docs", []))
+
+
+async def find_existing_item_ids(
+    client: Any, alias: str, doc_ids: list[str]
+) -> set[str]:
+    """Return the subset of document IDs that exist in any index under an alias.
+
+    Used to detect duplicates across all physical indexes of a collection
+    (e.g., datetime-sharded indexes), where ``_id`` uniqueness enforced by the
+    search engine only applies within a single index.
+
+    Uses per-index ``mget`` calls, which are real-time (seeing unrefreshed
+    documents) and not subject to ``max_result_window``, so arbitrarily large
+    batches are safe. The per-index lookups run concurrently.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to look the documents up under.
+        doc_ids: The document IDs to look up.
+
+    Returns:
+        set[str]: The document IDs found under the alias.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+
+    Note:
+        This is a check-then-act: a concurrent write can insert the same
+        ``_id`` into another index after this returns but before the caller's
+        write lands. The search engine cannot enforce uniqueness across
+        indexes, so closing that window entirely would require external
+        locking.
+    """
+    if not doc_ids:
+        return set()
+    doc_ids = list(dict.fromkeys(doc_ids))
+    indices = await _alias_index_names(client, alias)
+
+    async def _find_in_index(index: str) -> set[str]:
+        resp = await client.mget(
+            body={
+                "docs": [
+                    {"_index": index, "_id": doc_id, "_source": False}
+                    for doc_id in doc_ids
+                ]
+            }
+        )
+        return {doc["_id"] for doc in resp.get("docs", []) if doc.get("found")}
+
+    existing: set[str] = set()
+    for found_ids in await asyncio.gather(
+        *(_find_in_index(index) for index in indices)
+    ):
+        existing.update(found_ids)
+    return existing
 
 
 def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:

@@ -288,10 +288,21 @@ class ItemQueueWorker:
 
                 # DATABASE INSERTION: Only valid items reach the database
                 try:
+                    # With datetime index filtering, updates bypass the queue
+                    # entirely, so everything here is an insert. "create" gives
+                    # alias-wide duplicate detection in bulk_async; silently
+                    # upserting a stale queued item would be wrong in that mode.
+                    op_type = (
+                        "create"
+                        if get_bool_env(
+                            "ENABLE_DATETIME_INDEX_FILTERING", default=False
+                        )
+                        else "index"
+                    )
                     success, errors = await self.db.bulk_async(
                         collection_id=collection_id,
                         processed_items=valid_items,
-                        op_type="index",
+                        op_type=op_type,
                     )
                 except Exception:
                     logger.exception(
