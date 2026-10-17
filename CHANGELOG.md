@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - A collection's item index is now named `items_<collection>_<uuid>` when it is created, as datetime indices already are, instead of `items_<collection>-000001`. Existing indices keep working through their alias. A collection deleted and created again no longer reuses an index name, whose sequence numbers restart, so an `ETag` from before the recreation cannot match. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
+- A JSON Patch `copy` into an array index now inserts at that index and shifts later elements, as RFC 6902 requires and as `add` and `move` already did, instead of replacing the element. Previously the in-place update script replaced, so a `copy` produced a different document than the in-memory patch path used when `ENABLE_STAC_VALIDATOR=true`.
 
 ## [v8.0.0rc1] - 2026-10-14
 
