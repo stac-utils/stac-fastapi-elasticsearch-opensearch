@@ -105,6 +105,8 @@ async def search_collections_by_parent_id_with_pagination_shared(
     limit: int = 10,
     search_after: list | None = None,
     filter_query: dict[str, Any] | None = None,
+    free_text_query: dict[str, Any] | None = None,
+    sort: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], int, list | None]:
     """Search for collections with a specific parent catalog using OpenSearch pagination.
 
@@ -115,6 +117,10 @@ async def search_collections_by_parent_id_with_pagination_shared(
         search_after: A list of sort values from the last hit of the previous page.
         filter_query: An extra query clause every result must match, such as a
             CQL2 filter translated with the filter module.
+        free_text_query: An extra query clause every result must match, such as a
+            `q` free-text search translated with apply_collections_free_text_filter_shared.
+        sort: Sort clauses such as [{"title.keyword": {"order": "asc"}}]. Defaults
+            to id ascending; the caller should include id so pages stay aligned.
 
     Returns:
         Tuple of (collections_list, total_hits_count, next_search_after_list).
@@ -122,27 +128,29 @@ async def search_collections_by_parent_id_with_pagination_shared(
     Raises:
         Exception: Re-raises any database connection or query errors to the caller.
     """
-    query = {
-        "bool": {
-            "must": [
-                {"term": {"parent_ids": catalog_id}},
-                {"term": {"type": "Collection"}},
-            ]
-        }
-    }
+    must: list[dict[str, Any]] = [
+        {"term": {"parent_ids": catalog_id}},
+        {"term": {"type": "Collection"}},
+    ]
     if filter_query:
-        query["bool"]["must"].append(filter_query)
+        must.append(filter_query)
+    if free_text_query:
+        must.append(free_text_query)
+    query = {"bool": {"must": must}}
+
+    sort_clause = sort or [{"id": {"order": "asc"}}]
 
     # ponytail: at MAX_LIMIT a full last page still links to an empty page; a size=1 lookahead would fix it
     size = min(limit + 1, MAX_LIMIT)
     search_params = {
         "query": query,
-        "sort": [{"id": {"order": "asc"}}],
+        "sort": sort_clause,
         "size": size,
         "track_total_hits": True,
     }
 
-    if search_after:
+    # A token is only valid against the sort it was issued for: same arity.
+    if search_after and len(search_after) == len(sort_clause):
         search_params["search_after"] = search_after
 
     try:

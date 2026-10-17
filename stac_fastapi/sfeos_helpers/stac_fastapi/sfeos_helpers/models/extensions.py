@@ -407,6 +407,22 @@ class Extensions:
                 request_type="GET",
             )
 
+        # No Query or pagination extensions: the route pages with token and has
+        # no `query` parameter, like the collection-search listing it mirrors.
+        enabled_keys = getattr(self.settings, "enabled_extensions", None)
+        catalog_collections_extensions = [
+            extension
+            for key, extension in self.collection_search_map.items()
+            if key in ("fields", "sort", "free_text", "filter")
+            and (enabled_keys is None or key in enabled_keys)
+        ]
+        catalog_collections_get_request_model = create_request_model(
+            model_name="CatalogCollectionsRequestWithParams",
+            base_model=CatalogCollectionsRequest,
+            extensions=catalog_collections_extensions,
+            request_type="GET",
+        )
+
         extensions: list[ApiExtension] = [
             CatalogsExtension(
                 client=catalogs_client,
@@ -415,9 +431,7 @@ class Extensions:
                 catalogs_get_request_model=with_filter(
                     CatalogsGetRequest, collection_filter
                 ),
-                catalog_collections_get_request_model=with_filter(
-                    CatalogCollectionsRequest, collection_filter
-                ),
+                catalog_collections_get_request_model=catalog_collections_get_request_model,
                 sub_catalogs_get_request_model=with_filter(
                     SubCatalogsRequest, collection_filter
                 ),

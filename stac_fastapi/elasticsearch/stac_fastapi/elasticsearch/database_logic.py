@@ -2596,6 +2596,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         filter: dict[str, Any] | None = None,
+        sort: list[dict[str, Any]] | None = None,
+        q: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog.
 
@@ -2605,12 +2607,30 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (str | None): Pagination token.
             request (Any): The request object.
             filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
+            sort (list[dict[str, Any]] | None): Field/direction pairs from `sortby`.
+            q (list[str] | None): Free text search terms.
 
         Returns:
             Tuple containing list of collections, next token, and total count.
         """
         # Decode token to search_after
         search_after = decode_token_to_search_after(token)
+
+        formatted_sort = None
+        if sort:
+            formatted_sort = []
+            for item in sort:
+                field = remap_sort_field_shared(
+                    item.get("field", ""), is_collection=True
+                )
+                direction = item.get("direction", "asc")
+                if field:
+                    formatted_sort.append({field: {"order": direction}})
+            # id as the last key keeps pages aligned when earlier keys tie
+            if not any("id" in item for item in formatted_sort):
+                formatted_sort.append({"id": {"order": "asc"}})
+            if not formatted_sort:
+                formatted_sort = None
 
         (
             collections,
@@ -2622,6 +2642,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit=limit,
             search_after=search_after,
             filter_query=await self._collections_filter_query(filter),
+            free_text_query=apply_collections_free_text_filter_shared(q),
+            sort=formatted_sort,
         )
 
         # Encode next_search_after to token
