@@ -535,3 +535,9 @@ async def mock_datetime_env(datetime_filtering_env, monkeypatch):
     """Datetime index filtering with USE_DATETIME=False (start/end sharding)."""
     monkeypatch.setenv("USE_DATETIME", "false")
     yield
+
+
+@pytest.fixture
+def stac_validator_off(monkeypatch):
+    """Disable the STAC validator for tests that exercise non-validation behavior."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
