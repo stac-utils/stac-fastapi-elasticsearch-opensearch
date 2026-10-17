@@ -7,11 +7,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- ETag and `If-Match` on single items, collections and catalogs, for optimistic locking ([RFC 9110, section 13.1.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.1)). `GET`, and the `POST`, `PUT` and `PATCH` responses that return one resource, carry a strong `ETag` for the stored version (primary term, sequence number and a hash of the index), on the direct routes and on `/catalogs/{catalog_id}/collections/{collection_id}` and its items. `PUT`, `PATCH` and `DELETE` on a collection or item, and `PUT` and `DELETE` on a catalog, accept `If-Match`: a tag that is not current returns `412` and writes nothing, and the check and the write are one atomic step in the database. A conditional `DELETE` of a catalog or collection checks the tag before it unlinks children or deletes items. Writes without `If-Match` are unchanged; with `REQUIRE_IF_MATCH=true` they return `428`, as does a bulk upsert, which cannot carry the header. A conditional `PUT` is not queued. With `REQUIRE_IF_MATCH=true` and `ENABLE_REDIS_QUEUE=true`, creates are written directly, because the queue writes with upsert semantics. A retried catalog `DELETE` unlinks children that a failed cleanup left behind. The OpenAPI document describes the header, the parameter and the status codes. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
+
 ### Breaking Changes
 
+- `BaseDatabaseLogic` has four new abstract methods, `get_one_item_with_version`, `find_collection_with_version`, `find_catalog_with_version` and `unlink_catalog_orphans`, and its write methods take a `version` argument. Subclasses that do not inherit from the Elasticsearch or OpenSearch `DatabaseLogic` must implement them. `get_catalog_collection_item` is removed from `BaseDatabaseLogic` and both backends; the catalog-scoped item read uses `get_one_item_with_version`, and nothing else called it. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
 - Uvicorn's auto-reload is now off unless `RELOAD` is `true`, `1`, `yes` or `y`. Before, an unset or unrecognized value turned it on, so the published Docker images, `python -m stac_fastapi.<backend>.app` and the `stac-fastapi-elasticsearch` and `stac-fastapi-opensearch` commands ran in development mode. The compose files for development already set `RELOAD=true`. [#940](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/940)
 
-## [v8.0.0rc1] - 2026-10-09
+### Fixed
+
+- A collection's item index is now named `items_<collection>_<uuid>` when it is created, as datetime indices already are, instead of `items_<collection>-000001`. Existing indices keep working through their alias. A collection deleted and created again no longer reuses an index name, whose sequence numbers restart, so an `ETag` from before the recreation cannot match. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
+
+## [v8.0.0rc1] - 2026-10-14
 
 ### Added
 
