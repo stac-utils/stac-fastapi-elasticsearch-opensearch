@@ -139,6 +139,26 @@ async def test_malformed_get_datetime(collections_http, monkeypatch, value, deta
     assert response.json() == paired.json()
 
 
+@pytest.mark.parametrize(
+    "filter_value",
+    [
+        # Parses as JSON, but is a property reference, not a boolean expression.
+        '{"property": "title"}',
+        # Not a CQL2 expression object at all.
+        "true",
+        "[1, 2]",
+        # Not JSON and not valid CQL2 text either.
+        "{not json",
+    ],
+)
+async def test_malformed_get_filter(collections_http, filter_value):
+    response = await collections_http.get(
+        "/collections",
+        params={"filter": filter_value, "filter-lang": "cql2-json"},
+    )
+    assert response.status_code == 400, response.text
+
+
 @pytest.mark.parametrize("value", [value for value, _ in MALFORMED_DATETIMES])
 async def test_malformed_post_datetime(collections_http, value):
     response = await collections_http.post(URL, json={"datetime": value})
