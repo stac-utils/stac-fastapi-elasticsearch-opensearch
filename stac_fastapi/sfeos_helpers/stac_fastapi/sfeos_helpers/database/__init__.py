@@ -52,6 +52,7 @@ from .index import (
     filter_indexes_by_datetime,
     filter_indexes_by_datetime_range,
     index_alias_by_collection_id,
+    index_behind_alias,
     index_by_collection_id,
     indices,
 )
@@ -90,6 +91,7 @@ __all__ = [
     # Index operations
     "create_index_templates_shared",
     "delete_item_index_shared",
+    "index_behind_alias",
     "index_alias_by_collection_id",
     "index_by_collection_id",
     "filter_indexes_by_datetime",

@@ -14,6 +14,7 @@ from stac_fastapi.api.models import (
     create_request_model,
 )
 from stac_fastapi.core.core import CoreClient
+from stac_fastapi.core.etag import ETagMiddleware, document_conditional_requests
 from stac_fastapi.core.exceptions import QueuedSuccess, queued_success_handler
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
@@ -178,6 +179,8 @@ def instantiate_api(
     fastapi_app = stac_api.app
 
     fastapi_app.add_exception_handler(QueuedSuccess, queued_success_handler)
+    fastapi_app.add_middleware(ETagMiddleware)
+    document_conditional_requests(fastapi_app)
     fastapi_app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
     # Make this available for serializers and tests that inspect app config.
