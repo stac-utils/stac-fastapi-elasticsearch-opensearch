@@ -17,10 +17,14 @@
 
 The following organizations have contributed time and/or funding to support the development of this project:
 
-<a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
-<a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
-<a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
-<a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
+<p>
+<a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="70" hspace="15" vspace="10"></a>
+<a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="70" hspace="15" vspace="10"></a>
+<a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="70" hspace="15" vspace="10"></a>
+<a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="75" hspace="15" vspace="10"></a>
+<a href="https://github.com/StacLabs"><img src="assets/staclabs-icon-black.png" alt="StacLabs" height="70" hspace="15" vspace="10"></a>
+<a href="https://www.fao.org/home"><img src="assets/fao-logo-blue-3lines-en.svg" alt="UN FAO" height="65" hspace="15" vspace="10"></a>
+</p>
 
 ## Latest News
 
@@ -142,6 +146,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Rate Limiting](#rate-limiting)
   - [Prometheus metrics](#prometheus-metrics)
   - [Hidden Items Filtering](#hidden-items-filtering)
+  - [Optimistic Locking (ETag and If-Match)](#optimistic-locking-etag-and-if-match)
   - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
 ## Documentation & Resources
@@ -1054,6 +1059,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `HIDE_ALTERNATE_PARENTS` | When `true`, suppresses `rel="related"` and `rel="duplicate"` links for alternate parents in poly-hierarchy. Only the contextual `rel="parent"` link is advertised. Useful for multi-tenant deployments to prevent information leakage about other tenants. Requires `ENABLE_CATALOGS_ROUTE=true`. | `false` | Optional |
 | `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
+| `REQUIRE_IF_MATCH` | When `true`, `PUT`, `PATCH` and `DELETE` on a single item or collection, and `PUT` and `DELETE` on a single catalog, return `428 Precondition Required` without an `If-Match` header, and so does a bulk upsert, which cannot carry one. Creates, bulk inserts, and linking or unlinking catalogs and collections are not affected. See [Optimistic Locking](#optimistic-locking-etag-and-if-match). | `false` | Optional |
 | `VALIDATE_BEFORE_QUEUE` | When using Redis queue (`ENABLE_REDIS_QUEUE=true`), controls whether validation happens on the API thread before queuing (true) or deferred to the background worker (false). When queue is disabled, validation always happens on the API thread. Set to `true` for strict data quality, `false` for maximum API throughput. See [Validation Timing with Redis Queue](#validation-timing-with-redis-queue) for details. | `true` | Optional |
 | `ENABLE_TOPOLOGY_VALIDATION` | Enable lightweight pure-Python validation to enforce WGS84 coordinate bounds (±180° lon, ±90° lat) and detect improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides CPU-efficient spatial validation without external dependencies. See [Topology Validation](#topology-validation) for details. | `false` | Optional |
 | `MAX_TOPOLOGY_VERTICES` | Maximum number of vertices allowed in a single Polygon or MultiPolygon ring when topology validation is enabled. This prevents DoS attacks with pathologically complex geometries. Only applies when `ENABLE_TOPOLOGY_VALIDATION=true`. | `5000` | Optional |
@@ -2396,6 +2402,32 @@ The following item will be excluded from returned results:
     }
   }
   ```
+
+## Optimistic Locking (ETag and If-Match)
+
+A single item, collection or catalog carries an `ETag` header on `GET`, and on the `POST`, `PUT` and `PATCH` responses that return it. The reads under a catalog, `/catalogs/{catalog_id}/collections/{collection_id}` and its items, carry the same tag as the direct routes. The tag names the stored version of the document: the primary term and sequence number that Elasticsearch and OpenSearch give every write, and a hash of the name of the index that holds the document (`"1-4-5a2b9c0d"`), since sequence numbers count per index: an item created again with another datetime lands in another index, and a collection deleted and created again gets an index with a new name. It changes with every write of the document. A compressed response gets the content coding appended (`"1-4-5a2b9c0d-gzip"`), because representations that differ in content coding need different strong tags; both tags name the same version. Lists and searches carry no `ETag`.
+
+The tag covers the stored document only. Links that a response generates from other documents, such as a catalog's child links and their titles, are not part of it. So the tag is for `If-Match`; the server does not evaluate `If-None-Match` or `If-Range`, and a cache must not use the tag to revalidate a catalog.
+
+`PUT`, `PATCH` and `DELETE` on `/collections/{collection_id}` and `/collections/{collection_id}/items/{item_id}`, `PUT` and `DELETE` on `/catalogs/{catalog_id}`, and `PUT /catalogs/{catalog_id}/collections/{collection_id}`, accept `If-Match` as described in [RFC 9110, section 13.1.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.1) and in the "Optimistic Locking with ETags" requirements class of [OGC API - Features - Part 4](https://docs.ogc.org/DRAFTS/20-002r2.html):
+
+- The write happens only if `If-Match` names the current `ETag`. `*` matches any existing resource, a list matches if one of its tags does, and a weak tag (`W/"..."`) never matches.
+- Otherwise the response is `412 Precondition Failed` and nothing is written. The check and the write are one step: the write is sent with `if_seq_no` and `if_primary_term`, so a write that lands in between also returns `412`.
+- Without `If-Match`, writes work as before. With `REQUIRE_IF_MATCH=true` they return `428 Precondition Required` ([RFC 6585](https://www.rfc-editor.org/rfc/rfc6585#section-3)).
+- A resource that does not exist returns `404` before `If-Match` or `REQUIRE_IF_MATCH` is evaluated ([RFC 9110, section 13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)), so `If-Match: *` cannot test whether a resource exists. `PUT` does not create a resource; creates go through `POST`.
+- A conditional `PUT` is written directly even with `ENABLE_REDIS_QUEUE=true`, because a queued write cannot be checked atomically.
+- A conditional write or `DELETE` of a catalog or collection first checks that the index its `ETag` names is still behind the `collections` alias, and answers `412` if an alias migration moved it. A migration that runs concurrently with writes is not safe beyond that check, as on earlier versions.
+- A conditional `DELETE /catalogs/{catalog_id}` deletes the catalog before it unlinks the catalog's children, so a `412` leaves the children linked. If the unlinking fails after the catalog is gone, a retry of the `DELETE`, with or without the original `If-Match`, unlinks the children and answers `404`. Linking and unlinking (`POST /catalogs/{catalog_id}/catalogs` or `/collections` with `{"id": ...}`, and the unlink `DELETE` routes) do not take `If-Match`: they change the child, not the catalog in the URL.
+- `POST /collections/{collection_id}/bulk_items` with `"method": "upsert"` overwrites items and cannot carry `If-Match`, so with `REQUIRE_IF_MATCH=true` it returns `428`; `"method": "insert"` still works. With `REQUIRE_IF_MATCH=true` and `ENABLE_REDIS_QUEUE=true`, a `POST` of an item or ItemCollection is written directly instead of queued, because the queue writes with upsert semantics; an existing id gets `409`.
+- Items are found through search, but the version comes from a real-time read of the document, so the `ETag` of an existing item is current even before the next refresh. An item created a moment ago can still be missing from a read until the index refreshes; use `DATABASE_REFRESH=true` or `wait_for` if clients chain a create and a conditional write.
+- The OpenAPI document at `/api` lists the `ETag` response header, the `If-Match` parameter, and the `412` and `428` responses on these routes.
+- The default CORS settings come from stac-fastapi and allow only `GET` and `POST` with a `Content-Type` header. A browser client that writes needs its own CORS settings, with `If-Match` among the allowed request headers and `ETag` among the exposed response headers.
+
+```shell
+curl -i "http://localhost:8080/collections/my_collection"   # ETag: "1-4-5a2b9c0d"
+curl -X PUT "http://localhost:8080/collections/my_collection" \
+     -H 'Content-Type: application/json' -H 'If-Match: "1-4-5a2b9c0d"' -d @collection.json
+```
 
 ## Error Monitoring with Sentry
 

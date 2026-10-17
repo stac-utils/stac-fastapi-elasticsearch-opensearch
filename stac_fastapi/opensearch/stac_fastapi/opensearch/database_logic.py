@@ -21,6 +21,7 @@ from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.etag import DocumentVersion, precondition_failed
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
 from stac_fastapi.extensions.transaction.request import (
@@ -50,6 +51,7 @@ from stac_fastapi.sfeos_helpers.database import (
     find_item_in_alias,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
+    index_behind_alias,
     mk_actions,
     mk_item_id,
     populate_sort_shared,
@@ -73,6 +75,7 @@ from stac_fastapi.sfeos_helpers.database.query import (
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
+    is_hidden,
     merge_to_operations,
     operations_to_script,
     protect_datetime_script,
@@ -402,6 +405,50 @@ class DatabaseLogic(BaseDatabaseLogic):
             with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
             Item is hidden if hide_item_path is configured via env var.
         """
+        item, _ = await self.get_one_item_with_version(
+            collection_id, item_id, include_hidden=include_hidden
+        )
+        return item
+
+    @retry_on_connection_error
+    async def get_one_item_with_version(
+        self, collection_id: str, item_id: str, *, include_hidden: bool = False
+    ) -> tuple[dict, DocumentVersion]:
+        """Retrieve a single item and the version of its stored document.
+
+        Args:
+            collection_id (str): The id of the Collection that the Item belongs to.
+            item_id (str): The id of the Item.
+            include_hidden (bool): Return the item even if HIDE_ITEM_PATH hides it,
+                as a write needs the stored document.
+
+        Returns:
+            The source data for the Item, and its stored version.
+
+        Raises:
+            NotFoundError: If the specified Item does not exist in the Collection.
+        """
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            # A real-time mget over the alias's concrete indexes, so a document
+            # written a moment ago is found before the next refresh, and the
+            # hit carries the current seq_no and primary_term already.
+            HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
+            try:
+                hit = await find_item_in_alias(
+                    self.client,
+                    index_alias_by_collection_id(collection_id),
+                    mk_item_id(item_id, collection_id),
+                )
+            except OSNotFoundError:
+                hit = None
+            if hit is None or (
+                not include_hidden and is_hidden(hit["_source"], HIDE_ITEM_PATH)
+            ):
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            return hit["_source"], DocumentVersion.from_hit(hit)
+
         try:
             base_query = {"term": {"_id": mk_item_id(item_id, collection_id)}}
 
@@ -417,6 +464,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 body={
                     "query": query,
                     "size": 1,
+                    "seq_no_primary_term": True,
                 },
             )
             if response["hits"]["total"]["value"] == 0:
@@ -424,7 +472,18 @@ class DatabaseLogic(BaseDatabaseLogic):
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
 
-            return response["hits"]["hits"][0]["_source"]
+            hit = response["hits"]["hits"][0]
+            # The search found the document and applied the hidden filter, but
+            # its version is as of the last refresh. A get by id is real time,
+            # so the tag names the current version even before a refresh.
+            document = await self.client.get(index=hit["_index"], id=hit["_id"])
+            # The search filtered as of the last refresh; the current document
+            # may have become hidden since.
+            if not include_hidden and is_hidden(document["_source"], HIDE_ITEM_PATH):
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            return document["_source"], DocumentVersion.from_hit(document)
         except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
@@ -1295,8 +1354,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         base_url: str = "",
         upsert: bool = False,
         existing_hit: dict | None = None,
+        version: DocumentVersion | None = None,
         **kwargs: Any,
-    ):
+    ) -> DocumentVersion:
         """Database logic for creating one item.
 
         Args:
@@ -1308,13 +1368,16 @@ class DatabaseLogic(BaseDatabaseLogic):
             existing_hit (dict, optional): A write-lookup hit already fetched via
                 ``get_item_hit_for_write``. When given, the existing-document check
                 reuses it instead of querying the alias again.
+            version (DocumentVersion, optional): Only overwrite this stored version
+                of the item (If-Match).
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
             ItemAlreadyExistsError: If the item already exists and upsert is False.
+            HTTPException: 412 if `version` is no longer the stored version.
 
         Returns:
-            None
+            DocumentVersion: The version this write stored.
         """
         # todo: check if collection exists, but cache
         item_id = item["id"]
@@ -1384,26 +1447,40 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         item = await self.async_prep_create_item(item=item, base_url=base_url)
 
-        # An update must overwrite the document where it already lives;
-        # re-routing by datetime could send it to a newer physical index after
-        # a rollover and leave the original copy behind (#571).
-        if upsert and existing_index:
+        # A conditional write replaces the stored document where it is; an
+        # unconditional update must overwrite the document where it already
+        # lives, since re-routing by datetime could send it to a newer physical
+        # index after a rollover and leave the original copy behind (#571);
+        # a new item goes to the index the inserter picks.
+        if version:
+            target_index = version.index
+        elif upsert and existing_index:
             target_index = existing_index
         else:
             target_index = await self.async_index_inserter.get_target_index(
                 collection_id, item
             )
-
+        if version and not await self.client.indices.exists(index=version.index):
+            # The index is gone, so the version's document is too; writing would
+            # create an empty index under the old name. A deletion in the moment
+            # between this check and the write still can; the write then gets
+            # 409 (no such document), which becomes 412.
+            raise precondition_failed(f"Item {item_id}")
+        # Index the item in the database
         try:
-            await self.client.index(
+            response = await self.client.index(
                 index=target_index,
                 id=mk_item_id(item_id, collection_id),
                 body=item,
                 refresh=refresh,
                 **({} if upsert else {"op_type": "create"}),
+                **(version.write_kwargs() if version else {}),
             )
         except OSConflictError:
+            if version:
+                raise precondition_failed(f"Item {item_id}")
             raise ItemAlreadyExistsError(item_id, collection_id)
+        return DocumentVersion.from_hit(response)
 
     @retry_on_connection_error
     async def merge_patch_item(
@@ -1413,6 +1490,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         item: PartialItem,
         base_url: str,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Item:
         """Database logic for merge patching an item following RF7396.
 
@@ -1435,6 +1513,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             base_url=base_url,
             create_nest=True,
             refresh=refresh,
+            version=version,
         )
 
     @retry_on_connection_error
@@ -1446,6 +1525,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Item:
         """Database logic for json patching an item following RF6902.
 
@@ -1526,16 +1606,25 @@ class DatabaseLogic(BaseDatabaseLogic):
                     protect_datetime_script(
                         script, self.async_index_inserter.use_datetime
                     )
+                if version and document_index != version.index:
+                    # The version's document is gone; a replacement lives in
+                    # another index, so the tag no longer matches.
+                    raise precondition_failed(f"Item {item_id}")
                 await self.client.update(
                     index=document_index,
                     id=mk_item_id(item_id, collection_id),
                     body={"script": script},
                     refresh=True,
+                    **(version.write_kwargs() if version else {}),
                 )
         except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
+        except OSConflictError:
+            if version:
+                raise precondition_failed(f"Item {item_id}")
+            raise
         except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
@@ -1570,12 +1659,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         return item
 
     @retry_on_connection_error
-    async def delete_item(self, item_id: str, collection_id: str, **kwargs: Any):
+    async def delete_item(
+        self,
+        item_id: str,
+        collection_id: str,
+        version: DocumentVersion | None = None,
+        **kwargs: Any,
+    ):
         """Delete a single item from the database.
 
         Args:
             item_id (str): The id of the Item to be deleted.
             collection_id (str): The id of the Collection that the Item belongs to.
+            version (DocumentVersion, optional): Only delete this stored version
+                of the item (If-Match); 412 otherwise.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -1592,6 +1689,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.info(
             f"Deleting item {item_id} from collection {collection_id} with refresh={refresh}"
         )
+
+        if version is not None:
+            try:
+                await self.client.delete(
+                    index=version.index,
+                    id=mk_item_id(item_id, collection_id),
+                    refresh=refresh,
+                    **version.write_kwargs(),
+                )
+            except (OSConflictError, OSNotFoundError):
+                raise precondition_failed(f"Item {item_id}")
+            return
 
         try:
             await self.client.delete_by_query(
@@ -1655,7 +1764,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         return result
 
     @retry_on_connection_error
-    async def create_collection(self, collection: Collection, **kwargs: Any):
+    async def create_collection(
+        self, collection: Collection, **kwargs: Any
+    ) -> DocumentVersion:
         """Create a single collection in the database.
 
         Args:
@@ -1687,7 +1798,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             add_bbox_shape_to_collection(collection)
 
         try:
-            await self.client.index(
+            response = await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
                 body=collection,
@@ -1705,8 +1816,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.async_index_inserter.create_simple_index(
                 self.client, collection_id
             )
+        return DocumentVersion.from_hit(response)
 
-    @retry_on_connection_error
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.
 
@@ -1724,6 +1835,24 @@ class DatabaseLogic(BaseDatabaseLogic):
             This function searches for a collection in the database using the specified `collection_id` and returns the found
             collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
         """
+        collection, _ = await self.find_collection_with_version(collection_id)
+        return collection
+
+    @retry_on_connection_error
+    async def find_collection_with_version(
+        self, collection_id: str
+    ) -> tuple[Collection, DocumentVersion]:
+        """Find a collection and the version of its stored document.
+
+        Args:
+            collection_id (str): The ID of the collection to be found.
+
+        Returns:
+            The collection, and its stored version.
+
+        Raises:
+            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+        """
         try:
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
@@ -1736,7 +1865,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         if collection["_source"].get("type") != "Collection":
             raise NotFoundError(f"Collection {collection_id} not found")
 
-        return collection["_source"]
+        return collection["_source"], DocumentVersion.from_hit(collection)
 
     @retry_on_connection_error
     async def update_collection(
@@ -1744,8 +1873,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_id: str,
         collection: Collection,
         preserve_parent_ids: bool = False,
+        version: DocumentVersion | None = None,
         **kwargs: Any,
-    ) -> None:
+    ) -> DocumentVersion | None:
         """Update a collection from the database.
 
         Args:
@@ -1754,6 +1884,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             preserve_parent_ids (bool): Keep the stored catalog memberships
                 (`parent_ids`) instead of taking them from `collection`. The
                 write is conditional on the version read, retried on conflict.
+            version (DocumentVersion, optional): Only replace this stored version
+                of the collection (If-Match); 412 otherwise, without retrying.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -1789,6 +1921,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         if collection_id != collection_dict.get("id"):
+            if version is not None:
+                # A create, a reindex and a delete: no one conditional write covers
+                # it. No route renames (PUT and PATCH refuse an id change).
+                raise ValueError("A conditional update cannot change the collection id")
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
@@ -1813,6 +1949,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
 
             await self.delete_collection(collection_id=collection_id, **kwargs)
+            return None
 
         else:
             if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
@@ -1822,16 +1959,25 @@ class DatabaseLogic(BaseDatabaseLogic):
                 add_bbox_shape_to_collection(collection_dict)
 
             if not preserve_parent_ids:
-                await self.client.index(
-                    index=COLLECTIONS_INDEX,
-                    id=collection_id,
-                    body=collection_dict,
-                    refresh=refresh,
-                )
-                return
+                if version is not None and not await index_behind_alias(
+                    self.client, COLLECTIONS_INDEX, version.index
+                ):
+                    raise precondition_failed(f"Collection {collection_id}")
+                try:
+                    response = await self.client.index(
+                        index=version.index if version else COLLECTIONS_INDEX,
+                        id=collection_id,
+                        body=collection_dict,
+                        refresh=refresh,
+                        **(version.write_kwargs() if version else {}),
+                    )
+                except OSConflictError:
+                    raise precondition_failed(f"Collection {collection_id}")
+                return DocumentVersion.from_hit(response)
 
             # parent_ids is backend-owned; a concurrent link/unlink must not be lost.
-            for _ in range(3):
+            # With If-Match, a concurrent write fails the request instead.
+            for _ in range(1 if version else 3):
                 try:
                     existing = await self.client.get(
                         index=COLLECTIONS_INDEX, id=collection_id
@@ -1840,21 +1986,25 @@ class DatabaseLogic(BaseDatabaseLogic):
                     raise NotFoundError(f"Collection {collection_id} not found")
                 if existing["_source"].get("type") != "Collection":
                     raise NotFoundError(f"Collection {collection_id} not found")
+                if version and DocumentVersion.from_hit(existing).etag != version.etag:
+                    raise precondition_failed(f"Collection {collection_id}")
 
                 collection_dict.pop("parent_ids", None)
                 if "parent_ids" in existing["_source"]:
                     collection_dict["parent_ids"] = existing["_source"]["parent_ids"]
                 try:
-                    await self.client.index(
-                        index=COLLECTIONS_INDEX,
+                    response = await self.client.index(
+                        index=existing["_index"],
                         id=collection_id,
                         body=collection_dict,
                         refresh=refresh,
                         if_seq_no=existing["_seq_no"],
                         if_primary_term=existing["_primary_term"],
                     )
-                    return
+                    return DocumentVersion.from_hit(response)
                 except OSConflictError:
+                    if version:
+                        raise precondition_failed(f"Collection {collection_id}")
                     continue
 
             raise ConflictError(
@@ -1924,6 +2074,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection: PartialCollection,
         base_url: str,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Collection:
         """Database logic for merge patching a collection following RF7396.
 
@@ -1945,6 +2096,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             base_url=base_url,
             create_nest=True,
             refresh=refresh,
+            version=version,
         )
 
     @retry_on_connection_error
@@ -1955,6 +2107,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Collection:
         """Database logic for json patching a collection following RF6902.
 
@@ -1983,14 +2136,23 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         script = operations_to_script(script_operations, create_nest=create_nest)
 
+        if version is not None and not await index_behind_alias(
+            self.client, COLLECTIONS_INDEX, version.index
+        ):
+            raise precondition_failed(f"Collection {collection_id}")
         try:
             await self.client.update(
-                index=COLLECTIONS_INDEX,
+                index=version.index if version else COLLECTIONS_INDEX,
                 id=collection_id,
                 body={"script": script},
                 refresh=True,
+                **(version.write_kwargs() if version else {}),
             )
 
+        except OSConflictError:
+            if version:
+                raise precondition_failed(f"Collection {collection_id}")
+            raise
         except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
@@ -2011,12 +2173,19 @@ class DatabaseLogic(BaseDatabaseLogic):
         return collection
 
     @retry_on_connection_error
-    async def delete_collection(self, collection_id: str, **kwargs: Any):
+    async def delete_collection(
+        self,
+        collection_id: str,
+        version: DocumentVersion | None = None,
+        **kwargs: Any,
+    ):
         """Delete a collection from the database.
 
         Parameters:
             self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to be deleted.
+            version (DocumentVersion, optional): Only delete this stored version
+                of the collection (If-Match); 412 otherwise.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -2039,9 +2208,19 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the deletion attempt
         logger.info(f"Deleting collection {collection_id} with refresh={refresh}")
 
-        await self.client.delete(
-            index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
-        )
+        if version is not None and not await index_behind_alias(
+            self.client, COLLECTIONS_INDEX, version.index
+        ):
+            raise precondition_failed(f"Collection {collection_id}")
+        try:
+            await self.client.delete(
+                index=version.index if version else COLLECTIONS_INDEX,
+                id=collection_id,
+                refresh=refresh,
+                **(version.write_kwargs() if version else {}),
+            )
+        except OSConflictError:
+            raise precondition_failed(f"Collection {collection_id}")
         # Delete the item index for the collection
         await delete_item_index(collection_id)
         await self.async_index_inserter.refresh_cache()
@@ -2359,19 +2538,24 @@ class DatabaseLogic(BaseDatabaseLogic):
         return catalogs, next_token, matched
 
     @retry_on_connection_error
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False
+    ) -> DocumentVersion:
         """Create a catalog in OpenSearch.
 
         Args:
             catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
 
+        Returns:
+            DocumentVersion: The version of the stored document.
+
         Raises:
             ConflictError: If any document (Catalog or Collection) already
                 exists with the same id.
         """
         try:
-            await self.client.index(
+            response = await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=catalog.get("id"),
                 body=catalog,
@@ -2387,6 +2571,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 f"Error creating catalog {catalog.get('id')}: {e}", exc_info=True
             )
             raise
+        return DocumentVersion.from_hit(response)
 
     @retry_on_connection_error
     async def find_catalog(self, catalog_id: str) -> dict:
@@ -2414,12 +2599,64 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise NotFoundError(f"Catalog {catalog_id} not found")
 
     @retry_on_connection_error
-    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
+    async def find_catalog_with_version(
+        self, catalog_id: str
+    ) -> tuple[dict, DocumentVersion]:
+        """Find a catalog and the version of its stored document.
+
+        Args:
+            catalog_id (str): The ID of the catalog to find.
+
+        Returns:
+            The catalog document, and its stored version.
+
+        Raises:
+            NotFoundError: If the catalog is not found.
+        """
+        try:
+            response = await self.client.get(index=COLLECTIONS_INDEX, id=catalog_id)
+        except OSNotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+        # The collections index is shared with Collection documents.
+        if response["_source"].get("type") != "Catalog":
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+        return response["_source"], DocumentVersion.from_hit(response)
+
+    @retry_on_connection_error
+    async def unlink_catalog_orphans(self, catalog_id: str) -> None:
+        """Unlink children that still reference a catalog that no longer exists.
+
+        A delete that failed after it removed the catalog leaves them linked;
+        a retry calls this. Nothing is deleted: the id must name no document
+        at all, and a child must still reference it.
+        """
+        if await self.client.exists(index=COLLECTIONS_INDEX, id=catalog_id):
+            return
+        orphans = await self.client.count(
+            index=COLLECTIONS_INDEX,
+            body={"query": {"term": {"parent_ids": catalog_id}}},
+        )
+        if orphans["count"]:
+            await unlink_catalog_children_shared(self.client, catalog_id)
+
+    @retry_on_connection_error
+    async def delete_catalog(
+        self,
+        catalog_id: str,
+        refresh: bool = False,
+        version: DocumentVersion | None = None,
+    ) -> None:
         """Delete a catalog from OpenSearch.
+
+        With `version` (If-Match), the catalog is deleted only while that
+        version is stored, and before its children are unlinked, so a refused
+        delete (412) changes nothing.
 
         Args:
             catalog_id (str): The ID of the catalog to delete.
             refresh (bool): Whether to refresh the index after deletion.
+            version (DocumentVersion, optional): Only delete this stored version
+                of the catalog (If-Match); 412 otherwise.
 
         Raises:
             NotFoundError: If the document does not exist or is not a Catalog
@@ -2429,6 +2666,24 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Verify the document exists and is a Catalog before deleting; the
         # collections index is shared with Collection documents.
         await self.find_catalog(catalog_id)
+        if version is not None:
+            if not await index_behind_alias(
+                self.client, COLLECTIONS_INDEX, version.index
+            ):
+                raise precondition_failed(f"Catalog {catalog_id}")
+            try:
+                await self.client.delete(
+                    index=version.index,
+                    id=catalog_id,
+                    refresh=refresh,
+                    **version.write_kwargs(),
+                )
+            except OSNotFoundError:
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            except OSConflictError:
+                raise precondition_failed(f"Catalog {catalog_id}")
+            await unlink_catalog_children_shared(self.client, catalog_id)
+            return
 
         try:
             await unlink_catalog_children_shared(self.client, catalog_id)
@@ -2663,31 +2918,27 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
     @retry_on_connection_error
-    async def get_catalog_collection_item(
+    async def update_catalog(
         self,
         catalog_id: str,
-        collection_id: str,
-        item_id: str,
-        request: Any,
-    ) -> Any:
-        """Get a specific item from a collection within a catalog.
-
-        Hierarchy validation is already performed by CatalogsClient.
-        """
-        return await self.get_one_item(collection_id, item_id)
-
-    @retry_on_connection_error
-    async def update_catalog(
-        self, catalog_id: str, catalog: dict, refresh: bool | str = False
-    ) -> None:
+        catalog: dict,
+        refresh: bool | str = False,
+        version: DocumentVersion | None = None,
+    ) -> DocumentVersion:
         """Replace a catalog, keeping its stored parent_ids.
 
         parent_ids is backend-owned: the write is conditional on the version
-        read and retried, so a concurrent link or unlink is not lost.
+        read and retried, so a concurrent link or unlink is not lost. With
+        `version` (If-Match), only that stored version is replaced: the write
+        is conditional on it and is not retried.
+
+        Returns:
+            DocumentVersion: The version of the stored document.
 
         Raises:
             NotFoundError: If the catalog does not exist.
             ConflictError: If concurrent writes exhaust the retries.
+            HTTPException: 412 if `version` is no longer the stored version.
         """
         refresh = validate_refresh(refresh)
         for _ in range(3):
@@ -2697,21 +2948,25 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
             if existing["_source"].get("type") != "Catalog":
                 raise NotFoundError(f"Catalog {catalog_id} not found")
+            current = DocumentVersion.from_hit(existing)
+            if version is not None and current.etag != version.etag:
+                raise precondition_failed(f"Catalog {catalog_id}")
 
             catalog.pop("parent_ids", None)
             if "parent_ids" in existing["_source"]:
                 catalog["parent_ids"] = existing["_source"]["parent_ids"]
             try:
-                await self.client.index(
-                    index=COLLECTIONS_INDEX,
+                response = await self.client.index(
+                    index=existing["_index"],
                     id=catalog_id,
                     body=catalog,
                     refresh=refresh,
-                    if_seq_no=existing["_seq_no"],
-                    if_primary_term=existing["_primary_term"],
+                    **current.write_kwargs(),
                 )
-                return
+                return DocumentVersion.from_hit(response)
             except OSConflictError:
+                if version is not None:
+                    raise precondition_failed(f"Catalog {catalog_id}")
                 continue
 
         raise ConflictError(

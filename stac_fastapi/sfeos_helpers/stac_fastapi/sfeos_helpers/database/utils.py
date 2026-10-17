@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.transaction.request import (
@@ -883,3 +883,34 @@ def add_hidden_filter(
         return {"bool": {"must": [query, hidden_filter]}}
     else:
         return hidden_filter
+
+
+def _values(node: Any, parts: list[str]) -> Iterator[Any]:
+    """Yield every leaf value the engine indexes at a dotted path.
+
+    Arrays are flattened at any depth, and every spelling of the path counts:
+    nested objects, flat dotted keys, and mixes of the two.
+    """
+    if isinstance(node, list):
+        for element in node:
+            yield from _values(element, parts)
+    elif not parts:
+        yield node
+    elif isinstance(node, dict):
+        for i in range(1, len(parts) + 1):
+            key = ".".join(parts[:i])
+            if key in node:
+                yield from _values(node[key], parts[i:])
+
+
+def is_hidden(source: dict[str, Any], hide_item_path: str | None) -> bool:
+    """Tell whether a stored document is hidden, as `add_hidden_filter` decides it.
+
+    Visible when the field has no value, or when any of its values is false
+    (`false`, `"false"` or `""`, which a boolean mapping coerces to false; a
+    term query matches any indexed value). Hidden otherwise.
+    """
+    if not hide_item_path:
+        return False
+    values = [v for v in _values(source, hide_item_path.split(".")) if v is not None]
+    return bool(values) and not any(v is False or v in ("false", "") for v in values)
