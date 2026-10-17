@@ -8,12 +8,13 @@ import json
 import logging
 import os
 from base64 import urlsafe_b64decode
-from typing import Any
+from typing import Any, Iterable
 
 import orjson
 from fastapi import HTTPException
 
 from stac_fastapi.core.utilities import bbox2polygon
+from stac_fastapi.sfeos_helpers.database.mapping import get_excluded_from_queryables
 from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
@@ -441,13 +442,46 @@ def apply_collections_bbox_filter_shared(
     }
 
 
+def validate_sort_fields_shared(field_names: Iterable[str]) -> None:
+    """Reject sortby fields excluded via EXCLUDED_FROM_QUERYABLES.
+
+    Sortables schemas with additionalProperties: false promise a 400 for
+    undeclared fields. Excluded fields are the only mapped, engine-sortable
+    fields the schemas omit, so reject them here to keep that contract.
+
+    Args:
+        field_names: field names from sortby entries, as document paths.
+
+    Raises:
+        HTTPException: 400 if any field matches an excluded prefix.
+    """
+    excluded = get_excluded_from_queryables()
+    if not excluded:
+        return
+    for field in field_names:
+        if any(
+            field == prefix or field.startswith(prefix + ".") for prefix in excluded
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Field '{field}' is not sortable: it is excluded "
+                    "via EXCLUDED_FROM_QUERYABLES."
+                ),
+            )
+
+
 def populate_sort_shared(
-    sortby: list, is_collection: bool = False
+    sortby: list,
+    is_collection: bool = False,
+    field_types: dict[str, str] | None = None,
 ) -> dict[str, dict[str, str]] | None:
     """Create a sort configuration for Elasticsearch/OpenSearch queries.
 
     Args:
         sortby (List): A list of sort specifications, each containing a field and direction.
+        field_types (dict[str, str] | None): Optional map of sortable field names to
+            their engine field type, used for unmapped_type. Defaults to keyword.
 
     Returns:
         dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
@@ -464,11 +498,22 @@ def populate_sort_shared(
     temporal_fields = {"datetime", "start_datetime", "end_datetime"}
 
     if sortby:
+        validate_sort_fields_shared(s.field for s in sortby)
         sort_config = {}
         for s in sortby:
             field_name = remap_sort_field_shared(s.field, is_collection=is_collection)
             direction = s.direction
-            sort_obj = {"order": direction}
+            # Indices missing the field sort its documents as null rather than
+            # failing, so cross-collection sorts never silently drop hits. The
+            # unmapped type must match the field's mapped type — sorting a
+            # double field with unmapped_type keyword still fails with
+            # incompatible sort types across shards.
+            unmapped_type = "keyword"
+            if field_types:
+                unmapped_type = (
+                    field_types.get(s.field) or field_types.get(field_name) or "keyword"
+                )
+            sort_obj = {"order": direction, "unmapped_type": unmapped_type}
 
             # Inject concrete fallbacks for temporal fields using epoch milliseconds
             # to avoid Java NumberFormatException when OpenSearch tries to parse ISO strings

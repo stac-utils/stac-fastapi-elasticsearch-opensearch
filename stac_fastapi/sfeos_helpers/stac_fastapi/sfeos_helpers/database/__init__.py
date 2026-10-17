@@ -65,6 +65,7 @@ from .query import (
     apply_intersects_filter_shared,
     decode_search_after_token_shared,
     populate_sort_shared,
+    validate_sort_fields_shared,
 )
 from .utils import (
     BulkIndexError,
@@ -104,6 +105,7 @@ __all__ = [
     "apply_collections_free_text_filter_shared",
     "decode_search_after_token_shared",
     "populate_sort_shared",
+    "validate_sort_fields_shared",
     # Mapping operations
     "get_queryables_mapping_shared",
     # Document operations
