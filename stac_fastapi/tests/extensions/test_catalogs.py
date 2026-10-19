@@ -4877,6 +4877,41 @@ async def _assert_memberships(client, collection_id, catalog_ids):
 
 
 @pytest.mark.asyncio
+async def test_collection_links_generated_vs_stored(
+    catalogs_app_client, load_test_data
+):
+    """A stored `related` link to an external resource survives the `related`
+    links generated for catalog memberships, while a stored `canonical` — an
+    API-owned rel — is replaced by the generated global URL."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    doi = "https://doi.org/10.5067/user-related"
+    collection["links"] += [
+        {"rel": "related", "href": doi},
+        {"rel": "canonical", "href": "https://doi.org/10.5067/canonical"},
+    ]
+    resp = await catalogs_app_client.put(
+        f"/collections/{collection['id']}", json=collection
+    )
+    assert resp.status_code == 200
+
+    resp = await catalogs_app_client.get(f"/collections/{collection['id']}")
+    assert resp.status_code == 200
+    related = [
+        link["href"] for link in resp.json()["links"] if link["rel"] == "related"
+    ]
+    assert doi in related
+    for catalog_id in catalog_ids:
+        assert f"http://test-server/catalogs/{catalog_id}" in related
+
+    canonicals = [
+        link["href"] for link in resp.json()["links"] if link["rel"] == "canonical"
+    ]
+    assert canonicals == [f"http://test-server/collections/{collection['id']}"]
+
+
+@pytest.mark.asyncio
 async def test_core_put_collection_preserves_catalog_memberships(
     catalogs_app_client, load_test_data
 ):

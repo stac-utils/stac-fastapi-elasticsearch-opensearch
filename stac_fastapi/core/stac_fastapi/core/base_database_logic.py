@@ -6,6 +6,16 @@ from typing import Any, Iterable
 from stac_pydantic.shared import BBox
 
 from stac_fastapi.core.etag import DocumentVersion
+from stac_fastapi.sfeos_helpers.database import (
+    find_item_in_alias,
+    index_alias_by_collection_id,
+    mk_item_id,
+)
+from stac_fastapi.sfeos_helpers.search_engine import (
+    BaseIndexInserter,
+    DatetimeIndexInserter,
+)
+from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
 
@@ -16,6 +26,12 @@ class BaseDatabaseLogic(abc.ABC):
     This class defines the basic structure and operations for database interactions.
     Subclasses must provide implementations for these methods.
     """
+
+    client: Any
+    async_index_inserter: BaseIndexInserter
+    #: Search-engine exception raised when a document lookup misses. Concrete
+    #: backends set this to their engine-specific not-found error class.
+    not_found_error_class: type[Exception]
 
     @abc.abstractmethod
     async def get_all_collections(
@@ -56,8 +72,55 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     async def get_item_for_write(self, collection_id: str, item_id: str) -> dict:
-        """Retrieve an item for a write without applying read visibility filters."""
+        """Retrieve an item for a write without applying read visibility filters.
+
+        Under datetime index filtering the real-time ``mget`` lookup is used
+        for the same reason as in :meth:`get_item_hit_for_write`.
+        """
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            hit = await self.get_item_hit_for_write(collection_id, item_id)
+            return hit["_source"]
         return await self.get_one_item(collection_id, item_id, include_hidden=True)
+
+    async def get_item_hit_for_write(self, collection_id: str, item_id: str) -> dict:
+        """Retrieve the write-lookup hit for an item, including its version.
+
+        Returns a hit dict carrying ``_source``, ``_index``, ``_seq_no`` and
+        ``_primary_term``, so callers that then write via ``create_item`` can
+        pass the result back as ``existing_hit`` (the existence check is not
+        repeated) or read the stored version from it.
+
+        Under datetime index filtering, ``_id`` uniqueness is enforced per
+        physical index and a just-written document may not be visible to
+        ``_search`` yet, so the lookup is a real-time ``mget`` over the
+        collection alias's concrete indexes instead.
+
+        Raises:
+            NotFoundError: If the item does not exist in the collection.
+        """
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            try:
+                hit = await find_item_in_alias(
+                    self.client,
+                    index_alias_by_collection_id(collection_id),
+                    mk_item_id(item_id, collection_id),
+                )
+            except self.not_found_error_class:
+                hit = None
+            if hit is None:
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            return hit
+        item, version = await self.get_one_item_with_version(
+            collection_id, item_id, include_hidden=True
+        )
+        return {
+            "_source": item,
+            "_index": version.index,
+            "_seq_no": version.seq_no,
+            "_primary_term": version.primary_term,
+        }
 
     @abc.abstractmethod
     async def get_one_item_with_version(
