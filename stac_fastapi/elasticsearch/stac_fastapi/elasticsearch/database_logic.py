@@ -1516,18 +1516,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if isinstance(self.async_index_inserter, DatetimeIndexInserter):
                 # Real-time mget over the alias's concrete indexes so a patch
                 # on a document that has not been refreshed yet still finds it.
-                try:
-                    hit = await find_item_in_alias(
-                        self.client,
-                        index_alias_by_collection_id(collection_id),
-                        mk_item_id(item_id, collection_id),
-                    )
-                except ESNotFoundError:
-                    hit = None
-                if hit is None:
-                    raise NotFoundError(
-                        f"Item {item_id} does not exist inside Collection {collection_id}"
-                    )
+                hit = await self.get_item_hit_for_write(collection_id, item_id)
                 existing_source = hit["_source"]
                 document_index = hit["_index"]
             else:
@@ -1577,9 +1566,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         # The version's document is gone from its index, so
                         # the tag no longer matches.
                         raise precondition_failed(f"Item {item_id}")
-                    raise NotFoundError(
-                        f"Item {item_id} does not exist inside Collection {collection_id}"
-                    )
+                    raise
         except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
