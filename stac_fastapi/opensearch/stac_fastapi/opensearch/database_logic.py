@@ -2593,8 +2593,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             # id as the last key keeps pages aligned when earlier keys tie
             if not any("id" in item for item in formatted_sort):
                 formatted_sort.append({"id": {"order": "asc"}})
-            if not formatted_sort:
-                formatted_sort = None
 
         (
             collections,
