@@ -12,6 +12,7 @@ import pytest
 from scripts.item_queue_worker import ItemQueueWorker  # noqa: E402
 from stac_fastapi.core.exceptions import QueuedSuccess
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
 from stac_fastapi.types.errors import NotFoundError
 
 from ..conftest import MockRequest, create_item, refresh_indices
@@ -523,25 +524,43 @@ async def test_update_item_with_queue_returns_queued_response(
     updated_item = deepcopy(base_item)
     updated_item["properties"]["foo"] = "bar"
 
-    with pytest.raises(QueuedSuccess) as exc_info:
-        await txn_client.update_item(
+    # Under datetime index filtering queued updates are bypassed: the write
+    # goes straight to the database and returns the serialized item.
+    datetime_filtering = isinstance(
+        txn_client.database.async_index_inserter, DatetimeIndexInserter
+    )
+    if datetime_filtering:
+        result = await txn_client.update_item(
             collection_id=test_collection["id"],
             item_id="update-queue-item",
             item=api.Item(**updated_item),
             request=MockRequest(),
         )
+        assert result["id"] == "update-queue-item"
+        assert result["properties"]["foo"] == "bar"
+    else:
+        with pytest.raises(QueuedSuccess) as exc_info:
+            await txn_client.update_item(
+                collection_id=test_collection["id"],
+                item_id="update-queue-item",
+                item=api.Item(**updated_item),
+                request=MockRequest(),
+            )
 
-    # 3. Assert response payload is the serialized STAC item
-    payload = exc_info.value.payload
-    assert payload["id"] == "update-queue-item"
-    assert payload["properties"]["foo"] == "bar"
+        # 3. Assert response payload is the serialized STAC item
+        payload = exc_info.value.payload
+        assert payload["id"] == "update-queue-item"
+        assert payload["properties"]["foo"] == "bar"
 
-    # 4. Verify the item actually landed in Redis queue
+    # 4. Verify the item's queue state
     queue_manager = await AsyncRedisQueueManager.create()
     try:
         pending_items = await queue_manager.get_pending_items(test_collection["id"])
         pending_ids = {item["id"] for item in pending_items}
-        assert "update-queue-item" in pending_ids
+        if datetime_filtering:
+            assert "update-queue-item" not in pending_ids
+        else:
+            assert "update-queue-item" in pending_ids
 
         pending_item = deepcopy(base_item)
         pending_item["id"] = "pending-only-item"

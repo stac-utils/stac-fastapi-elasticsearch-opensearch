@@ -154,6 +154,8 @@ async def delete_item_index(collection_id: str):
 class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
 
+    not_found_error_class = ESNotFoundError
+
     async_settings: AsyncElasticsearchSettings = attr.ib(
         factory=AsyncElasticsearchSettings
     )
@@ -489,52 +491,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
-
-    async def get_item_hit_for_write(self, collection_id: str, item_id: str) -> dict:
-        """Retrieve the write-lookup hit for an item, including its index.
-
-        Under datetime index filtering, ``_id`` uniqueness is enforced per
-        physical index and a just-written document may not be visible to
-        ``_search`` yet, so the lookup uses a real-time ``mget`` over the
-        collection alias's concrete indexes instead of a search query.
-
-        Returns:
-            dict: The ``mget`` hit carrying ``_index``, ``_id`` and ``_source``.
-
-        Raises:
-            NotFoundError: If the specified Item does not exist in the Collection.
-        """
-        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
-            try:
-                hit = await find_item_in_alias(
-                    self.client,
-                    index_alias_by_collection_id(collection_id),
-                    mk_item_id(item_id, collection_id),
-                )
-            except ESNotFoundError:
-                hit = None
-            if hit is None:
-                raise NotFoundError(
-                    f"Item {item_id} does not exist inside Collection {collection_id}"
-                )
-            return hit
-        return await super().get_item_hit_for_write(collection_id, item_id)
-
-    async def get_item_for_write(self, collection_id: str, item_id: str) -> dict:
-        """Retrieve an item for a write without applying read visibility filters.
-
-        Under datetime index filtering, ``_id`` uniqueness is enforced per
-        physical index and a just-written document may not be visible to
-        ``_search`` yet, so the lookup uses a real-time ``mget`` over the
-        collection alias's concrete indexes instead of a search query.
-
-        Raises:
-            NotFoundError: If the specified Item does not exist in the Collection.
-        """
-        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
-            hit = await self.get_item_hit_for_write(collection_id, item_id)
-            return hit["_source"]
-        return await super().get_item_for_write(collection_id, item_id)
 
     async def get_queryables_mapping(self, collection_id: str = "*") -> dict:
         """Retrieve mapping of Queryables for search.
@@ -1608,13 +1564,22 @@ class DatabaseLogic(BaseDatabaseLogic):
                     # The version's document is gone; a replacement lives in
                     # another index, so the tag no longer matches.
                     raise precondition_failed(f"Item {item_id}")
-                await self.client.update(
-                    index=document_index,
-                    id=mk_item_id(item_id, collection_id),
-                    script=script,
-                    refresh=True,
-                    **(version.write_kwargs() if version else {}),
-                )
+                try:
+                    await self.client.update(
+                        index=document_index,
+                        id=mk_item_id(item_id, collection_id),
+                        script=script,
+                        refresh=True,
+                        **(version.write_kwargs() if version else {}),
+                    )
+                except ESNotFoundError:
+                    if version:
+                        # The version's document is gone from its index, so
+                        # the tag no longer matches.
+                        raise precondition_failed(f"Item {item_id}")
+                    raise NotFoundError(
+                        f"Item {item_id} does not exist inside Collection {collection_id}"
+                    )
         except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
