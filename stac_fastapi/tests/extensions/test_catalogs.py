@@ -467,6 +467,31 @@ async def test_get_catalog_collections_sortby_paginates(
 
 
 @pytest.mark.asyncio
+async def test_get_catalog_collections_sortby_unsortable_field(
+    catalogs_app_client, load_test_data, ctx
+):
+    """An unsortable `sortby` field returns 400, like /collections does."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    collection = ctx.collection.copy()
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    add_resp = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json=collection
+    )
+    assert add_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"sortby": "description", "limit": 100},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_get_catalog_collections_fields(catalogs_app_client, load_test_data, ctx):
     """Test that `fields` on /catalogs/{catalog_id}/projects the response."""
     test_catalog = load_test_data("test_catalog.json")

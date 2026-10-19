@@ -21,7 +21,7 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.core import parse_fields
+from stac_fastapi.core.core import parse_fields, parse_sortby
 from stac_fastapi.core.etag import check_if_match, record_etag
 from stac_fastapi.core.extensions.filter import (
     CQL2FilterError,
@@ -629,20 +629,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         limit = limit or 10
 
-        sort = None
-        if sortby:
-            parsed_sort = []
-            for raw in sortby:
-                if not isinstance(raw, str):
-                    continue
-                s = raw.strip()
-                if not s:
-                    continue
-                direction = "desc" if s[0] == "-" else "asc"
-                field = s[1:] if s and s[0] in "+-" else s
-                parsed_sort.append({"field": field, "direction": direction})
-            if parsed_sort:
-                sort = parsed_sort
+        sort = parse_sortby(sortby)
 
         (
             collections_list,

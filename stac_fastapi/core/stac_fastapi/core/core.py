@@ -198,6 +198,21 @@ def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
     return includes, excludes
 
 
+def parse_sortby(sortby: list[str] | None) -> list[dict[str, str]] | None:
+    """Parse `sortby` values like `+field`/`-field` into field/direction pairs."""
+    parsed = []
+    for raw in sortby or []:
+        if not isinstance(raw, str):
+            continue
+        s = raw.strip()
+        if not s:
+            continue
+        direction = "desc" if s[0] == "-" else "asc"
+        field = s[1:] if s[0] in "+-" else s
+        parsed.append({"field": field, "direction": direction})
+    return parsed or None
+
+
 def parse_search_filter(filter_expr: str, filter_lang: str | None) -> dict[str, Any]:
     """Parse a GET search `filter` into CQL2 JSON: JSON for cql2-json, otherwise CQL2 text.
 
@@ -513,20 +528,7 @@ class CoreClient(AsyncBaseCoreClient):
         # Process fields parameter for filtering collection properties
         includes, excludes = parse_fields(fields) if fields else (set(), set())
 
-        sort = None
-        if sortby:
-            parsed_sort = []
-            for raw in sortby:
-                if not isinstance(raw, str):
-                    continue
-                s = raw.strip()
-                if not s:
-                    continue
-                direction = "desc" if s[0] == "-" else "asc"
-                field = s[1:] if s and s[0] in "+-" else s
-                parsed_sort.append({"field": field, "direction": direction})
-            if parsed_sort:
-                sort = parsed_sort
+        sort = parse_sortby(sortby if isinstance(sortby, list) else [sortby])
 
         # Convert q to a list if it's a string
         q_list = None
