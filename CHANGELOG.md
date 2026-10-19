@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - A collection's item index is now named `items_<collection>_<uuid>` when it is created, as datetime indices already are, instead of `items_<collection>-000001`. Existing indices keep working through their alias. A collection deleted and created again no longer reuses an index name, whose sequence numbers restart, so an `ETag` from before the recreation cannot match. [#941](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/941)
-- A CQL2 `filter` that parses but carries no operator, such as `{"property": "title"}`, returns `400` on `GET /collections` instead of `500`: the translator read `query["op"]` directly, so a missing `op` raised `KeyError` past the `except ValueError` guard. The same read had also made the translator's case-normalization of operator names (`IN`, `BETWEEN`, ...) dead code; both use the normalized `op` now.
+- A CQL2 `filter` that parses but carries no operator, such as `{"property": "title"}`, returns `400` on `GET /collections` instead of `500`: the translator read `query["op"]` directly, so a missing `op` raised `KeyError` past the `except ValueError` guard. The same read had also made the translator's case-normalization of operator names (`IN`, `BETWEEN`, ...) dead code; both use the normalized `op` now. The collections filter path now also converts any structurally malformed filter — a missing `args`, an `args` that is not a list, or a nested node that is not an object — into `400`, as the item-search and catalog filter paths already did.
 
 ## [v8.0.0rc1] - 2026-10-14
 

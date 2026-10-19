@@ -280,7 +280,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 es_query = filter_module.to_es(
                     await self.get_collections_queryables_mapping(), filter
                 )
-            except ValueError as e:
+            except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}."
                 )

@@ -149,6 +149,12 @@ async def test_malformed_get_datetime(collections_http, monkeypatch, value, deta
         "[1, 2]",
         # Not JSON and not valid CQL2 text either.
         "{not json",
+        # Valid operator, structurally broken args.
+        '{"op": "=", "args": []}',
+        '{"op": "=", "args": [{"name": "title"}, "x"]}',
+        '{"op": "=", "args": [5, "x"]}',
+        '{"op": "and"}',
+        '{"op": "and", "args": {"not": "a list"}}',
     ],
 )
 async def test_malformed_get_filter(collections_http, filter_value):
