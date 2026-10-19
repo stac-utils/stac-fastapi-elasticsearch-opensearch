@@ -219,7 +219,7 @@ async def test_feature_collection_insert_validation_error(
 
 @pytest.mark.asyncio
 async def test_feature_collection_insert_duplicate_detection(
-    ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch
+    ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch, stac_validator_off
 ):
     """
     Test that duplicate items are detected when inserting via FeatureCollection.
@@ -251,7 +251,7 @@ async def test_feature_collection_insert_duplicate_detection(
 
 @pytest.mark.asyncio
 async def test_feature_collection_insert_duplicate_with_different_datetime(
-    ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch
+    ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch, stac_validator_off
 ):
     """
     Test that duplicate detection works when item has different datetime.

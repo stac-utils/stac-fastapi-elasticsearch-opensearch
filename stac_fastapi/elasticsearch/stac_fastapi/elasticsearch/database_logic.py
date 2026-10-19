@@ -51,6 +51,8 @@ from stac_fastapi.sfeos_helpers.database import (
     create_index_templates_shared,
     decode_search_after_token_shared,
     delete_item_index_shared,
+    find_existing_item_ids,
+    find_item_in_alias,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
     index_behind_alias,
@@ -151,6 +153,8 @@ async def delete_item_index(collection_id: str):
 @attr.s
 class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
+
+    not_found_error_class = ESNotFoundError
 
     async_settings: AsyncElasticsearchSettings = attr.ib(
         factory=AsyncElasticsearchSettings
@@ -427,6 +431,27 @@ class DatabaseLogic(BaseDatabaseLogic):
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
         """
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            # A real-time mget over the alias's concrete indexes, so a document
+            # written a moment ago is found before the next refresh, and the
+            # hit carries the current seq_no and primary_term already.
+            HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
+            try:
+                hit = await find_item_in_alias(
+                    self.client,
+                    index_alias_by_collection_id(collection_id),
+                    mk_item_id(item_id, collection_id),
+                )
+            except ESNotFoundError:
+                hit = None
+            if hit is None or (
+                not include_hidden and is_hidden(hit["_source"], HIDE_ITEM_PATH)
+            ):
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            return hit["_source"], DocumentVersion.from_hit(hit)
+
         try:
             base_query = {"term": {"_id": mk_item_id(item_id, collection_id)}}
 
@@ -1279,6 +1304,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         item: Item,
         base_url: str = "",
         upsert: bool = False,
+        existing_hit: dict | None = None,
         version: DocumentVersion | None = None,
         **kwargs: Any,
     ) -> DocumentVersion:
@@ -1290,6 +1316,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             upsert (bool, optional): If False (default), performs an insert-only operation
                 that rejects duplicates (op_type="create"). If True, performs an upsert
                 that overwrites existing items (op_type="index").
+            existing_hit (dict, optional): A write-lookup hit already fetched via
+                ``get_item_hit_for_write``. When given, the existing-document check
+                reuses it instead of querying the alias again.
             version (DocumentVersion, optional): Only overwrite this stored version
                 of the item (If-Match).
             **kwargs: Additional keyword arguments.
@@ -1318,41 +1347,72 @@ class DatabaseLogic(BaseDatabaseLogic):
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
 
-        if upsert and isinstance(self.async_index_inserter, DatetimeIndexInserter):
-            existing_item = await self.get_item_for_write(collection_id, item_id)
-            primary_datetime_name = self.async_index_inserter.primary_datetime_name
-
-            existing_primary_datetime = existing_item.get("properties", {}).get(
-                primary_datetime_name
-            )
-            new_primary_datetime = item.get("properties", {}).get(primary_datetime_name)
-
-            if existing_primary_datetime != new_primary_datetime:
-                self.async_index_inserter.validate_datetime_field_update(
-                    f"properties/{primary_datetime_name}"
-                )
-
-            if primary_datetime_name == "start_datetime":
-                existing_end_datetime = existing_item.get("properties", {}).get(
-                    "end_datetime"
-                )
-                new_end_datetime = item.get("properties", {}).get("end_datetime")
-
-                if existing_end_datetime != new_end_datetime:
-                    self.async_index_inserter.validate_datetime_field_update(
-                        "properties/end_datetime"
+        existing_index = None
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            # ``_id`` uniqueness is enforced per index only, so an item
+            # re-ingested with a datetime that resolves to a different physical
+            # index would otherwise be silently duplicated. Check the
+            # collection alias, which spans all of its datetime-sharded indexes.
+            # A missing alias means no index exists yet, so nothing can be a
+            # duplicate.
+            if existing_hit is not None:
+                hit = existing_hit
+            else:
+                try:
+                    hit = await find_item_in_alias(
+                        self.client,
+                        index_alias_by_collection_id(collection_id),
+                        mk_item_id(item_id, collection_id),
                     )
+                except ESNotFoundError:
+                    hit = None
+            existing_item = hit.get("_source") if hit else None
+            existing_index = hit.get("_index") if hit else None
+            if not upsert:
+                if existing_item is not None:
+                    raise ItemAlreadyExistsError(item_id, collection_id)
+            elif existing_item is not None:
+                primary_datetime_name = self.async_index_inserter.primary_datetime_name
+
+                existing_primary_datetime = existing_item.get("properties", {}).get(
+                    primary_datetime_name
+                )
+                new_primary_datetime = item.get("properties", {}).get(
+                    primary_datetime_name
+                )
+
+                if existing_primary_datetime != new_primary_datetime:
+                    self.async_index_inserter.validate_datetime_field_update(
+                        f"properties/{primary_datetime_name}"
+                    )
+
+                if primary_datetime_name == "start_datetime":
+                    existing_end_datetime = existing_item.get("properties", {}).get(
+                        "end_datetime"
+                    )
+                    new_end_datetime = item.get("properties", {}).get("end_datetime")
+
+                    if existing_end_datetime != new_end_datetime:
+                        self.async_index_inserter.validate_datetime_field_update(
+                            "properties/end_datetime"
+                        )
 
         # Prepare the item for insertion
         item = await self.async_prep_create_item(item=item, base_url=base_url)
 
-        # A conditional write replaces the stored document where it is; a new
-        # item goes to the index the inserter picks.
-        target_index = (
-            version.index
-            if version
-            else await self.async_index_inserter.get_target_index(collection_id, item)
-        )
+        # A conditional write replaces the stored document where it is; an
+        # unconditional update must overwrite the document where it already
+        # lives, since re-routing by datetime could send it to a newer physical
+        # index after a rollover and leave the original copy behind (#571);
+        # a new item goes to the index the inserter picks.
+        if version:
+            target_index = version.index
+        elif upsert and existing_index:
+            target_index = existing_index
+        else:
+            target_index = await self.async_index_inserter.get_target_index(
+                collection_id, item
+            )
         if version and not await self.client.indices.exists(index=version.index):
             # The index is gone, so the version's document is too; writing would
             # create an empty index under the old name. A deletion in the moment
@@ -1453,19 +1513,27 @@ class DatabaseLogic(BaseDatabaseLogic):
                 script_operations.append(operation)
 
         try:
-            search_response = await self.client.search(
-                index=index_alias_by_collection_id(collection_id),
-                body={
-                    "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
-                    "size": 1,
-                },
-            )
-            if search_response["hits"]["total"]["value"] == 0:
-                raise NotFoundError(
-                    f"Item {item_id} does not exist inside Collection {collection_id}"
+            if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+                # Real-time mget over the alias's concrete indexes so a patch
+                # on a document that has not been refreshed yet still finds it.
+                hit = await self.get_item_hit_for_write(collection_id, item_id)
+                existing_source = hit["_source"]
+                document_index = hit["_index"]
+            else:
+                search_response = await self.client.search(
+                    index=index_alias_by_collection_id(collection_id),
+                    body={
+                        "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
+                        "size": 1,
+                    },
                 )
+                if search_response["hits"]["total"]["value"] == 0:
+                    raise NotFoundError(
+                        f"Item {item_id} does not exist inside Collection {collection_id}"
+                    )
+                existing_source = search_response["hits"]["hits"][0]["_source"]
+                document_index = search_response["hits"]["hits"][0]["_index"]
 
-            existing_source = search_response["hits"]["hits"][0]["_source"]
             validate_datetime_operations(
                 operations,
                 existing_source,
@@ -1481,18 +1549,24 @@ class DatabaseLogic(BaseDatabaseLogic):
                     protect_datetime_script(
                         script, self.async_index_inserter.use_datetime
                     )
-                document_index = search_response["hits"]["hits"][0]["_index"]
                 if version and document_index != version.index:
                     # The version's document is gone; a replacement lives in
                     # another index, so the tag no longer matches.
                     raise precondition_failed(f"Item {item_id}")
-                await self.client.update(
-                    index=document_index,
-                    id=mk_item_id(item_id, collection_id),
-                    script=script,
-                    refresh=True,
-                    **(version.write_kwargs() if version else {}),
-                )
+                try:
+                    await self.client.update(
+                        index=document_index,
+                        id=mk_item_id(item_id, collection_id),
+                        script=script,
+                        refresh=True,
+                        **(version.write_kwargs() if version else {}),
+                    )
+                except ESNotFoundError:
+                    if version:
+                        # The version's document is gone from its index, so
+                        # the tag no longer matches.
+                        raise precondition_failed(f"Item {item_id}")
+                    raise
         except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
@@ -2181,15 +2255,72 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise_on_error = False
         else:
             raise_on_error = self.async_settings.raise_on_bulk_error
-        actions = await self.async_index_inserter.prepare_bulk_actions(
-            collection_id, processed_items, op_type=op_type
-        )
-        success, errors = await helpers.async_bulk(
-            self.client,
-            actions,
-            refresh=refresh,
-            raise_on_error=raise_on_error,
-        )
+
+        # ``_id`` uniqueness is enforced per index only. Under datetime-sharded
+        # indexing, an item re-ingested with a datetime resolving to a different
+        # physical index would otherwise be silently duplicated, so check the
+        # collection alias (which spans all of its indexes) and report existing
+        # items as 409 conflicts in the shape callers expect from the bulk
+        # helper.
+        preexisting_conflicts: list[dict[str, Any]] = []
+        if op_type == "create" and isinstance(
+            self.async_index_inserter, DatetimeIndexInserter
+        ):
+            alias = index_alias_by_collection_id(collection_id)
+            try:
+                existing_ids = await find_existing_item_ids(
+                    self.client,
+                    alias,
+                    [
+                        mk_item_id(item["id"], item["collection"])
+                        for item in processed_items
+                    ],
+                )
+            except ESNotFoundError:
+                # No index exists under the alias yet, so nothing can be a
+                # duplicate.
+                existing_ids = set()
+            # Two items in this batch sharing an id but resolving to different
+            # physical indexes would both pass the per-index op_type="create"
+            # check, so dedupe within the batch as well; first occurrence wins.
+            seen_in_batch: set[str] = set()
+            new_items = []
+            for item in processed_items:
+                doc_id = mk_item_id(item["id"], item["collection"])
+                if doc_id in existing_ids or doc_id in seen_in_batch:
+                    preexisting_conflicts.append(
+                        {
+                            "create": {
+                                "_index": alias,
+                                "_id": doc_id,
+                                "status": 409,
+                                "error": {
+                                    "type": "version_conflict_engine_exception",
+                                    "reason": f"[{doc_id}]: version conflict, document already exists",
+                                    "index": alias,
+                                },
+                            }
+                        }
+                    )
+                else:
+                    seen_in_batch.add(doc_id)
+                    new_items.append(item)
+            processed_items = new_items
+
+        if processed_items:
+            actions = await self.async_index_inserter.prepare_bulk_actions(
+                collection_id, processed_items, op_type=op_type
+            )
+            success, errors = await helpers.async_bulk(
+                self.client,
+                actions,
+                refresh=refresh,
+                raise_on_error=raise_on_error,
+            )
+        else:
+            success, errors = 0, []
+
+        errors.extend(preexisting_conflicts)
 
         # Log the result
         logger.info(

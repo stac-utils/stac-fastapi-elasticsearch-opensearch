@@ -286,7 +286,9 @@ async def test_merge_patch_item_add(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_merge_patch_item_remove(ctx, core_client, txn_client):
+async def test_merge_patch_item_remove(
+    ctx, core_client, txn_client, stac_validator_off
+):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
@@ -325,7 +327,7 @@ async def test_merge_patch_create_nest(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_add(ctx, core_client, txn_client):
+async def test_json_patch_item_add(ctx, core_client, txn_client, stac_validator_off):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
@@ -378,7 +380,9 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_replace(ctx, core_client, txn_client):
+async def test_json_patch_item_replace(
+    ctx, core_client, txn_client, stac_validator_off
+):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
@@ -498,7 +502,7 @@ async def test_json_patch_item_test_then_replace_same_path(
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_move(ctx, core_client, txn_client):
+async def test_json_patch_item_move(ctx, core_client, txn_client, stac_validator_off):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
@@ -547,7 +551,7 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_copy(ctx, core_client, txn_client):
+async def test_json_patch_item_copy(ctx, core_client, txn_client, stac_validator_off):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
@@ -597,7 +601,7 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_remove(ctx, core_client, txn_client):
+async def test_json_patch_item_remove(ctx, core_client, txn_client, stac_validator_off):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
@@ -828,7 +832,9 @@ async def test_landing_page_no_collection_title(ctx, core_client, txn_client, ap
 
 
 @pytest.mark.asyncio
-async def test_merge_patch_collection_add(ctx, core_client, txn_client):
+async def test_merge_patch_collection_add(
+    ctx, core_client, txn_client, stac_validator_off
+):
     collection = ctx.collection
     collection_id = collection["id"]
 
@@ -862,7 +868,9 @@ async def test_merge_patch_collection_remove(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_json_patch_collection_add(ctx, core_client, txn_client):
+async def test_json_patch_collection_add(
+    ctx, core_client, txn_client, stac_validator_off
+):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [

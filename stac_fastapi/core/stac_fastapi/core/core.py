@@ -26,6 +26,7 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.etag import (
+    DocumentVersion,
     check_etag,
     check_if_match,
     if_match_header,
@@ -1826,16 +1827,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs["request"]
         base_url = str(request.base_url)
 
-        # With If-Match, one read gives the stored item and the version to check.
-        if request.headers.get("if-match") is None:
-            existing_item = await self.database.get_item_for_write(
-                collection_id, item_id
-            )
-            current = None
-        else:
-            existing_item, current = await self.database.get_one_item_with_version(
-                collection_id, item_id, include_hidden=True
-            )
+        # One read gives the stored item, its index and the version to check.
+        existing_hit = await self.database.get_item_hit_for_write(
+            collection_id, item_id
+        )
+        existing_item = existing_hit["_source"]
+        current = (
+            DocumentVersion.from_hit(existing_hit)
+            if request.headers.get("if-match") is not None
+            else None
+        )
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_dict["properties"]["updated"] = now
@@ -1846,6 +1847,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             request.headers.get("if-match") is None
         )
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
+
+        # Queued writes bypass the datetime-index validation in create_item and
+        # could create cross-index duplicates, so updates go straight to the
+        # database when datetime index filtering is enabled.
+        if use_queue and get_bool_env("ENABLE_DATETIME_INDEX_FILTERING", default=False):
+            use_queue = False
 
         # 1. UNIFIED PREPROCESSING LAYER
         # Runs unconditionally so DB and Queue both get the exact same standardized payload
@@ -1893,7 +1900,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # 5. DATABASE INSERTION LAYER (No Queue)
         new_version = await self.database.create_item(
-            processed_item, base_url=base_url, upsert=True, version=version, **kwargs
+            processed_item,
+            base_url=base_url,
+            upsert=True,
+            existing_hit=existing_hit,
+            version=version,
+            **kwargs,
         )
         record_etag(request, new_version)
         return ItemSerializer.db_to_stac(processed_item, base_url)
@@ -1995,9 +2007,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current item state from DB
-        existing_item, current = await self.database.get_one_item_with_version(
-            item_id=item_id, collection_id=collection_id, include_hidden=True
+        existing_hit = await self.database.get_item_hit_for_write(
+            item_id=item_id, collection_id=collection_id
         )
+        existing_item = existing_hit["_source"] if existing_hit else None
+        current = DocumentVersion.from_hit(existing_hit) if existing_hit else None
         if not existing_item:
             raise HTTPException(
                 status_code=404,
@@ -2038,6 +2052,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             db_item,
             base_url=base_url,
             upsert=True,
+            existing_hit=existing_hit,
             version=version,
             **kwargs,
         )
