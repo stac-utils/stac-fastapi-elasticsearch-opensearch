@@ -71,7 +71,7 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
-    remap_sort_field_shared,
+    format_collection_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
@@ -238,20 +238,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             A tuple of (collections, next pagination token if any).
         """
         # Format the sort parameter
-        formatted_sort = []
-        if sort:
-            for item in sort:
-                field = remap_sort_field_shared(
-                    item.get("field", ""), is_collection=True
-                )
-                direction = item.get("direction", "asc")
-                if field:
-                    formatted_sort.append({field: {"order": direction}})
-            # Always include id as a secondary sort to ensure consistent pagination
-            if not any("id" in item for item in formatted_sort):
-                formatted_sort.append({"id": {"order": "asc"}})
-        else:
-            formatted_sort = [{"id": {"order": "asc"}}]
+        formatted_sort = format_collection_sort_shared(sort)
 
         size = min(limit + 1, MAX_LIMIT)
         body = {
@@ -2692,22 +2679,47 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         filter: dict[str, Any] | None = None,
+        sort: list[dict[str, Any]] | None = None,
+        q: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
-        """Get collections within a catalog."""
+        """Get collections within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            limit (int): Number of results to return.
+            token (str | None): Pagination token.
+            request (Any): The request object.
+            filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
+            sort (list[dict[str, Any]] | None): Field/direction pairs from `sortby`.
+            q (list[str] | None): Free text search terms.
+
+        Returns:
+            Tuple containing list of collections, next token, and total count.
+        """
         # Decode token to search_after
         search_after = decode_token_to_search_after(token)
 
-        (
-            collections,
-            total_hits,
-            next_search_after,
-        ) = await search_collections_by_parent_id_with_pagination_shared(
-            es_client=self.client,
-            catalog_id=catalog_id,
-            limit=limit,
-            search_after=search_after,
-            filter_query=await self._collections_filter_query(filter),
-        )
+        formatted_sort = format_collection_sort_shared(sort)
+
+        try:
+            (
+                collections,
+                total_hits,
+                next_search_after,
+            ) = await search_collections_by_parent_id_with_pagination_shared(
+                es_client=self.client,
+                catalog_id=catalog_id,
+                limit=limit,
+                search_after=search_after,
+                filter_query=await self._collections_filter_query(filter),
+                free_text_query=apply_collections_free_text_filter_shared(q),
+                sort=formatted_sort,
+            )
+        except RequestError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+            )
 
         # Encode next_search_after to token
         next_token = encode_search_after_to_token(next_search_after)

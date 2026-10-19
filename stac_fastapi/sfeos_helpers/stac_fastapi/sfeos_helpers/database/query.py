@@ -138,6 +138,25 @@ def remap_sort_field_shared(field_name: str, is_collection: bool = False) -> str
     return AUTO_ITEMS_SORT_FIELD_REMAPS.get(field_name, field_name)
 
 
+def format_collection_sort_shared(
+    sort: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Format collection `sortby` field/direction pairs for the engine.
+
+    Remaps each field via `remap_sort_field_shared` and appends an `id`
+    tie-breaker so pages stay aligned when earlier keys tie.
+    """
+    formatted_sort = []
+    for item in sort or []:
+        field = remap_sort_field_shared(item.get("field", ""), is_collection=True)
+        direction = item.get("direction", "asc")
+        if field:
+            formatted_sort.append({field: {"order": direction}})
+    if not any("id" in item for item in formatted_sort):
+        formatted_sort.append({"id": {"order": "asc"}})
+    return formatted_sort
+
+
 def apply_free_text_filter_shared(
     search: Any, free_text_queries: list[str] | None
 ) -> Any:
