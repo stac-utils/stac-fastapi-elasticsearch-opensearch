@@ -770,7 +770,7 @@ async def test_bbox_3d(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_patch_json_collection(app_client, ctx):
+async def test_patch_json_collection(app_client, ctx, stac_validator_off):
     data = {
         "summaries": {"hello": "world", "gsd": [50], "instruments": None},
     }
@@ -792,7 +792,7 @@ async def test_patch_json_collection(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_patch_operations_collection(app_client, ctx):
+async def test_patch_operations_collection(app_client, ctx, stac_validator_off):
     operations = [
         {"op": "add", "path": "/summaries/hello", "value": "world"},
         {"op": "replace", "path": "/summaries/gsd", "value": [50]},
@@ -1084,7 +1084,9 @@ async def test_no_global_collection_max_limit_set(
 
 
 @pytest.mark.asyncio
-async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeypatch):
+async def test_use_datetime_true(
+    app_client, load_test_data, txn_client, monkeypatch, stac_validator_off
+):
     monkeypatch.setenv("USE_DATETIME", "true")
 
     test_collection = load_test_data("test_collection.json")

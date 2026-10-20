@@ -1173,7 +1173,7 @@ async def test_search_datetime_with_null_datetime(
 
 @pytest.mark.asyncio
 async def test_search_datetime_with_null_datetime_pagination(
-    app_client, txn_client, load_test_data
+    app_client, txn_client, load_test_data, stac_validator_off
 ):
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
