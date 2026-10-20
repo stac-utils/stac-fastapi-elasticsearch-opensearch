@@ -72,7 +72,6 @@ from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
     format_collection_sort_shared,
-    validate_sort_fields_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
@@ -263,10 +262,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             A tuple of (collections, next pagination token if any).
         """
         # Format the sort parameter
-        if sort:
-            validate_sort_fields_shared(
-                item.get("field", "") for item in sort if isinstance(item, dict)
-            )
         formatted_sort = format_collection_sort_shared(sort)
 
         size = min(limit + 1, MAX_LIMIT)

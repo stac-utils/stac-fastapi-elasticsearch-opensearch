@@ -144,9 +144,13 @@ def format_collection_sort_shared(
 ) -> list[dict[str, Any]]:
     """Format collection `sortby` field/direction pairs for the engine.
 
-    Remaps each field via `remap_sort_field_shared` and appends an `id`
-    tie-breaker so pages stay aligned when earlier keys tie.
+    Validates each field via `validate_sort_fields_shared`, remaps it via
+    `remap_sort_field_shared`, and appends an `id` tie-breaker so pages stay
+    aligned when earlier keys tie.
     """
+    validate_sort_fields_shared(
+        item.get("field", "") for item in sort or [] if isinstance(item, dict)
+    )
     formatted_sort = []
     for item in sort or []:
         field = remap_sort_field_shared(item.get("field", ""), is_collection=True)
