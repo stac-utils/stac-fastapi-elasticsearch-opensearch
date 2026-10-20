@@ -289,12 +289,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Convert string filter to dict if needed
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
-            # Convert the filter to an OpenSearch query using the filter module
+            # Convert the filter to an OpenSearch query using the filter module.
+            # The mapping fetch is outside the try so a connection error is
+            # retried by @retry_on_connection_error, not reported as a 400.
+            queryables_mapping = await self.get_collections_queryables_mapping()
             try:
-                es_query = filter_module.to_es(
-                    await self.get_collections_queryables_mapping(), filter
-                )
-            except ValueError as e:
+                es_query = filter_module.to_es(queryables_mapping, filter)
+            except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}."
                 )

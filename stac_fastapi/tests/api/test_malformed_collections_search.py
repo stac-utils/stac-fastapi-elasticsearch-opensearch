@@ -139,6 +139,48 @@ async def test_malformed_get_datetime(collections_http, monkeypatch, value, deta
     assert response.json() == paired.json()
 
 
+@pytest.mark.parametrize(
+    "filter_value",
+    [
+        # Parses as JSON, but is a property reference, not a boolean expression.
+        '{"property": "title"}',
+        # Not a CQL2 expression object at all.
+        "true",
+        "[1, 2]",
+        # Not JSON and not valid CQL2 text either.
+        "{not json",
+        # Valid operator, structurally broken args.
+        '{"op": "=", "args": []}',
+        '{"op": "=", "args": [{"name": "title"}, "x"]}',
+        '{"op": "=", "args": [5, "x"]}',
+        '{"op": "and"}',
+        '{"op": "and", "args": {"not": "a list"}}',
+    ],
+)
+async def test_malformed_get_filter(collections_http, filter_value):
+    response = await collections_http.get(
+        "/collections",
+        params={"filter": filter_value, "filter-lang": "cql2-json"},
+    )
+    assert response.status_code == 400, response.text
+
+
+async def test_get_filter_uppercase_op(collections_http, ctx):
+    """Operator names are case-insensitive: IN matches like in."""
+    collection_id = ctx.collection["id"]
+    response = await collections_http.get(
+        "/collections",
+        params={
+            "filter": json.dumps(
+                {"op": "IN", "args": [{"property": "id"}, [collection_id]]}
+            ),
+            "filter-lang": "cql2-json",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert collection_id in [c["id"] for c in response.json()["collections"]]
+
+
 @pytest.mark.parametrize("value", [value for value, _ in MALFORMED_DATETIMES])
 async def test_malformed_post_datetime(collections_http, value):
     response = await collections_http.post(URL, json={"datetime": value})
