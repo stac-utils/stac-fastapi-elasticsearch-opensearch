@@ -584,12 +584,19 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client, stac_validator
 
     assert updated_item["properties"]["foo"] == updated_item["properties"]["gsd"]
     assert updated_item["properties"]["bar"] == updated_item["properties"]["proj:epsg"]
-    assert len(updated_item["properties"]["eo:bands"]) == len(
-        ctx.item["properties"]["eo:bands"]
+    # RFC 6902: copy is an add at the target path, so copying into an array
+    # index inserts rather than replaces.
+    assert (
+        len(updated_item["properties"]["eo:bands"])
+        == len(ctx.item["properties"]["eo:bands"]) + 1
     )
     assert (
         updated_item["properties"]["eo:bands"][0]
         == ctx.item["properties"]["eo:bands"][1]
+    )
+    assert (
+        updated_item["properties"]["eo:bands"][1]
+        == ctx.item["properties"]["eo:bands"][0]
     )
 
 
