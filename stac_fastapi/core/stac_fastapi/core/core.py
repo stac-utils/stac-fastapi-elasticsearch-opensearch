@@ -26,6 +26,7 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.etag import (
+    DocumentVersion,
     check_etag,
     check_if_match,
     if_match_header,
@@ -37,7 +38,7 @@ from stac_fastapi.core.extensions.filter import (
     check_cql2_literals,
     cql2_text_to_json,
 )
-from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.models.links import SORTABLES_REL, PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
     get_properties_from_cql2_filter,
@@ -83,6 +84,7 @@ from stac_fastapi.sfeos_helpers.database import (
     separate_bulk_conflict_errors,
 )
 from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
+from stac_fastapi.sfeos_helpers.sort.client import SortablesCache
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -198,6 +200,21 @@ def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
     return includes, excludes
 
 
+def parse_sortby(sortby: list[str] | None) -> list[dict[str, str]] | None:
+    """Parse `sortby` values like `+field`/`-field` into field/direction pairs."""
+    parsed = []
+    for raw in sortby or []:
+        if not isinstance(raw, str):
+            continue
+        s = raw.strip()
+        if not s:
+            continue
+        direction = "desc" if s[0] == "-" else "asc"
+        field = s[1:] if s[0] in "+-" else s
+        parsed.append({"field": field, "direction": direction})
+    return parsed or None
+
+
 def parse_search_filter(filter_expr: str, filter_lang: str | None) -> dict[str, Any]:
     """Parse a GET search `filter` into CQL2 JSON: JSON for cql2-json, otherwise CQL2 text.
 
@@ -272,8 +289,9 @@ class CoreClient(AsyncBaseCoreClient):
     description: str = attr.ib(default="stac-fastapi")
 
     def __attrs_post_init__(self):
-        """Initialize the queryables cache."""
+        """Initialize the queryables and sortables caches."""
         self.queryables_cache = QueryablesCache(self.database)
+        self.sortables_cache = SortablesCache(self.database)
 
     def extension_is_enabled(self, extension_name: str) -> bool:
         """Check if an extension is enabled by checking self.extensions.
@@ -366,6 +384,16 @@ class CoreClient(AsyncBaseCoreClient):
                     "type": "application/schema+json",
                     "title": "Queryables",
                     "href": urljoin(base_url, "queryables"),
+                }
+            )
+
+        if self.extension_is_enabled("SearchSortExtension"):
+            landing_page["links"].append(
+                {
+                    "rel": SORTABLES_REL,
+                    "type": MimeTypes.jsonschema,
+                    "title": "Sortables",
+                    "href": urljoin(base_url, "sortables"),
                 }
             )
 
@@ -513,20 +541,7 @@ class CoreClient(AsyncBaseCoreClient):
         # Process fields parameter for filtering collection properties
         includes, excludes = parse_fields(fields) if fields else (set(), set())
 
-        sort = None
-        if sortby:
-            parsed_sort = []
-            for raw in sortby:
-                if not isinstance(raw, str):
-                    continue
-                s = raw.strip()
-                if not s:
-                    continue
-                direction = "desc" if s[0] == "-" else "asc"
-                field = s[1:] if s and s[0] in "+-" else s
-                parsed_sort.append({"field": field, "direction": direction})
-            if parsed_sort:
-                sort = parsed_sort
+        sort = parse_sortby(sortby if isinstance(sortby, list) else [sortby])
 
         # Convert q to a list if it's a string
         q_list = None
@@ -654,6 +669,16 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        if self.extension_is_enabled("CollectionSearchSortExtension"):
+            links.append(
+                {
+                    "rel": SORTABLES_REL,
+                    "type": MimeTypes.jsonschema,
+                    "title": "Sortables",
+                    "href": urljoin(base_url, "collections-sortables"),
+                }
+            )
 
         if redis_enable:
             from stac_fastapi.core.redis_utils import redis_pagination_links
@@ -1117,7 +1142,26 @@ class CoreClient(AsyncBaseCoreClient):
 
         sort = None
         if hasattr(search_request, "sortby") and getattr(search_request, "sortby"):
-            sort = self.database.populate_sort(getattr(search_request, "sortby"))
+            sortby = getattr(search_request, "sortby")
+            # Enforce additionalProperties: false sortables schemas; the union
+            # /sortables schema applies to item search, a collection's schema to
+            # its /items listing. The default (non-union) /sortables advertises
+            # additionalProperties: true, so any field name is valid there.
+            if request.url.path.endswith("/items") and len(collection_ids or []) == 1:
+                await self.sortables_cache.validate(
+                    (s.field for s in sortby), collection_id=collection_ids[0]
+                )
+                field_types = await self.sortables_cache.get_collection_field_types(
+                    collection_ids[0]
+                )
+            else:
+                if get_bool_env("ROOT_QUERYABLES_UNION", default=False):
+                    await self.sortables_cache.validate(s.field for s in sortby)
+                # Even where any field name is valid, the field's mapped type
+                # is needed for unmapped_type or partially-mapped fields fail
+                # with incompatible sort types across shards.
+                field_types = await self.sortables_cache.get_union_field_types()
+            sort = self.database.populate_sort(sortby, field_types=field_types)
 
         if search_request.limit:
             limit = search_request.limit
@@ -1826,16 +1870,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs["request"]
         base_url = str(request.base_url)
 
-        # With If-Match, one read gives the stored item and the version to check.
-        if request.headers.get("if-match") is None:
-            existing_item = await self.database.get_item_for_write(
-                collection_id, item_id
-            )
-            current = None
-        else:
-            existing_item, current = await self.database.get_one_item_with_version(
-                collection_id, item_id, include_hidden=True
-            )
+        # One read gives the stored item, its index and the version to check.
+        existing_hit = await self.database.get_item_hit_for_write(
+            collection_id, item_id
+        )
+        existing_item = existing_hit["_source"]
+        current = (
+            DocumentVersion.from_hit(existing_hit)
+            if request.headers.get("if-match") is not None
+            else None
+        )
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_dict["properties"]["updated"] = now
@@ -1846,6 +1890,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             request.headers.get("if-match") is None
         )
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
+
+        # Queued writes bypass the datetime-index validation in create_item and
+        # could create cross-index duplicates, so updates go straight to the
+        # database when datetime index filtering is enabled.
+        if use_queue and get_bool_env("ENABLE_DATETIME_INDEX_FILTERING", default=False):
+            use_queue = False
 
         # 1. UNIFIED PREPROCESSING LAYER
         # Runs unconditionally so DB and Queue both get the exact same standardized payload
@@ -1893,7 +1943,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # 5. DATABASE INSERTION LAYER (No Queue)
         new_version = await self.database.create_item(
-            processed_item, base_url=base_url, upsert=True, version=version, **kwargs
+            processed_item,
+            base_url=base_url,
+            upsert=True,
+            existing_hit=existing_hit,
+            version=version,
+            **kwargs,
         )
         record_etag(request, new_version)
         return ItemSerializer.db_to_stac(processed_item, base_url)
@@ -1995,9 +2050,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current item state from DB
-        existing_item, current = await self.database.get_one_item_with_version(
-            item_id=item_id, collection_id=collection_id, include_hidden=True
+        existing_hit = await self.database.get_item_hit_for_write(
+            item_id=item_id, collection_id=collection_id
         )
+        existing_item = existing_hit["_source"] if existing_hit else None
+        current = DocumentVersion.from_hit(existing_hit) if existing_hit else None
         if not existing_item:
             raise HTTPException(
                 status_code=404,
@@ -2038,6 +2095,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             db_item,
             base_url=base_url,
             upsert=True,
+            existing_hit=existing_hit,
             version=version,
             **kwargs,
         )

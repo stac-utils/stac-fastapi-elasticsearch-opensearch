@@ -79,8 +79,14 @@ from stac_fastapi.core.utilities import get_bool_env  # noqa: E402
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX  # noqa: E402
 from stac_fastapi.types.config import Settings  # noqa: E402
 
+# Pin the test environment to CI defaults regardless of compose.yml, which
+# enables extra features for dev servers (validator, catalogs route, OS rate
+# limit). Tests that need them opt in explicitly (catalogs_app fixtures,
+# monkeypatch in the validator tests).
+os.environ["ENABLE_STAC_VALIDATOR"] = "false"
+os.environ["ENABLE_CATALOGS_ROUTE"] = "false"
+os.environ.pop("STAC_FASTAPI_RATE_LIMIT", None)
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
-os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 os.environ.setdefault("DATABASE_REFRESH", "true")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
@@ -261,6 +267,7 @@ async def app():
     """Return a fresh FastAPI app with no route dependencies."""
     api = instantiate_api()
     api.app.router.dependencies = []
+    api.app.state.database_logic = api.client.database
     return api.app
 
 
@@ -491,10 +498,52 @@ def get_flattened_routes(router_obj, prefix=""):
 
 
 @pytest_asyncio.fixture()
-async def mock_datetime_env(txn_client, monkeypatch):
-    """Set USE_DATETIME environment variable to False for testing."""
-    monkeypatch.setenv("USE_DATETIME", "false")
-    if hasattr(txn_client.database.async_index_selector, "cache_manager"):
-        await txn_client.database.async_index_selector.cache_manager.clear_cache()
+async def datetime_filtering_env(txn_client, app, monkeypatch):
+    """Enable datetime index filtering for a test.
+
+    Sets ENABLE_DATETIME_INDEX_FILTERING=True so these tests run under a plain
+    ``pytest`` invocation without requiring the environment variable at process
+    start. Because the index inserter and selector are chosen when each
+    DatabaseLogic instance is constructed, the strategy objects on the shared
+    test database and the app's database are rebuilt under the new flag and
+    restored afterwards.
+    """
+    from stac_fastapi.sfeos_helpers.search_engine import (
+        IndexInsertionFactory,
+        IndexSelectorFactory,
+    )
+
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "true")
+
+    databases = {id(db): db for db in (txn_client.database, app.state.database_logic)}
+    saved = {
+        db_id: (db.async_index_inserter, db.async_index_selector)
+        for db_id, db in databases.items()
+    }
+    for db in databases.values():
+        db.async_index_inserter = IndexInsertionFactory.create_insertion_strategy(
+            db.client
+        )
+        db.async_index_selector = IndexSelectorFactory.create_selector(db.client)
+        if hasattr(db.async_index_selector, "cache_manager"):
+            await db.async_index_selector.cache_manager.clear_cache()
+
     yield
-    monkeypatch.setenv("USE_DATETIME", "true")
+
+    for db_id, db in databases.items():
+        db.async_index_inserter, db.async_index_selector = saved[db_id]
+        if hasattr(db.async_index_selector, "cache_manager"):
+            await db.async_index_selector.cache_manager.clear_cache()
+
+
+@pytest_asyncio.fixture()
+async def mock_datetime_env(datetime_filtering_env, monkeypatch):
+    """Datetime index filtering with USE_DATETIME=False (start/end sharding)."""
+    monkeypatch.setenv("USE_DATETIME", "false")
+    yield
+
+
+@pytest.fixture
+def stac_validator_off(monkeypatch):
+    """Disable the STAC validator for tests that exercise non-validation behavior."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")

@@ -65,6 +65,7 @@ from .query import (
     apply_intersects_filter_shared,
     decode_search_after_token_shared,
     populate_sort_shared,
+    validate_sort_fields_shared,
 )
 from .utils import (
     BulkIndexError,
@@ -72,6 +73,8 @@ from .utils import (
     add_bbox_shape_to_collection,
     check_item_exists_in_alias,
     check_item_exists_in_alias_sync,
+    find_existing_item_ids,
+    find_item_in_alias,
     get_bool_env,
     retry_on_connection_error,
     retry_on_datetime_not_found,
@@ -104,6 +107,7 @@ __all__ = [
     "apply_collections_free_text_filter_shared",
     "decode_search_after_token_shared",
     "populate_sort_shared",
+    "validate_sort_fields_shared",
     # Mapping operations
     "get_queryables_mapping_shared",
     # Document operations
@@ -117,6 +121,8 @@ __all__ = [
     "retry_on_connection_error",
     "check_item_exists_in_alias",
     "check_item_exists_in_alias_sync",
+    "find_existing_item_ids",
+    "find_item_in_alias",
     # Errors
     "BulkIndexError",
     "ItemAlreadyExistsError",

@@ -8,7 +8,7 @@ from collections import defaultdict, deque
 from typing import Any
 
 
-def _get_excluded_from_queryables() -> set[str]:
+def get_excluded_from_queryables() -> set[str]:
     """Get fields to exclude from queryables endpoint and filtering.
 
     Reads from EXCLUDED_FROM_QUERYABLES environment variable.
@@ -77,7 +77,7 @@ async def get_queryables_mapping_shared(
             corresponding paths in the Elasticsearch/OpenSearch document structure.
     """
     queryables_mapping = defaultdict(list)
-    excluded = _get_excluded_from_queryables()
+    excluded = get_excluded_from_queryables()
 
     def is_excluded(path: str) -> bool:
         """Check if the path starts with any excluded prefix."""

@@ -11,7 +11,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.core.models import Catalog
-from stac_fastapi.core.models.links import CollectionLinks
+from stac_fastapi.core.models.links import SORTABLES_REL, CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env, get_excluded_from_items
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
@@ -19,15 +19,47 @@ from stac_fastapi.types.links import ItemLinks, resolve_links
 logger = logging.getLogger(__name__)
 
 
-# Relations of the links SFEOS generates for its own collection endpoints. Like the
-# rels stac-fastapi infers (self, root, ...), a stored copy is dropped on read.
-GENERATED_COLLECTION_RELS = {"queryables", "aggregate", "aggregations"}
+# Relations of the links SFEOS generates for its own collection endpoints. Per
+# the catalogs spec they are API-owned — `canonical` is the global endpoint and
+# `duplicate` another scoped path — so a stored copy is ours and is dropped on
+# read, like the rels stac-fastapi infers (self, root, ...).
+GENERATED_COLLECTION_RELS = {
+    "queryables",
+    "aggregate",
+    "aggregations",
+    "canonical",
+    "duplicate",
+    SORTABLES_REL,
+}
+
+# `related` is dual-use: generated for poly-hierarchy parents, but also a
+# generic rel users store for external resources such as DOIs. A stored
+# `related` counts as a generated copy only when its href is one this read
+# generated or resolves inside this API.
+DUAL_USE_COLLECTION_RELS = {"related"}
 
 
-def _without_generated(stored: list[dict], generated: list[dict]) -> list[dict]:
-    """Drop stored links whose rel is one of ours that this read generated."""
-    rels = GENERATED_COLLECTION_RELS & {link["rel"] for link in generated}
-    return [link for link in stored if link["rel"] not in rels]
+def _without_generated(
+    stored: list[dict], generated: list[dict], base_url: str
+) -> list[dict]:
+    """Drop stored copies of the links this read generated for our endpoints.
+
+    Stored hrefs are already absolute because the caller resolves them against
+    ``base_url`` first.
+    """
+    rels = {link["rel"] for link in generated}
+    owned = GENERATED_COLLECTION_RELS & rels
+    dual = DUAL_USE_COLLECTION_RELS & rels
+    hrefs = {link["href"] for link in generated}
+    return [
+        link
+        for link in stored
+        if link["rel"] not in owned
+        and not (
+            link["rel"] in dual
+            and (link["href"] in hrefs or link["href"].startswith(base_url))
+        )
+    ]
 
 
 @attr.s
@@ -415,7 +447,7 @@ class CollectionSerializer(Serializer):
         original_links = collection.get("links")
         if original_links:
             collection_links += _without_generated(
-                resolve_links(original_links, base_url), collection_links
+                resolve_links(original_links, base_url), collection_links, base_url
             )
 
         collection["links"] = collection_links
@@ -492,7 +524,7 @@ class CollectionSerializer(Serializer):
         original_links = collection.get("links")
         if original_links:
             collection_links += _without_generated(
-                resolve_links(original_links, base_url), collection_links
+                resolve_links(original_links, base_url), collection_links, base_url
             )
 
         collection["links"] = collection_links
