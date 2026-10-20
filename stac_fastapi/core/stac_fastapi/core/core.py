@@ -38,7 +38,7 @@ from stac_fastapi.core.extensions.filter import (
     check_cql2_literals,
     cql2_text_to_json,
 )
-from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.models.links import SORTABLES_REL, PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
     get_properties_from_cql2_filter,
@@ -84,6 +84,7 @@ from stac_fastapi.sfeos_helpers.database import (
     separate_bulk_conflict_errors,
 )
 from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
+from stac_fastapi.sfeos_helpers.sort.client import SortablesCache
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -288,8 +289,9 @@ class CoreClient(AsyncBaseCoreClient):
     description: str = attr.ib(default="stac-fastapi")
 
     def __attrs_post_init__(self):
-        """Initialize the queryables cache."""
+        """Initialize the queryables and sortables caches."""
         self.queryables_cache = QueryablesCache(self.database)
+        self.sortables_cache = SortablesCache(self.database)
 
     def extension_is_enabled(self, extension_name: str) -> bool:
         """Check if an extension is enabled by checking self.extensions.
@@ -382,6 +384,16 @@ class CoreClient(AsyncBaseCoreClient):
                     "type": "application/schema+json",
                     "title": "Queryables",
                     "href": urljoin(base_url, "queryables"),
+                }
+            )
+
+        if self.extension_is_enabled("SearchSortExtension"):
+            landing_page["links"].append(
+                {
+                    "rel": SORTABLES_REL,
+                    "type": MimeTypes.jsonschema,
+                    "title": "Sortables",
+                    "href": urljoin(base_url, "sortables"),
                 }
             )
 
@@ -657,6 +669,16 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        if self.extension_is_enabled("CollectionSearchSortExtension"):
+            links.append(
+                {
+                    "rel": SORTABLES_REL,
+                    "type": MimeTypes.jsonschema,
+                    "title": "Sortables",
+                    "href": urljoin(base_url, "collections-sortables"),
+                }
+            )
 
         if redis_enable:
             from stac_fastapi.core.redis_utils import redis_pagination_links
@@ -1120,7 +1142,26 @@ class CoreClient(AsyncBaseCoreClient):
 
         sort = None
         if hasattr(search_request, "sortby") and getattr(search_request, "sortby"):
-            sort = self.database.populate_sort(getattr(search_request, "sortby"))
+            sortby = getattr(search_request, "sortby")
+            # Enforce additionalProperties: false sortables schemas; the union
+            # /sortables schema applies to item search, a collection's schema to
+            # its /items listing. The default (non-union) /sortables advertises
+            # additionalProperties: true, so any field name is valid there.
+            if request.url.path.endswith("/items") and len(collection_ids or []) == 1:
+                await self.sortables_cache.validate(
+                    (s.field for s in sortby), collection_id=collection_ids[0]
+                )
+                field_types = await self.sortables_cache.get_collection_field_types(
+                    collection_ids[0]
+                )
+            else:
+                if get_bool_env("ROOT_QUERYABLES_UNION", default=False):
+                    await self.sortables_cache.validate(s.field for s in sortby)
+                # Even where any field name is valid, the field's mapped type
+                # is needed for unmapped_type or partially-mapped fields fail
+                # with incompatible sort types across shards.
+                field_types = await self.sortables_cache.get_union_field_types()
+            sort = self.database.populate_sort(sortby, field_types=field_types)
 
         if search_request.limit:
             limit = search_request.limit

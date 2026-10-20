@@ -547,7 +547,9 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def populate_sort(self, sortby: list) -> Any:
+    def populate_sort(
+        self, sortby: list, field_types: dict[str, str] | None = None
+    ) -> Any:
         """Populate sort for the search."""
         pass
 

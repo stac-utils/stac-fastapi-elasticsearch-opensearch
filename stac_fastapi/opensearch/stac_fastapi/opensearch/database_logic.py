@@ -104,6 +104,30 @@ from stac_fastapi.types.stac import Collection, Item
 logger = logging.getLogger(__name__)
 
 
+def _search_error_reason(e: Exception) -> str:
+    """Extract the engine error reason from a RequestError body.
+
+    The error body is not always a dict (it can be a string or None), so fall
+    back to the stringified exception when no reason can be extracted.
+    Multi-index failures report "all shards failed" as the top-level reason;
+    the useful text (e.g. "No mapping found for [x] in order to sort on") is
+    in root_cause, so prefer it when present.
+    """
+    info = getattr(e, "info", None)
+    error = info.get("error") if isinstance(info, dict) else None
+    if isinstance(error, dict):
+        root_cause = error.get("root_cause")
+        if (
+            isinstance(root_cause, list)
+            and root_cause
+            and isinstance(root_cause[0], dict)
+            and root_cause[0].get("reason")
+        ):
+            return root_cause[0]["reason"]
+        return error.get("reason") or str(e)
+    return error or str(e)
+
+
 async def create_index_templates() -> None:
     """
     Create index templates for the Collection and Item indices.
@@ -341,7 +365,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # e.g., "Fielddata is disabled on text fields in [title]"
             raise HTTPException(
                 status_code=400,
-                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+                detail=f"Search request error: {_search_error_reason(e)}",
             )
 
         hits = response["hits"]["hits"]
@@ -944,19 +968,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search, metadata
 
     @staticmethod
-    def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
+    def populate_sort(
+        sortby: list, field_types: dict[str, str] | None = None
+    ) -> dict[str, dict[str, str]] | None:
         """Create a sort configuration for OpenSearch queries.
 
         This method delegates to the shared implementation in populate_sort_shared.
 
         Args:
             sortby (List): A list of sort specifications, each containing a field and direction.
+            field_types (dict[str, str] | None): Optional map of sortable field
+                names to their engine field type, used for unmapped_type.
 
         Returns:
             dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
                 configurations, or None if no sort was specified.
         """
-        return populate_sort_shared(sortby=sortby)
+        return populate_sort_shared(sortby=sortby, field_types=field_types)
 
     @retry_on_datetime_not_found
     @retry_on_connection_error
@@ -1063,6 +1091,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {_search_error_reason(e)}",
+            )
 
         count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
 
@@ -1158,6 +1193,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             db_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {_search_error_reason(e)}",
+            )
 
         return db_response
 

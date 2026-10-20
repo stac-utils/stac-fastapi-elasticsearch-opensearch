@@ -47,15 +47,25 @@ from stac_fastapi.extensions.sort import (
 )
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
+from stac_fastapi.sfeos_helpers.sort import EsAsyncBaseSortablesClient
+from stac_fastapi.sfeos_helpers.sort.request import SortExtensionPostRequest
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
 
 
 def get_default_extensions_map(
-    key: str, database_logic: Any, session: Any, settings: Any
-) -> dict[str, ApiExtension]:
-    """Generate fresh default extensions per instance to avoid global mutations."""
+    key: str | None,
+    database_logic: Any,
+    session: Any,
+    settings: Any,
+) -> dict[str, dict[str, ApiExtension]] | dict[str, ApiExtension]:
+    """Generate fresh default extensions per instance to avoid global mutations.
+
+    Builds every map in a single call so extensions shared between maps (the
+    filter and sortables clients/extensions) are the same instances. When
+    `key` is given, returns just that endpoint's map, as before.
+    """
     filter_extension = FilterExtension(
         client=EsAsyncBaseFiltersClient(database=database_logic, settings=settings)
     )
@@ -66,11 +76,25 @@ def get_default_extensions_map(
     fields_extension = FieldsExtension()
     fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
 
+    sortables_client = EsAsyncBaseSortablesClient(
+        database=database_logic, settings=settings
+    )
+
+    search_sort = SearchSortExtension(client=sortables_client)
+    collection_search_sort = CollectionSearchSortExtension(client=sortables_client)
+    item_collection_sort = ItemCollectionSortExtension(client=sortables_client)
+    for sort_extension in (
+        search_sort,
+        collection_search_sort,
+        item_collection_sort,
+    ):
+        sort_extension.POST = SortExtensionPostRequest
+
     DEFAULT_EXTENSIONS = {
         "search_map": {
             "fields": fields_extension,
             "query": QueryExtension(),
-            "sort": SearchSortExtension(),
+            "sort": search_sort,
             "pagination": TokenPaginationExtension(),
             "filter": filter_extension,
             "free_text": FreeTextExtension(
@@ -81,7 +105,7 @@ def get_default_extensions_map(
             "query": QueryExtension(
                 conformance_classes=[QueryConformanceClasses.COLLECTIONS]
             ),
-            "sort": CollectionSearchSortExtension(),
+            "sort": collection_search_sort,
             "fields": FieldsExtension(
                 conformance_classes=[FieldsConformanceClasses.COLLECTIONS]
             ),
@@ -93,7 +117,7 @@ def get_default_extensions_map(
             ),
         },
         "item_collection_map": {
-            "sort": ItemCollectionSortExtension(),
+            "sort": item_collection_sort,
             "query": QueryExtension(
                 conformance_classes=[QueryConformanceClasses.ITEMS]
             ),
@@ -106,7 +130,9 @@ def get_default_extensions_map(
             ),
         },
     }
-    return DEFAULT_EXTENSIONS.get(key, {})
+    if key is None:
+        return DEFAULT_EXTENSIONS
+    return DEFAULT_EXTENSIONS.get(key) or {}
 
 
 @dataclass
@@ -124,19 +150,19 @@ class Extensions:
 
     def __post_init__(self):
         """Merge fresh defaults with user-provided overrides exactly once."""
+        defaults = get_default_extensions_map(
+            None,
+            database_logic=self.database_logic,
+            session=self.session,
+            settings=self.settings,
+        )
         for key in [
             "search_map",
             "collection_search_map",
             "item_collection_map",
             "extra_map",
         ]:
-            defaults = get_default_extensions_map(
-                key,
-                database_logic=self.database_logic,
-                session=self.session,
-                settings=self.settings,
-            )
-            merged = {**defaults, **getattr(self, key)}
+            merged = {**defaults.get(key, {}), **getattr(self, key)}
             setattr(self, key, merged)
 
     def _flag(self, attr_name: str, env_name: str, default: bool) -> bool:

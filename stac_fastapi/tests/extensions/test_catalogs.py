@@ -492,6 +492,27 @@ async def test_get_catalog_collections_sortby_unsortable_field(
 
 
 @pytest.mark.asyncio
+async def test_get_catalog_collections_sortby_excluded_field(
+    catalogs_app_client, load_test_data, ctx, monkeypatch
+):
+    """An excluded `sortby` field returns the sortables 400, like /collections."""
+    monkeypatch.setenv("EXCLUDED_FROM_QUERYABLES", "properties.secret")
+
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"sortby": "properties.secret", "limit": 100},
+    )
+    assert resp.status_code == 400
+    assert "not sortable" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_get_catalog_collections_fields(catalogs_app_client, load_test_data, ctx):
     """Test that `fields` on /catalogs/{catalog_id}/projects the response."""
     test_catalog = load_test_data("test_catalog.json")
