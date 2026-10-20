@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- Collection provider extension fields, such as `processing:lineage`, are preserved on `POST /collections` and `PUT /collections/{collection_id}`. Earlier stac-pydantic versions dropped these fields during request parsing, causing metadata loss or schema validation errors. [stac-utils/stac-pydantic#241](https://github.com/stac-utils/stac-pydantic/issues/241)
+
+### Updated
+
+- Require `stac-pydantic>=3.7.1,<3.8` and update the lockfile to 3.7.1.
+
 ## [v8.1.0] - 2026-10-30
 
 ### Changed

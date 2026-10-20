@@ -238,6 +238,27 @@ async def test_collection_extensions_put(ctx, app_client):
     assert resp.json().get("item_assets", {}).get("test") == test_asset
 
 
+@pytest.mark.asyncio
+async def test_collection_provider_keeps_extension_fields(test_collection, app_client):
+    """Provider fields from extensions, such as processing:lineage, are stored"""
+    lineage = "Mosaicked from Landsat 8 Collection 2 Level-2 scenes"
+    test_collection["id"] = "test-provider-extension-fields"
+    test_collection["providers"][0]["processing:lineage"] = lineage
+    path = f"/collections/{test_collection['id']}"
+
+    try:
+        resp = await app_client.post("/collections", json=test_collection)
+        assert resp.status_code == 201
+        stored = (await app_client.get(path)).json()
+        assert stored["providers"][0]["processing:lineage"] == lineage
+
+        assert (await app_client.put(path, json=stored)).status_code == 200
+        stored = (await app_client.get(path)).json()
+        assert stored["providers"][0]["processing:lineage"] == lineage
+    finally:
+        await app_client.delete(path)
+
+
 @pytest.mark.skip(reason="stac pydantic in stac fastapi 3 doesn't allow this.")
 @pytest.mark.asyncio
 async def test_collection_defaults(app_client):
