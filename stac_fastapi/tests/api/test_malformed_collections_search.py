@@ -165,6 +165,22 @@ async def test_malformed_get_filter(collections_http, filter_value):
     assert response.status_code == 400, response.text
 
 
+async def test_get_filter_uppercase_op(collections_http, ctx):
+    """Operator names are case-insensitive: IN matches like in."""
+    collection_id = ctx.collection["id"]
+    response = await collections_http.get(
+        "/collections",
+        params={
+            "filter": json.dumps(
+                {"op": "IN", "args": [{"property": "id"}, [collection_id]]}
+            ),
+            "filter-lang": "cql2-json",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert collection_id in [c["id"] for c in response.json()["collections"]]
+
+
 @pytest.mark.parametrize("value", [value for value, _ in MALFORMED_DATETIMES])
 async def test_malformed_post_datetime(collections_http, value):
     response = await collections_http.post(URL, json={"datetime": value})
