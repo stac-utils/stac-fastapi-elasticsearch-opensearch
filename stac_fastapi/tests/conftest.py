@@ -79,8 +79,14 @@ from stac_fastapi.core.utilities import get_bool_env  # noqa: E402
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX  # noqa: E402
 from stac_fastapi.types.config import Settings  # noqa: E402
 
+# Pin the test environment to CI defaults regardless of compose.yml, which
+# enables extra features for dev servers (validator, catalogs route, OS rate
+# limit). Tests that need them opt in explicitly (catalogs_app fixtures,
+# monkeypatch in the validator tests).
+os.environ["ENABLE_STAC_VALIDATOR"] = "false"
+os.environ["ENABLE_CATALOGS_ROUTE"] = "false"
+os.environ.pop("STAC_FASTAPI_RATE_LIMIT", None)
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
-os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 os.environ.setdefault("DATABASE_REFRESH", "true")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":

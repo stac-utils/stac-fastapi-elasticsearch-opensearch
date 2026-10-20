@@ -11,7 +11,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.core.models import Catalog
-from stac_fastapi.core.models.links import CollectionLinks
+from stac_fastapi.core.models.links import SORTABLES_REL, CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env, get_excluded_from_items
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
@@ -29,6 +29,7 @@ GENERATED_COLLECTION_RELS = {
     "aggregations",
     "canonical",
     "duplicate",
+    SORTABLES_REL,
 }
 
 # `related` is dual-use: generated for poly-hierarchy parents, but also a

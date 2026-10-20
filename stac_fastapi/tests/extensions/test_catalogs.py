@@ -394,6 +394,246 @@ async def test_get_catalog_collections_pagination(
 
 
 @pytest.mark.asyncio
+async def test_get_catalog_collections_sortby(catalogs_app_client, load_test_data, ctx):
+    """Test that `sortby` on /catalogs/{catalog_id}/collections orders the results."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    collection_ids = sorted(
+        f"test-collection-{c}-{uuid.uuid4().hex[:6]}" for c in "cab"
+    )
+    for collection_id in collection_ids:
+        collection = ctx.collection.copy()
+        collection["id"] = collection_id
+        add_resp = await catalogs_app_client.post(
+            f"/catalogs/{test_catalog['id']}/collections", json=collection
+        )
+        assert add_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"sortby": "+id", "limit": 100},
+    )
+    assert resp.status_code == 200
+    returned = [col["id"] for col in resp.json()["collections"]]
+    assert returned == collection_ids
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"sortby": "-id", "limit": 100},
+    )
+    assert resp.status_code == 200
+    returned = [col["id"] for col in resp.json()["collections"]]
+    assert returned == collection_ids[::-1]
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_sortby_paginates(
+    catalogs_app_client, load_test_data, ctx
+):
+    """Test that `sortby` paginates correctly: every page is visited once."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    collection_ids = sorted(
+        f"test-collection-{i}-{uuid.uuid4().hex[:6]}" for i in range(3)
+    )
+    for collection_id in collection_ids:
+        collection = ctx.collection.copy()
+        collection["id"] = collection_id
+        add_resp = await catalogs_app_client.post(
+            f"/catalogs/{test_catalog['id']}/collections", json=collection
+        )
+        assert add_resp.status_code == 201
+
+    seen: list[str] = []
+    params: dict | None = {"sortby": "-id", "limit": 2}
+    url = f"/catalogs/{test_catalog['id']}/collections"
+    for _ in range(3):
+        resp = await catalogs_app_client.get(url, params=params)
+        assert resp.status_code == 200
+        seen += [col["id"] for col in resp.json()["collections"]]
+        nxt = [link for link in resp.json()["links"] if link["rel"] == "next"]
+        if not nxt:
+            break
+        url, params = nxt[0]["href"], None
+    assert seen == collection_ids[::-1]
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_sortby_unsortable_field(
+    catalogs_app_client, load_test_data, ctx
+):
+    """An unsortable `sortby` field returns 400, like /collections does."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    collection = ctx.collection.copy()
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    add_resp = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json=collection
+    )
+    assert add_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"sortby": "description", "limit": 100},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_sortby_excluded_field(
+    catalogs_app_client, load_test_data, ctx, monkeypatch
+):
+    """An excluded `sortby` field returns the sortables 400, like /collections."""
+    monkeypatch.setenv("EXCLUDED_FROM_QUERYABLES", "properties.secret")
+
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"sortby": "properties.secret", "limit": 100},
+    )
+    assert resp.status_code == 400
+    assert "not sortable" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_fields(catalogs_app_client, load_test_data, ctx):
+    """Test that `fields` on /catalogs/{catalog_id}/projects the response."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    collection = ctx.collection.copy()
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    add_resp = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json=collection
+    )
+    assert add_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"fields": "+id"},
+    )
+    assert resp.status_code == 200
+    returned = resp.json()["collections"]
+    assert len(returned) == 1
+    assert returned[0]["id"] == collection["id"]
+    assert set(returned[0]) <= {"id"}
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={"fields": "-extent"},
+    )
+    assert resp.status_code == 200
+    returned = resp.json()["collections"]
+    assert len(returned) == 1
+    assert "extent" not in returned[0]
+    assert returned[0]["id"] == collection["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_free_text(
+    catalogs_app_client, load_test_data, ctx
+):
+    """Test that `q` on /catalogs/{catalog_id}/collections free-text matches."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    keep = ctx.collection.copy()
+    keep["id"] = f"test-collection-{uuid.uuid4()}"
+    keep["title"] = "Volcano Survey"
+    keep["description"] = "Elevation models around volcanoes"
+
+    drop = ctx.collection.copy()
+    drop["id"] = f"test-collection-{uuid.uuid4()}"
+    drop["title"] = "River Basins"
+    drop["description"] = "Hydrology of river basins"
+
+    for collection in (keep, drop):
+        add_resp = await catalogs_app_client.post(
+            f"/catalogs/{test_catalog['id']}/collections", json=collection
+        )
+        assert add_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections", params={"q": "volcano"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [col["id"] for col in body["collections"]] == [keep["id"]]
+    assert body["numberMatched"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_filter_and_sort(
+    catalogs_app_client, load_test_data, ctx
+):
+    """Test that `filter` and `sortby` combine on /catalogs/{catalog_id}/collections."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    prefix = f"test-collection-{uuid.uuid4().hex[:6]}"
+    keep = sorted(f"{prefix}-{i}" for i in range(3))
+    for collection_id in keep + [f"other-{uuid.uuid4().hex[:6]}"]:
+        collection = ctx.collection.copy()
+        collection["id"] = collection_id
+        add_resp = await catalogs_app_client.post(
+            f"/catalogs/{test_catalog['id']}/collections", json=collection
+        )
+        assert add_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections",
+        params={
+            "filter": f"id LIKE '{prefix}-%'",
+            "sortby": "-id",
+            "limit": 100,
+        },
+    )
+    assert resp.status_code == 200
+    returned = [col["id"] for col in resp.json()["collections"]]
+    assert returned == keep[::-1]
+
+
+@pytest.mark.asyncio
+async def test_openapi_lists_catalog_collections_params(catalogs_app_client):
+    """The collection-search params are declared on the catalog collections route."""
+    resp = await catalogs_app_client.get("/api")
+    assert resp.status_code == 200
+    params = {
+        p["name"]
+        for p in resp.json()["paths"]["/catalogs/{catalog_id}/collections"]["get"][
+            "parameters"
+        ]
+    }
+    assert {"fields", "sortby", "q", "filter", "filter-lang"} <= params
+
+
+@pytest.mark.asyncio
 async def test_get_catalog_collections_nonexistent_catalog(catalogs_app_client):
     """Test getting collections from a catalog that doesn't exist."""
     resp = await catalogs_app_client.get("/catalogs/nonexistent-catalog/collections")

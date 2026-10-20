@@ -21,6 +21,7 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.core import parse_fields, parse_sortby
 from stac_fastapi.core.etag import check_if_match, record_etag
 from stac_fastapi.core.extensions.filter import (
     CQL2FilterError,
@@ -33,6 +34,7 @@ from stac_fastapi.core.serializers import (
     CollectionSerializer,
     ItemSerializer,
 )
+from stac_fastapi.core.utilities import filter_fields
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
@@ -595,9 +597,17 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         request: Request | None = None,
         filter_expr: str | None = None,
         filter_lang: str | None = None,
+        fields: list[str] | None = None,
+        sortby: list[str] | None = None,
+        q: str | list[str] | None = None,
         **kwargs,
     ) -> Collections | Response:
-        """Get collections linked from a specific catalog."""
+        """Get collections linked from a specific catalog.
+
+        `fields`, `sortby`, and `q` are bound only when the extension is given
+        a `catalog_collections_get_request_model` that includes them (the
+        Fields, Sort, and FreeText collection-search extensions).
+        """
         # Validate catalog exists
         catalog = await self.database.find_catalog(catalog_id)
         if not catalog:
@@ -618,6 +628,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             )
 
         limit = limit or 10
+
+        sort = parse_sortby(sortby)
+
         (
             collections_list,
             total_hits,
@@ -628,6 +641,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             token=token,
             request=request,
             filter=_parse_cql2_filter(filter_expr, filter_lang),
+            sort=sort,
+            q=[q] if isinstance(q, str) else q,
         )
 
         collections = [
@@ -671,6 +686,12 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         # Filter links and convert collections to dicts
         filtered_links = [self._link_to_dict(link) for link in links]
         collections_dicts = [self._to_dict(col) for col in collections]
+        if fields:
+            includes, excludes = parse_fields(fields)
+            collections_dicts = [
+                dict(filter_fields(collection, includes, excludes))
+                for collection in collections_dicts
+            ]
 
         return JSONResponse(
             content={

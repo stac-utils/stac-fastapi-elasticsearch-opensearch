@@ -71,7 +71,7 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
-    remap_sort_field_shared,
+    format_collection_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
@@ -102,6 +102,30 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
+
+
+def _search_error_reason(e: Exception) -> str:
+    """Extract the engine error reason from a RequestError body.
+
+    The error body is not always a dict (it can be a string or None), so fall
+    back to the stringified exception when no reason can be extracted.
+    Multi-index failures report "all shards failed" as the top-level reason;
+    the useful text (e.g. "No mapping found for [x] in order to sort on") is
+    in root_cause, so prefer it when present.
+    """
+    info = getattr(e, "info", None)
+    error = info.get("error") if isinstance(info, dict) else None
+    if isinstance(error, dict):
+        root_cause = error.get("root_cause")
+        if (
+            isinstance(root_cause, list)
+            and root_cause
+            and isinstance(root_cause[0], dict)
+            and root_cause[0].get("reason")
+        ):
+            return root_cause[0]["reason"]
+        return error.get("reason") or str(e)
+    return error or str(e)
 
 
 async def create_index_templates() -> None:
@@ -238,20 +262,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             A tuple of (collections, next pagination token if any).
         """
         # Format the sort parameter
-        formatted_sort = []
-        if sort:
-            for item in sort:
-                field = remap_sort_field_shared(
-                    item.get("field", ""), is_collection=True
-                )
-                direction = item.get("direction", "asc")
-                if field:
-                    formatted_sort.append({field: {"order": direction}})
-            # Always include id as a secondary sort to ensure consistent pagination
-            if not any("id" in item for item in formatted_sort):
-                formatted_sort.append({"id": {"order": "asc"}})
-        else:
-            formatted_sort = [{"id": {"order": "asc"}}]
+        formatted_sort = format_collection_sort_shared(sort)
 
         size = min(limit + 1, MAX_LIMIT)
         body = {
@@ -354,7 +365,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # e.g., "Fielddata is disabled on text fields in [title]"
             raise HTTPException(
                 status_code=400,
-                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+                detail=f"Search request error: {_search_error_reason(e)}",
             )
 
         hits = response["hits"]["hits"]
@@ -957,19 +968,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search, metadata
 
     @staticmethod
-    def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
+    def populate_sort(
+        sortby: list, field_types: dict[str, str] | None = None
+    ) -> dict[str, dict[str, str]] | None:
         """Create a sort configuration for OpenSearch queries.
 
         This method delegates to the shared implementation in populate_sort_shared.
 
         Args:
             sortby (List): A list of sort specifications, each containing a field and direction.
+            field_types (dict[str, str] | None): Optional map of sortable field
+                names to their engine field type, used for unmapped_type.
 
         Returns:
             dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
                 configurations, or None if no sort was specified.
         """
-        return populate_sort_shared(sortby=sortby)
+        return populate_sort_shared(sortby=sortby, field_types=field_types)
 
     @retry_on_datetime_not_found
     @retry_on_connection_error
@@ -1076,6 +1091,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {_search_error_reason(e)}",
+            )
 
         count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
 
@@ -1171,6 +1193,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             db_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {_search_error_reason(e)}",
+            )
 
         return db_response
 
@@ -2692,22 +2721,47 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         filter: dict[str, Any] | None = None,
+        sort: list[dict[str, Any]] | None = None,
+        q: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
-        """Get collections within a catalog."""
+        """Get collections within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            limit (int): Number of results to return.
+            token (str | None): Pagination token.
+            request (Any): The request object.
+            filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
+            sort (list[dict[str, Any]] | None): Field/direction pairs from `sortby`.
+            q (list[str] | None): Free text search terms.
+
+        Returns:
+            Tuple containing list of collections, next token, and total count.
+        """
         # Decode token to search_after
         search_after = decode_token_to_search_after(token)
 
-        (
-            collections,
-            total_hits,
-            next_search_after,
-        ) = await search_collections_by_parent_id_with_pagination_shared(
-            es_client=self.client,
-            catalog_id=catalog_id,
-            limit=limit,
-            search_after=search_after,
-            filter_query=await self._collections_filter_query(filter),
-        )
+        formatted_sort = format_collection_sort_shared(sort)
+
+        try:
+            (
+                collections,
+                total_hits,
+                next_search_after,
+            ) = await search_collections_by_parent_id_with_pagination_shared(
+                es_client=self.client,
+                catalog_id=catalog_id,
+                limit=limit,
+                search_after=search_after,
+                filter_query=await self._collections_filter_query(filter),
+                free_text_query=apply_collections_free_text_filter_shared(q),
+                sort=formatted_sort,
+            )
+        except RequestError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+            )
 
         # Encode next_search_after to token
         next_token = encode_search_after_to_token(next_search_after)

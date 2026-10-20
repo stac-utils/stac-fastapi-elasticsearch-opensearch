@@ -393,8 +393,13 @@ class BaseDatabaseLogic(abc.ABC):
         token: str | None,
         request: Any = None,
         filter: dict[str, Any] | None = None,
+        sort: list[dict[str, Any]] | None = None,
+        q: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int, str | None]:
-        """Get collections of a catalog, optionally matching a CQL2 JSON filter.
+        """Get collections of a catalog.
+
+        Optionally matching a CQL2 JSON `filter`, ordered by `sort`
+        ({field, direction} pairs), and matching `q` free-text terms.
 
         Returns:
             Tuple of (collections_list, total_count, next_token).
@@ -542,7 +547,9 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def populate_sort(self, sortby: list) -> Any:
+    def populate_sort(
+        self, sortby: list, field_types: dict[str, str] | None = None
+    ) -> Any:
         """Populate sort for the search."""
         pass
 

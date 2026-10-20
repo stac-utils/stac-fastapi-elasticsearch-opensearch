@@ -28,6 +28,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **10/12/2026:** 📑 **Sortables Endpoints!** SFEOS now implements the sortables part of the [STAC API Sort extension](https://github.com/stac-api-extensions/sort), exposing three new endpoints that advertise which fields are valid in `sortby` expressions: `GET /sortables` for item search, `GET /collections/{collection_id}/sortables` for a collection's items, and `GET /collections-sortables` for collection search. Schemas are generated live from index mappings — including alias fields, which are advertised under their target's type — and respect `EXCLUDED_FROM_QUERYABLES`. When `ROOT_QUERYABLES_UNION=true`, `GET /sortables` unions every collection's sortable fields, cached for `SORTABLES_CACHE_TTL` seconds (default 1800). Each endpoint is advertised via an `http://www.opengis.net/def/rel/ogc/1.0/sortables` link, and sorting on an undeclared field returns `400 Bad Request`. See [Sortables Endpoint](#sortables-endpoint) for details.
 - **06/21/2026:** 🔍 **Catalogs Search Extension!** Search items across entire catalog hierarchies with the new `/catalogs/{catalog_id}/search` endpoint. This powerful feature uses **BFS recursive DAG traversal** to automatically discover all descendant collections within a catalog's subtree (including nested sub-catalogs) and searches items across all of them. Enforces strict scope boundaries with 403 Forbidden for out-of-scope collection requests. Supports all standard STAC search parameters (spatial filtering, temporal filtering, free-text search, CQL2 filtering, sorting, and pagination). Perfect for scoped item discovery within organizational hierarchies! Implements the [STAC API - Multi-Tenant Catalogs Scoped Search](https://github.com/StacLabs/multi-tenant-catalogs#scoped-search-recursive-traversal) specification.
 - **06/14/2026:** 🛡️ **Native STAC & Topology Validation in v6.18.0!** SFEOS now features built-in, strict STAC schema validation via the Python `stac-validator` package (available via the new `[validator]` install extra). We've also introduced a blazing-fast, pure-Python spatial topology checker to protect your database from invalid coordinates and uncut antimeridian polygons. To support massive ingestion workloads, these powerful new firewalls include configurable chunking (`MAX_BATCH_SIZE`), fail-fast error thresholds, and Redis queue deference controls (`VALIDATE_BEFORE_QUEUE`). Finally, multi-tenant deployments gain a security boost with the new `HIDE_ALTERNATE_PARENTS` poly-hierarchy privacy toggle. 🙏 Huge thanks to **CloudFerro** for their continued sponsorship of these robust new features!
 - **03/19/2026: SKOS to STAC Ingestion Demo.** 📓 Check out the interactive [SKOS-catalogs-ingestion-demo.ipynb](https://github.com/StacLabs/sfeos-tools/blob/main/demo-notebooks/SKOS-catalogs-ingestion-demo.ipynb) notebook! This tutorial demonstrates automated semantic ingestion from SKOS/RDF-XML files into hierarchical STAC catalogs, showcasing poly-hierarchy, contextual breadcrumbs, and data safety features of the Multi-Tenant Catalogs extension. Thanks to support from CloudFerro! 
@@ -121,6 +122,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
     - [Root Queryables Configuration](#root-queryables-configuration)
     - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
     - [Queryables Validation](#queryables-validation)
+  - [Sortables Endpoint](#sortables-endpoint)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
     - [When to Use](#when-to-use)
@@ -1112,6 +1114,7 @@ You can customize additional settings in your `.env` file:
 |----------|-------------|---------|----------|
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
+| `SORTABLES_CACHE_TTL` | Time-to-live (in seconds) for the cached union of collection sortable fields on `GET /sortables`. Used when `ROOT_QUERYABLES_UNION` is enabled. | `1800` | Optional |
 | `ROOT_QUERYABLES_UNION` | If set to `true`, the root `/queryables` endpoint dynamically unions queryables from all available collections. | `false` | Optional |
 | `STAC_QUERYABLES_CONFIG` | Path to a static JSON file serving as an override for the root `/queryables` endpoint. Overrides `ROOT_QUERYABLES_UNION` if provided. | `None` | Optional |
 | `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
@@ -1508,6 +1511,20 @@ QUERYABLES_CACHE_TTL=1800  # Optional, defaults to 1800 seconds (30 minutes)
 - **Interaction with `EXCLUDED_FROM_QUERYABLES`**: If `VALIDATE_QUERYABLES` is enabled, fields listed in `EXCLUDED_FROM_QUERYABLES` will also be considered invalid for filtering. This effectively enforces the exclusion of these fields from search queries.
 
 This feature helps prevent queries on non-queryable fields which could lead to unnecessary load on the database.
+
+## Sortables Endpoint
+
+The sortables endpoints provide a JSON Schema detailing which fields can be used in `sortby` expressions. SFEOS exposes three sortables endpoints through the sort extension:
+
+- `GET /sortables` — sortable fields for item search. Returns the core STAC sort fields (`id`, `collection`, `properties.datetime`, `properties.created`, `properties.updated`). When `ROOT_QUERYABLES_UNION=true`, the response also unions the sortable fields of every collection; the union is cached for `SORTABLES_CACHE_TTL` seconds (default 1800) since it walks every collection's index mapping.
+- `GET /collections/{collection_id}/sortables` — sortable fields for the collection's items, generated from the collection's item index mapping.
+- `GET /collections-sortables` — sortable fields for collection search, generated from the collections index mapping.
+
+Only fields the backend can actually sort on are advertised: keyword, numeric, boolean, date, IP and wildcard fields, and `text` fields that have a `keyword` sub-field. A `text` field with a keyword sub-field is advertised under its public name — `sortby=-title` is internally mapped to `title.keyword`. Geo fields, nested objects and unindexed fields are not advertised, and fields listed in `EXCLUDED_FROM_QUERYABLES` (and their children) are excluded here as well.
+
+Each sortables endpoint is advertised on the resource it describes with a link of relation `http://www.opengis.net/def/rel/ogc/1.0/sortables`: on the landing page for `/sortables`, on each collection for its per-collection sortables, and on the `GET /collections` response for `/collections-sortables`.
+
+The per-collection and collection-search schemas set `additionalProperties: false`, so sorting on a field they do not declare returns `400 Bad Request`; `sortby` fields on `GET /collections/{collection_id}/items` are checked against that collection's schema. `GET /sortables` sets `additionalProperties: true` when only the non-exhaustive core fields are listed — any name is then valid in `sortby`, and items missing the property sort it as null — and `false` when `ROOT_QUERYABLES_UNION=true`, in which case `sortby` fields are validated against the union schema. Sort clauses set `unmapped_type` so item indexes that do not map a field contribute their documents as null rather than failing. Fields listed in `EXCLUDED_FROM_QUERYABLES` return `400` under every schema even though the engine could sort on them, keeping the `false` contract. See the [STAC API Sort extension](https://github.com/stac-api-extensions/sort) for the full specification.
 
 ## Datetime-Based Index Management
 

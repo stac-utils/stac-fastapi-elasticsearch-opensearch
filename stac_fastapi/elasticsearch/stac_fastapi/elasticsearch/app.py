@@ -99,6 +99,25 @@ def instantiate_api(
         *extensions_manager.extra,
     ]
 
+    # Item collection and collection search map extensions are only used for
+    # request models above; register each remaining one so routes they provide
+    # (e.g. sortables) and their conformance classes are exposed too.
+    # Collection search map extensions are only registered when collection
+    # search itself is enabled.
+    seen = {id(ext) for ext in application_extensions}
+    route_extensions = list(extensions_manager.item_collection)
+    if (
+        extensions_manager.collections_search_enabled
+        or extensions_manager.collections_search_route_enabled
+    ):
+        route_extensions += extensions_manager.get_enabled_extensions(
+            "collection_search"
+        )
+    for ext in route_extensions:
+        if id(ext) not in seen:
+            application_extensions.append(ext)
+            seen.add(id(ext))
+
     database_logic.extensions = [type(ext).__name__ for ext in application_extensions]
 
     post_request_model = create_post_request_model(search_extensions)
