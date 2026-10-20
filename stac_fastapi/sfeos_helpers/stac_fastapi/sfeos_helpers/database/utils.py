@@ -16,7 +16,7 @@ from stac_fastapi.extensions.transaction.request import (
     PatchOperation,
     PatchRemove,
 )
-from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.sfeos_helpers.models.patch import ElasticPath
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 try:
@@ -460,6 +460,18 @@ def validate_datetime_operations(
                 validator(operation.path.strip("/"))
 
 
+DEEP_COPY_FUNCTION = (
+    "def deepCopy(def value) {"
+    "if (value instanceof Map) {Map copy = new LinkedHashMap();"
+    "for (def entry : value.entrySet()) {copy.put(entry.getKey(), deepCopy(entry.getValue()));}"
+    "return copy;}"
+    "if (value instanceof List) {List copy = new ArrayList();"
+    "for (def element : value) {copy.add(deepCopy(element));}"
+    "return copy;}"
+    "return value;}"
+)
+
+
 def protect_datetime_script(script: dict, use_datetime: bool) -> None:
     """Reject changed index dates atomically against the actual script effects."""
     key = "__stac_datetime"
@@ -469,12 +481,16 @@ def protect_datetime_script(script: dict, use_datetime: bool) -> None:
         ["datetime"] if use_datetime else ["start_datetime", "end_datetime"]
     )
     properties = "ctx._source.properties instanceof Map ? ctx._source.properties : [:]"
+    # Painless requires function declarations before any statement.
+    prelude = (
+        DEEP_COPY_FUNCTION if script["source"].startswith(DEEP_COPY_FUNCTION) else ""
+    )
     script["source"] = (
-        f"def {key} = [:]; def {key}Props = {properties};"
+        prelude + f"def {key} = [:]; def {key}Props = {properties};"
         f"for (def {key}Field : params.{key}) {{"
         f"{key}[{key}Field] = [{key}Props.containsKey({key}Field),"
         f"{key}Props.get({key}Field)];}}"
-        + script["source"]
+        + script["source"][len(prelude) :]
         + f"{key}Props = {properties};"
         f"for (def {key}Field : params.{key}) {{"
         f"if (!{key}[{key}Field].equals([{key}Props.containsKey({key}Field),"
@@ -514,7 +530,7 @@ def merge_to_operations(data: dict) -> list:
 
 
 def check_commands(
-    commands: ESCommandSet,
+    commands: list[str],
     op: str,
     path: ElasticPath,
     from_path: bool = False,
@@ -539,14 +555,14 @@ def check_commands(
                 for sub_part in reversed(path.parts[index + 1 :]):
                     value = f"['{sub_part}': {value}]"
 
-                commands.add(
+                commands.append(
                     f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
                     f"{{ctx._source{part_nest}['{path_part}'] = {value};}}"
                     f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
                 )
 
             else:
-                commands.add(
+                commands.append(
                     f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
                     f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
                 )
@@ -556,7 +572,7 @@ def check_commands(
     if from_path or op in ["remove", "replace", "test"]:
 
         if isinstance(path.key, int):
-            commands.add(
+            commands.append(
                 f"if ((ctx._source{path.es_nest} instanceof ArrayList"
                 f" && ctx._source{path.es_nest}.size() < {abs(path.key)})"
                 f" || (!(ctx._source{path.es_nest} instanceof ArrayList)"
@@ -564,30 +580,30 @@ def check_commands(
                 f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
             )
         else:
-            commands.add(
+            commands.append(
                 f"if (!ctx._source{path.es_nest}.containsKey('{path.key}'))"
                 f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
             )
 
 
-def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
+def remove_commands(commands: list[str], path: ElasticPath, index: int) -> None:
     """Remove value at path.
 
     Args:
         commands (List[str]): current commands
         path (ElasticPath): Path to value to be removed
+        index (int): operation index, keeps the variable unique per operation
 
     """
-    commands.add(f"def {path.variable_name};")
+    variable = f"{path.variable_name}_{index}"
+    commands.append(f"def {variable};")
     if isinstance(path.key, int):
-        commands.add(
+        commands.append(
             f"if (ctx._source{path.es_nest} instanceof ArrayList)"
-            f"{{{path.variable_name} = ctx._source{path.es_nest}.remove({path.es_key});}} else "
+            f"{{{variable} = ctx._source{path.es_nest}.remove({path.es_key});}} else "
         )
 
-    commands.add(
-        f"{path.variable_name} = ctx._source{path.es_nest}.remove('{path.key}');"
-    )
+    commands.append(f"{variable} = ctx._source{path.es_nest}.remove('{path.key}');")
 
 
 def _allocate_script_param(params: dict, value: Any) -> str:
@@ -602,11 +618,12 @@ def _allocate_script_param(params: dict, value: Any) -> str:
 
 
 def add_commands(
-    commands: ESCommandSet,
+    commands: list[str],
     operation: PatchOperation,
     path: ElasticPath,
     from_path: ElasticPath,
     params: dict,
+    index: int = 0,
 ) -> None:
     """Add value at path.
 
@@ -614,13 +631,14 @@ def add_commands(
         commands (List[str]): current commands
         operation (PatchOperation): operation to run
         path (ElasticPath): path for value to be added
+        index (int): operation index, names the value a move removed
 
     """
     if from_path is not None:
         value = (
-            from_path.variable_name
+            f"{from_path.variable_name}_{index}"
             if operation.op == "move"
-            else f"ctx._source{from_path.es_path}"
+            else f"deepCopy(ctx._source{from_path.es_path})"
         )
 
     else:
@@ -628,18 +646,18 @@ def add_commands(
         value = f"params.{param_key}"
 
     if isinstance(path.key, int):
-        commands.add(
+        commands.append(
             f"if (ctx._source{path.es_nest} instanceof ArrayList)"
             f"{{ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'copy', 'move'] else 'set'}({path.es_key}, {value});}}"
             f" else ctx._source{path.es_nest}['{path.es_key}'] = {value};"
         )
 
     else:
-        commands.add(f"ctx._source{path.es_path} = {value};")
+        commands.append(f"ctx._source{path.es_path} = {value};")
 
 
 def test_commands(
-    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: dict
+    commands: list[str], operation: PatchOperation, path: ElasticPath, params: dict
 ) -> None:
     """Test value at path.
 
@@ -652,7 +670,7 @@ def test_commands(
     value = f"params.{param_key}"
 
     if isinstance(path.key, int):
-        commands.add(
+        commands.append(
             f"if (ctx._source{path.es_nest} instanceof ArrayList)"
             f"{{if (ctx._source{path.es_nest}[{path.es_key}] != {value})"
             f"{{Debug.explain('Test failed `{path.path}`"
@@ -660,7 +678,7 @@ def test_commands(
             f"}} else "
         )
 
-    commands.add(
+    commands.append(
         f"if (ctx._source{path.es_path} != {value})"
         f"{{Debug.explain('Test failed `{path.path}`"
         f" != ' + ctx._source{path.es_path});}}"
@@ -718,10 +736,10 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
             },
         }
 
-    commands: ESCommandSet = ESCommandSet()
+    commands: list[str] = []
     params: dict = {}
 
-    for operation in operations:
+    for index, operation in enumerate(operations):
         path = ElasticPath(path=operation.path)
         from_path = (
             ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None
@@ -741,7 +759,7 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
 
         if operation.op in ["remove", "move"]:
             remove_path = from_path if from_path else path
-            remove_commands(commands=commands, path=remove_path)
+            remove_commands(commands=commands, path=remove_path, index=index)
 
         if operation.op in ["add", "replace", "copy", "move"]:
             add_commands(
@@ -750,6 +768,7 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
                 path=path,
                 from_path=from_path,
                 params=params,
+                index=index,
             )
 
         if operation.op == "test":
@@ -758,6 +777,8 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
             )
 
     source = "".join(commands)
+    if any(operation.op == "copy" for operation in operations):
+        source = DEEP_COPY_FUNCTION + source
 
     return {
         "source": source,

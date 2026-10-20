@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - With `ENABLE_DATETIME_INDEX_FILTERING=true`, listing items of a collection and searching it now return an empty result when no item index matches the collections and datetime, instead of searching every index and failing on the default sort. Collections whose items are still in simple (non-datetime) indexes now return empty results under datetime filtering and must be reindexed into datetime indexes. [#883](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/883)
+- With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch now gives the same document as with the validator on, as RFC 6902 requires. Repeated identical `copy`, `move` and `remove` operations all apply instead of only the first, an operation on a path that an earlier operation removed (for example `remove /x` then `replace /x`) fails with `400` instead of succeeding, and `copy` writes a copy of the value, so a later operation on the copy no longer changes the source. The update script is now built as a plain list, and the `ESCommandSet` class in `stac_fastapi.sfeos_helpers.models.patch` is removed. [#952](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/952)
 
 ## [v8.1.1] - 2026-10-30
 
