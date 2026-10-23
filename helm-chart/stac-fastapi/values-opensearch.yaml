@@ -61,7 +61,7 @@ app:
   # Environment variables
   env:
     STAC_FASTAPI_TITLE: "Production STAC API with OpenSearch"
-    STAC_FASTAPI_DESCRIPTION: "High-performance STAC API for geospatial data discovery with OpenSearch"
+    STAC_FASTAPI_DESCRIPTION: "SFEOS: A STAC FastAPI with an OpenSearch backend"
     ENVIRONMENT: "production"
     WEB_CONCURRENCY: "4"
     ENABLE_DIRECT_RESPONSE: "false"
