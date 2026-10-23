@@ -41,7 +41,7 @@ dependencies = [
     "cql2>=0.6.0,<0.7.0",
     "jsonschema~=4.26.0",
     "slowapi~=0.1.9",
-    "starlette>=0.35.0,<1.8.0",
+    "starlette>=0.35.0,<1.9.0",
     "uvicorn>=0.23,<0.55",
 ]
 
