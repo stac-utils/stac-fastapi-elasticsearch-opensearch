@@ -143,7 +143,7 @@ app:
     # Application configuration
     STAC_FASTAPI_TITLE: "stac-fastapi"
     STAC_FASTAPI_DESCRIPTION: "SFEOS: A STAC FastAPI with a configurable backend"
-    STAC_FASTAPI_VERSION: "6.0.0"
+    STAC_FASTAPI_VERSION: "8.0.0"
     STAC_FASTAPI_LANDING_PAGE_ID: "stac-fastapi"
     APP_HOST: "0.0.0.0"
     APP_PORT: "8080"
