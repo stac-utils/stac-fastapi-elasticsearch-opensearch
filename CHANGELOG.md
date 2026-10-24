@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- Quote `STAC_FASTAPI_DESCRIPTION` in the compose files — the unquoted `SFEOS:` prefix made `docker compose` read each environment list item as a map, so every compose file failed to load. [#963](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/963)
+
 ## [v8.0.0] - 2026-10-23
 
 ### Added
