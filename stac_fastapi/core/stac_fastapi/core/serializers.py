@@ -303,11 +303,15 @@ class ItemSerializer(Serializer):
             id=item_id,
             collection=collection_id,
             geometry=item.get("geometry", {}),
-            bbox=item.get("bbox", []),
+            bbox=item.get("bbox"),
             properties=item.get("properties", {}),
             links=item_links,
             assets=assets,
         )
+
+        # STAC prohibits bbox on null-geometry items, so never invent one.
+        if stac_item["bbox"] is None:
+            del stac_item["bbox"]
 
         if excluded_fields := os.getenv("EXCLUDED_FROM_ITEMS"):
             for field_path in excluded_fields.split(","):

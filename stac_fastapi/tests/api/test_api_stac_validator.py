@@ -1360,6 +1360,46 @@ async def test_patch_item_with_valid_changes_accepted(
 
 
 @pytest.mark.asyncio
+async def test_patch_null_geometry_item_without_bbox_accepted(
+    app_client, txn_client, load_test_data
+):
+    """Test that PATCH on a null-geometry item without bbox passes validation."""
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-patch-null-geom-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["id"] = "patch-test-null-geometry-item"
+    base_item["collection"] = test_collection["id"]
+    base_item["geometry"] = None
+    base_item.pop("bbox")
+    await create_item(txn_client, base_item)
+
+    item_url = f"/collections/{test_collection['id']}/items/{base_item['id']}"
+    resp = await app_client.patch(
+        item_url,
+        json=[
+            {
+                "op": "add",
+                "path": "/properties/custom_field",
+                "value": "Updated via PATCH",
+            }
+        ],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+    assert (
+        resp.status_code == 200
+    ), f"Expected 200 for valid patch, got {resp.status_code}: {resp.text}"
+    assert "bbox" not in resp.json()
+
+    get_resp = await app_client.get(item_url)
+    assert get_resp.status_code == 200
+    patched_item = get_resp.json()
+    assert patched_item["properties"]["custom_field"] == "Updated via PATCH"
+    assert "bbox" not in patched_item
+
+
+@pytest.mark.asyncio
 async def test_put_item_with_invalid_bbox_rejected(
     app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
