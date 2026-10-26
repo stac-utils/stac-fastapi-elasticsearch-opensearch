@@ -213,6 +213,37 @@ async def test_returns_valid_item(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_item_without_bbox_is_served_without_bbox(app_client, ctx, txn_client):
+    """Test an item stored with a null geometry and no bbox gets no bbox back"""
+    item = deepcopy(ctx.item)
+    item["id"] = "null-geometry-item"
+    item["geometry"] = None
+    item.pop("bbox")
+    collection_id = item["collection"]
+
+    resp = await app_client.post(f"/collections/{collection_id}/items", json=item)
+    assert resp.status_code == 201
+    assert "bbox" not in resp.json()
+
+    await refresh_indices(txn_client)
+
+    resp = await app_client.get(f"/collections/{collection_id}/items/{item['id']}")
+    assert resp.status_code == 200
+    assert "bbox" not in resp.json()
+
+    resp = await app_client.get(f"/collections/{collection_id}/items")
+    assert resp.status_code == 200
+    features = {f["id"]: f for f in resp.json()["features"]}
+    assert "bbox" not in features[item["id"]]
+    assert "bbox" in features[ctx.item["id"]]
+
+    resp = await app_client.post("/search", json={"ids": [item["id"]]})
+    assert resp.status_code == 200
+    assert [f["id"] for f in resp.json()["features"]] == [item["id"]]
+    assert "bbox" not in resp.json()["features"][0]
+
+
+@pytest.mark.asyncio
 async def test_get_item_collection(app_client, ctx, txn_client):
     """Test read an item collection (core)"""
     item_count = randint(1, 4)
