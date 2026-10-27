@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch now gives the same document as with the validator on, as RFC 6902 requires. Repeated identical `copy`, `move` and `remove` operations all apply instead of only the first, an operation on a path that an earlier operation removed (for example `remove /x` then `replace /x`) fails with `400` instead of succeeding, and `copy` writes a copy of the value, so a later operation on the copy no longer changes the source. The update script is now built as a plain list, and the `ESCommandSet` class in `stac_fastapi.sfeos_helpers.models.patch` is removed. [#952](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/952)
 - With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch path through an array element, such as `/properties/bands/0/name`, now works for every operation instead of returning `400`, and `copy` or `test` from a numeric member of an object, such as `/properties/n/1` with `n = {"1": "v"}`, reads that member instead of `null`. A numeric member name in the middle of a path is now read as an array index. An index one past the end of a list, such as `/l/1` on a one-element list, now returns `400` with `1 does not exist` instead of an out-of-bounds script error. [#952](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/952)
 
+- Item search returns its results when the optional count times out, without reading the cancelled count task and raising an HTTP 500. [#997](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/997)
+
 ## [v8.1.1] - 2026-10-30
 
 ### Fixed
