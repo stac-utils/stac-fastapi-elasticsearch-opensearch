@@ -470,6 +470,7 @@ def test_populate_sort_shared_unmapped_type():
         "missing": "_last",
     }
     assert sort["id"] == {"order": "asc"}
+    assert list(sort) == ["properties.score", "id", "collection"]
 
     # The field's mapped type is used when known: a double field sorted with
     # unmapped_type keyword still fails with incompatible sort types.

@@ -516,7 +516,8 @@ def populate_sort_shared(
         This function transforms a list of sort specifications into the format required by
         Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
         directly used in search requests.
-        Always includes 'id' as secondary sort to ensure unique pagination tokens.
+        Always includes 'id', and 'collection' for items, as tie-breakers to ensure
+        unique pagination tokens.
         Documents missing the sort field sort last in either direction.
     """
     if sortby:
@@ -544,6 +545,9 @@ def populate_sort_shared(
                 sort_config[field_name].update(ITEM_DATETIME_SORT)
 
         sort_config.setdefault("id", {"order": "asc"})
+        # Item ids are unique only within a collection.
+        if not is_collection:
+            sort_config.setdefault("collection", {"order": "asc"})
         return sort_config
     else:
         return {"id": {"order": "asc"}}

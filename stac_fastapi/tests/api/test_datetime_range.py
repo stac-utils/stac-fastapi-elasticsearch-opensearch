@@ -93,7 +93,9 @@ async def _all_pages(app_client, url: str) -> list[str]:
 @pytest.mark.asyncio
 async def test_search_without_datetime_returns_every_item(app_client, seeded):
     cid = seeded
-    assert _ids(await app_client.post("/search", json={"collections": [cid]})) == ALL_IDS
+    assert (
+        _ids(await app_client.post("/search", json={"collections": [cid]})) == ALL_IDS
+    )
     assert _ids(await app_client.get(f"/search?collections={cid}")) == ALL_IDS
     assert _ids(await app_client.get(f"/collections/{cid}/items")) == ALL_IDS
 

@@ -1423,3 +1423,48 @@ async def test_pagination_across_null_datetime_items(
 
     assert ids[0] == "with-datetime"
     assert sorted(ids[1:]) == ["null-a", "null-b"]
+
+
+@pytest.mark.asyncio
+async def test_sortby_pagination_keeps_same_id_items_from_two_collections(
+    app_client, txn_client, load_test_data
+):
+    """Equal sort values and ids in two collections still page to both items."""
+    suffix = uuid.uuid4().hex[:8]
+    collection_ids = [f"tie-a-{suffix}", f"tie-b-{suffix}"]
+    item = load_test_data("test_item.json")
+    item["id"] = "same-id"
+    # Within one millisecond, so the datetime sort values tie.
+    datetimes = ["2000-01-01T00:00:00.000100Z", "2000-01-01T00:00:00.000200Z"]
+    for collection_id, dt in zip(collection_ids, datetimes):
+        collection = load_test_data("test_collection.json")
+        collection["id"] = collection_id
+        await create_collection(txn_client, collection)
+        await create_item(
+            txn_client,
+            {
+                **item,
+                "collection": collection_id,
+                "properties": {**item["properties"], "datetime": dt},
+            },
+        )
+
+    url = (
+        f"/search?collections={','.join(collection_ids)}&limit=1"
+        "&sortby=%2Bproperties.datetime"
+    )
+    seen = []
+    try:
+        while url:
+            resp = await app_client.get(url)
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            seen += [f["collection"] for f in body["features"]]
+            url = next(
+                (li["href"] for li in body["links"] if li["rel"] == "next"), None
+            )
+    finally:
+        for collection_id in collection_ids:
+            await txn_client.delete_collection(collection_id)
+
+    assert sorted(seen) == collection_ids
