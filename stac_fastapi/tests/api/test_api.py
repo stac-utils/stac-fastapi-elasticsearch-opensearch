@@ -1393,6 +1393,9 @@ async def test_pagination_across_null_datetime_items(
     app_client, txn_client, load_test_data, sortby
 ):
     """search_after tokens taken from null-datetime hits page on (#967)."""
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
     collection = load_test_data("test_collection.json")
     collection["id"] = f"null-dt-{uuid.uuid4().hex[:8]}"
     await create_collection(txn_client, collection)

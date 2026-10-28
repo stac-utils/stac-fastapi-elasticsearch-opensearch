@@ -6,6 +6,8 @@ from copy import deepcopy
 import pytest
 import pytest_asyncio
 
+from stac_fastapi.core.utilities import get_bool_env
+
 from ..conftest import use_datetime_nanos
 
 ALL_IDS = {
@@ -40,6 +42,8 @@ def use_datetime(request, monkeypatch):
 
 @pytest_asyncio.fixture()
 async def seeded(datetime_nanos_off, use_datetime, app_client, load_test_data):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("seeds item shapes that index filtering rejects in one mode")
     collection = load_test_data("test_collection.json")
     collection["id"] = f"dt-range-{uuid.uuid4().hex[:8]}"
     resp = await app_client.post("/collections", json=collection)

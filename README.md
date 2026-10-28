@@ -1721,7 +1721,7 @@ Item `datetime`, `start_datetime` and `end_datetime` are mapped `date_nanos` by 
 
 The flag sets the mapping of item indexes created after the change. A `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` entry for these fields still takes precedence.
 
-**Existing deployments** must reindex their item indexes into new indexes that get the `date` mapping (see [Reindexing](#reindexing) or the [SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools) `reindex` command). Do this in a maintenance window:
+**Existing deployments** must reindex their item indexes into new indexes that get the `date` mapping (see [Reindexing](#reindexing) or the [SFEOS-tools](https://github.com/StacLabs/sfeos-tools) `reindex` command). Do this in a maintenance window:
 
 1. Stop ingestion and wait until queued and in-flight writes finish. Keep writes paused until step 4 is done; an item written between the copy and the cutover is lost.
 2. Reindex each item index into a new index.
@@ -1739,7 +1739,7 @@ In STAC, items representing a time range (e.g., a multi-day composite) set their
 **What this means for your search results:**
 
 * **Default Sort (Newest First):** The API evaluates `datetime` first. All single-snapshot items (which have a `datetime`) will appear chronologically at the top of your search results. All time-range items (which have `datetime: null`) will be grouped together and appear chronologically at the absolute bottom of the search results.
-* **Sorting by `start_datetime`:** If you want to prioritize time-range items, you can explicitly query `?sortby=-start_datetime`. This reverses the behavior: time-range items will sort chronologically at the top of your results, and single-snapshot items (which are missing a start date) will be pushed to the bottom.
+* **Sorting by `start_datetime`:** If you want to prioritize time-range items, you can explicitly query `?sortby=-properties.start_datetime`. This reverses the behavior: time-range items will sort chronologically at the top of your results, and single-snapshot items (which are missing a start date) will be pushed to the bottom.
 
 **Best Practice:** If your workflow relies on interleaving both single-snapshot and time-range items perfectly by date, we recommend filtering by specific datetime intervals in your query rather than relying strictly on the global sort order.
 
