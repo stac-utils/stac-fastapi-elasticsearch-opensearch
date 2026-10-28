@@ -19,6 +19,8 @@ from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ES_ITEMS_MAPPINGS,
+    ITEM_DATETIME_SORT,
+    ITEM_DATETIME_SORT_FIELDS,
     Geometry,
 )
 
@@ -515,11 +517,8 @@ def populate_sort_shared(
         Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
         directly used in search requests.
         Always includes 'id' as secondary sort to ensure unique pagination tokens.
-        Injects concrete missing fallbacks for temporal fields to prevent search_after
-        pagination crashes on null values.
+        Documents missing the sort field sort last in either direction.
     """
-    temporal_fields = {"datetime", "start_datetime", "end_datetime"}
-
     if sortby:
         validate_sort_fields_shared(s.field for s in sortby)
         sort_config = {}
@@ -536,22 +535,13 @@ def populate_sort_shared(
                 unmapped_type = (
                     field_types.get(s.field) or field_types.get(field_name) or "keyword"
                 )
-            sort_obj = {"order": direction, "unmapped_type": unmapped_type}
-
-            # Inject concrete fallbacks for temporal fields using epoch milliseconds
-            # to avoid Java NumberFormatException when OpenSearch tries to parse ISO strings
-            if field_name in temporal_fields:
-                if direction == "desc":
-                    # Push missing dates to 1970-01-01 (epoch 0)
-                    sort_obj["missing"] = 0
-                else:
-                    # Push missing dates to 2100-01-01 (epoch 4102444800000)
-                    sort_obj["missing"] = 4102444800000
-            else:
-                # For non-date metadata fields, use _last
-                sort_obj["missing"] = "_last"
-
-            sort_config[field_name] = sort_obj
+            sort_config[field_name] = {
+                "order": direction,
+                "unmapped_type": unmapped_type,
+                "missing": "_last",
+            }
+            if not is_collection and field_name in ITEM_DATETIME_SORT_FIELDS:
+                sort_config[field_name].update(ITEM_DATETIME_SORT)
 
         sort_config.setdefault("id", {"order": "asc"})
         return sort_config

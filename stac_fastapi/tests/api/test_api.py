@@ -1383,3 +1383,43 @@ async def test_connection_error_max_retries():
 
     assert mock_search_func.call_count == 5
     assert "attempt 5" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sortby", [None, "%2Bproperties.datetime", "-properties.datetime"]
+)
+async def test_pagination_across_null_datetime_items(
+    app_client, txn_client, load_test_data, sortby
+):
+    """search_after tokens taken from null-datetime hits page on (#967)."""
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"null-dt-{uuid.uuid4().hex[:8]}"
+    await create_collection(txn_client, collection)
+    item = load_test_data("test_item.json")
+    item["collection"] = collection["id"]
+    await create_item(txn_client, {**item, "id": "with-datetime"})
+    for item_id in ("null-a", "null-b"):
+        null_item = deepcopy(item)
+        null_item["id"] = item_id
+        null_item["properties"]["datetime"] = None
+        await create_item(txn_client, null_item)
+
+    url = f"/search?collections={collection['id']}&limit=1"
+    if sortby:
+        url += f"&sortby={sortby}"
+    ids = []
+    try:
+        while url:
+            resp = await app_client.get(url)
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            ids += [f["id"] for f in body["features"]]
+            url = next(
+                (li["href"] for li in body["links"] if li["rel"] == "next"), None
+            )
+    finally:
+        await txn_client.delete_collection(collection["id"])
+
+    assert ids[0] == "with-datetime"
+    assert sorted(ids[1:]) == ["null-a", "null-b"]

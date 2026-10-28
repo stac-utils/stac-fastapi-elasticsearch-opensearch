@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- `USE_DATETIME_NANOS=false` now also maps item `datetime`, `start_datetime` and `end_datetime` as `date` instead of `date_nanos`, so items dated before 1970 or after 2262 can be stored and searched. The mapping applies to item indexes created after the change; existing deployments reindex their item indexes, as the README describes. A custom mapping for these fields still takes precedence. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
+- Items missing the sort field, such as items with `datetime: null` in the default sort or a `sortby` on `properties.datetime`, now sort last in both directions. The default sort used to place them at 1970-01-01, which put them among real dates once dates before 1970 can be stored. Sorts on item `datetime`, `start_datetime` and `end_datetime` now compare values in milliseconds (`numeric_type: date`), so `date` and `date_nanos` indexes sort together and items less than a millisecond apart are ordered by the next sort field. Pagination tokens from these sorts change, so a `next` link issued before the upgrade can skip or repeat items; restart pagination after upgrading. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
+- With `USE_DATETIME=false`, an item search without `datetime` now also returns items that have only a `datetime`. A `datetime` filter still matches only on `start_datetime` and `end_datetime`. [#968](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/968)
+
 ### Fixed
 
+- With `USE_DATETIME_NANOS=false`, item searches without `datetime` on `POST /search`, `GET /search` and `GET /collections/{collection_id}/items` returned `400`, because every search added a `0001`–`9999` range that the `date_nanos` mapping rejects. A search without `datetime` no longer adds a datetime range. [#968](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/968)
+- On OpenSearch, a descending `sortby` on `properties.datetime`, `properties.start_datetime` or `properties.end_datetime` no longer times out when its pages reach items without that field. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
+- The README example for overriding the `datetime` mapping used a top-level path and left item `properties.datetime` unchanged. It now uses `properties.properties.properties`. [#969](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/969)
+- With `ENABLE_DATETIME_INDEX_FILTERING=true`, the first size split of a collection whose first index starts before 1970-01-11 no longer creates a historical index with an inverted date range in its alias. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 - Quote `STAC_FASTAPI_DESCRIPTION` in affected compose files — the unquoted `SFEOS:` prefix made `docker compose` read each environment list item as a map, so those compose files failed to load. [#963](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/963)
 - Items stored without a `bbox`, or with a `null` one (such as items with a `null` geometry), are served without the key instead of with `"bbox": []` or `"bbox": null`, which STAC prohibits for null geometry. [#965](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/965)
 

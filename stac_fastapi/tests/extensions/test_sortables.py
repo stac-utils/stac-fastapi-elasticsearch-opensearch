@@ -487,6 +487,25 @@ def test_populate_sort_shared_unmapped_type():
     assert sort["not.mapped"]["unmapped_type"] == "keyword"
 
 
+def test_populate_sort_shared_item_datetime_compares_in_milliseconds():
+    """Item datetime sorts use numeric_type date; collection sorts don't."""
+    sort = populate_sort_shared(
+        [SimpleNamespace(field="properties.datetime", direction="desc")],
+        field_types={"properties.datetime": "date_nanos"},
+    )
+    assert sort["properties.datetime"] == {
+        "order": "desc",
+        "numeric_type": "date",
+        "unmapped_type": "date",
+        "missing": "_last",
+    }
+    sort = populate_sort_shared(
+        [SimpleNamespace(field="properties.datetime", direction="asc")],
+        is_collection=True,
+    )
+    assert "numeric_type" not in sort["properties.datetime"]
+
+
 def test_sort_post_request_spec_conformance():
     """POST sortby requires only `field`; direction defaults to asc."""
     from pydantic import ValidationError
