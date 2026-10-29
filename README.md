@@ -1729,7 +1729,7 @@ The flag sets the mapping of item indexes created after the change. A `STAC_FAST
 4. Move every alias of the old index to the new one with the same alias attributes. That includes the collection alias (`items_<collection>`) and, with `ENABLE_DATETIME_INDEX_FILTERING=true`, the datetime aliases.
 5. Close or delete the old index. Searches across all collections read `items_*`, so an old index left open returns every item twice.
 
-Until an old index is reindexed, it keeps the `date_nanos` mapping: it rejects items dated outside 1970–2262, and it can't answer an open-ended interval (`../2000`, `2000/..`) or one with a bound outside that range. A search that reaches only old indexes returns `400`. A search that also reaches new indexes returns `200` without any of the old indexes' items, in range or not, because the engine leaves out the results of the shards that fail.
+Until an old index is reindexed, it keeps the `date_nanos` mapping: it rejects items dated outside 1970–2262, and it can't answer an open-ended interval (`../2000`, `2000/..`) or one with a bound outside that range. A search that reaches only old indexes returns `400`. A search that also reaches new indexes returns `200` without any of the old indexes' items, in range or not, because the engine leaves out the results of the shards that fail. On OpenSearch, paging with `next` links across old and reindexed indexes can occasionally skip an item, so finish the reindex before relying on sorted pagination.
 
 Switching back to `USE_DATETIME_NANOS=true` also needs a reindex, and items dated outside 1970–2262 can't be copied into the `date_nanos` indexes.
 
