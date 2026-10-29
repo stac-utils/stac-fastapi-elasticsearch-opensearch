@@ -72,6 +72,57 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         },
     ]
 
+    # Every aggregation the backends can run (the keys of AGGREGATION_MAPPING, with
+    # the data types the docs give them). The root ``/aggregations`` advertises this
+    # list and the root ``/aggregate`` accepts any name in it, as the Aggregation
+    # extension says; a collection's own list restricts its sub-resource routes.
+    ALL_AGGREGATIONS = (
+        DEFAULT_AGGREGATIONS
+        + GEO_POINT_AGGREGATIONS
+        + [
+            {
+                "name": "platform_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "string",
+            },
+            {
+                "name": "cloud_cover_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "numeric",
+            },
+            {
+                "name": "sun_elevation_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "numeric",
+            },
+            {
+                "name": "sun_azimuth_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "numeric",
+            },
+            {
+                "name": "off_nadir_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "numeric",
+            },
+            {
+                "name": "centroid_geohash_grid_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "string",
+            },
+            {
+                "name": "centroid_geohex_grid_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "string",
+            },
+            {
+                "name": "centroid_geotile_grid_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "string",
+            },
+        ]
+    )
+
     # Supported datetime intervals
     SUPPORTED_DATETIME_INTERVAL = [
         "year",
@@ -141,7 +192,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     "href": urljoin(base_url, "aggregations"),
                 }
             )
-            aggregations = self.DEFAULT_AGGREGATIONS.copy()
+            aggregations = self.ALL_AGGREGATIONS.copy()
 
         return {
             "type": "AggregationCollection",
@@ -358,12 +409,15 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 search=search, intersects=aggregate_request.intersects
             )
 
-        supported_aggregations = None
+        # The root ``/aggregate`` accepts any aggregation the server can run, even one
+        # that applies to no item in the result (Aggregation extension). Only the
+        # ``/collections/{collection_id}/aggregate`` routes are limited to what that
+        # collection advertises.
+        supported_aggregations = self.ALL_AGGREGATIONS
         if aggregate_request.collections:
             search = self.database.apply_collections_filter(
                 search=search, collection_ids=aggregate_request.collections
             )
-            # validate that aggregations are supported for all collections
             for col in aggregate_request.collections:
                 try:
                     aggregation_info = await self.get_aggregations(
@@ -375,26 +429,22 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     # like /search, skip a missing collection; it has no index to search
                     collections = [c for c in collections if c != col]
                     continue
-                supported_aggregations = (
-                    aggregation_info["aggregations"] + self.DEFAULT_AGGREGATIONS
-                )
-
-                for agg_name in aggregate_request.aggregations:
-                    if agg_name not in set([x["name"] for x in supported_aggregations]):
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Aggregation {agg_name} not supported by collection {col}",
-                        )
-        if supported_aggregations is None:  # no collection named, or none exists
-            # Validate that the aggregations requested are supported by the catalog
-            aggregation_info = await self.get_aggregations(request=request)
-            supported_aggregations = aggregation_info["aggregations"]
-            for agg_name in aggregate_request.aggregations:
-                if agg_name not in [x["name"] for x in supported_aggregations]:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Aggregation {agg_name} not supported at catalog level",
+                if collection_id:  # /collections/{collection_id}/aggregate
+                    supported_aggregations = (
+                        aggregation_info["aggregations"] + self.DEFAULT_AGGREGATIONS
                     )
+        supported_names = {x["name"] for x in supported_aggregations}
+        for agg_name in aggregate_request.aggregations:
+            if agg_name not in supported_names:
+                where = (
+                    f"by collection {collection_id}"
+                    if collection_id
+                    else "at catalog level"
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Aggregation {agg_name} not supported {where}",
+                )
 
         if aggregate_request.filter_expr:
             try:

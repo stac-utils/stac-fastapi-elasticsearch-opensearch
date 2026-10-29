@@ -2,6 +2,8 @@
 
 Stac-fastapi-elasticsearch-opensearch supports the STAC API [Aggregation Extension](https://github.com/stac-api-extensions/aggregation). This enables aggregation of points and geometries, as well as frequency distribution aggregation of any other property including dates. Aggregations can be defined at the root Catalog level (`/aggregations`) and at the Collection level (`/<collection_id>/aggregations`). The [Filter Extension](https://github.com/stac-api-extensions/filter) is also fully supported, enabling aggregated returns of search queries. Any query made with `/search` may also be executed with `/aggregate`, provided that the relevant aggregation fields are available,
 
+The root `/aggregations` advertises every aggregation below, and the root `/aggregate` accepts any of them, with or without `collections`. A collection's `/aggregations` returns the aggregations declared in its `aggregations` field (or the defaults when it has none), and `/collections/{collection_id}/aggregate` accepts only those.
+
 A field named `aggregations` should be added to the Collection object for the collection for which the aggregations are available, for example:
 
 Available aggregations are:
