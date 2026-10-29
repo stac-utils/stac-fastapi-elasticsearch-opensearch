@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - With `ENABLE_DATETIME_INDEX_FILTERING=true`, the first size split of a collection whose first index starts before 1970-01-11 no longer creates a historical index with an inverted date range in its alias. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 - Quote `STAC_FASTAPI_DESCRIPTION` in affected compose files — the unquoted `SFEOS:` prefix made `docker compose` read each environment list item as a map, so those compose files failed to load. [#963](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/963)
 - Items stored without a `bbox`, or with a `null` one (such as items with a `null` geometry), are served without the key instead of with `"bbox": []` or `"bbox": null`, which STAC prohibits for null geometry. [#965](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/965)
+- With `USE_DATETIME=false` and `ENABLE_DATETIME_INDEX_FILTERING=true`, `/aggregate` requests, and catalog collection item listings without a `datetime`, no longer return `500`. [#981](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/981)
 
 ## [v8.0.0] - 2026-10-23
 

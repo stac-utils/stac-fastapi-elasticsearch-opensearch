@@ -1970,3 +1970,37 @@ async def test_size_split_of_pre_epoch_collection_has_no_inverted_alias(
         )
         assert resp.status_code == 200, resp.text
         assert [f["id"] for f in resp.json()["features"]] == [item_id]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method, datetime_value, expected_count",
+    [
+        ("GET", "2020-02-10T00:00:00Z/2020-02-12T00:00:00Z", 1),
+        ("POST", None, 1),
+        ("POST", "2020-02-10T00:00:00Z/2020-02-12T00:00:00Z", 1),
+        ("POST", "2021-01-01T00:00:00Z/2021-12-31T00:00:00Z", 0),
+        ("GET", "2020-02-10T00:00:00Z/..", 1),
+        ("POST", "2020-02-10T00:00:00Z/..", 1),
+        ("POST", "../2020-02-12T00:00:00Z", 1),
+        ("POST", "2020-02-10T00:00:00Z", 1),
+    ],
+)
+async def test_aggregate_total_count_with_start_end_datetime_index(
+    mock_datetime_env, app_client, ctx, method, datetime_value, expected_count
+):
+    params = {"collections": [ctx.item["collection"]], "aggregations": ["total_count"]}
+    if datetime_value:
+        params["datetime"] = datetime_value
+
+    if method == "GET":
+        response = await app_client.get(
+            "/aggregate",
+            params={**params, "collections": ",".join(params["collections"])},
+        )
+    else:
+        response = await app_client.post("/aggregate", json=params)
+
+    assert response.status_code == 200
+    assert response.json()["aggregations"][0]["value"] == expected_count
