@@ -646,6 +646,8 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         datetime_search = return_date(datetime)
 
+        if datetime_search.get("empty"):
+            return search.filter(Q("match_none")), datetime_search
         if datetime_search["gte"] is None and datetime_search["lte"] is None:
             return search, datetime_search
 
