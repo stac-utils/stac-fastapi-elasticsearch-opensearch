@@ -1721,14 +1721,17 @@ Item `datetime`, `start_datetime` and `end_datetime` are mapped `date_nanos` by 
 
 The flag sets the mapping of item indexes created after the change. A `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` entry for these fields still takes precedence.
 
-**Existing deployments** must reindex their item indexes into new indexes that get the `date` mapping (see [Reindexing](#reindexing) or the [SFEOS-tools](https://github.com/StacLabs/sfeos-tools) `reindex` command). Do this in a maintenance window:
+**Existing deployments** must reindex their item indexes into new indexes that get the `date` mapping (see [Reindexing](#reindexing)). Do this in a maintenance window:
 
-1. Stop ingestion and wait until queued and in-flight writes finish. Keep writes paused until step 4 is done; an item written between the copy and the cutover is lost.
-2. Reindex each item index into a new index.
-3. Move every alias of the old index to the new one with the same alias attributes. That includes the collection alias (`items_<collection>`) and, with `ENABLE_DATETIME_INDEX_FILTERING=true`, the datetime aliases.
-4. Close or delete the old index. Searches across all collections read `items_*`, so an old index left open returns every item twice.
+1. Stop ingestion and wait until queued and in-flight writes finish. Keep writes paused until step 5 is done; an item written between the copy and the cutover is lost.
+2. Restart every API instance, and the item queue worker if `ENABLE_REDIS_QUEUE=true`, with `USE_DATETIME_NANOS=false`. Each process reads the item mapping at startup and gives it to the item indexes it creates. The API also rewrites the item index template at startup, which step 3 relies on.
+3. Reindex each item index into a new index whose name starts with the item index prefix (`STAC_ITEMS_INDEX_PREFIX`, `items_` by default), so that the template applies to it.
+4. Move every alias of the old index to the new one with the same alias attributes. That includes the collection alias (`items_<collection>`) and, with `ENABLE_DATETIME_INDEX_FILTERING=true`, the datetime aliases.
+5. Close or delete the old index. Searches across all collections read `items_*`, so an old index left open returns every item twice.
 
-Until the old indexes are reindexed, open-ended intervals (`../2000`, `2000/..`) and intervals with a bound outside 1970–2262 fail with `400` on them.
+Until an old index is reindexed, it keeps the `date_nanos` mapping: it rejects items dated outside 1970–2262, and it can't answer an open-ended interval (`../2000`, `2000/..`) or one with a bound outside that range. A search that reaches only old indexes returns `400`. A search that also reaches new indexes returns `200` without any of the old indexes' items, in range or not, because the engine leaves out the results of the shards that fail.
+
+Switching back to `USE_DATETIME_NANOS=true` also needs a reindex, and items dated outside 1970–2262 can't be copied into the `date_nanos` indexes.
 
 ## Sorting and Time-Range Items (`datetime: null`)
 

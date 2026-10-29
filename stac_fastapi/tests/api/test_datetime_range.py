@@ -40,10 +40,7 @@ def use_datetime(request, monkeypatch):
     return request.param == "true"
 
 
-@pytest_asyncio.fixture()
-async def seeded(datetime_nanos_off, use_datetime, app_client, load_test_data):
-    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("seeds item shapes that index filtering rejects in one mode")
+async def _seed(app_client, load_test_data, exclude: str | None = None) -> str:
     collection = load_test_data("test_collection.json")
     collection["id"] = f"dt-range-{uuid.uuid4().hex[:8]}"
     resp = await app_client.post("/collections", json=collection)
@@ -71,11 +68,29 @@ async def seeded(datetime_nanos_off, use_datetime, app_client, load_test_data):
     )
     items.append(_dated_item(base, "dt-2000-only", "2000-01-01T00:00:00Z"))
     for item in items:
+        if item["id"] == exclude:
+            continue
         resp = await app_client.post(
             f"/collections/{collection['id']}/items", json=item
         )
         assert resp.status_code == 201, resp.text
     return collection["id"]
+
+
+@pytest_asyncio.fixture()
+async def seeded(datetime_nanos_off, use_datetime, app_client, load_test_data):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("seeds item shapes that index filtering rejects in one mode")
+    return await _seed(app_client, load_test_data)
+
+
+@pytest_asyncio.fixture()
+async def seeded_with_index_filtering(
+    datetime_nanos_off, use_datetime, datetime_filtering_env, app_client, load_test_data
+):
+    """Seed through datetime index filtering, which needs a datetime with USE_DATETIME=true and start/end otherwise."""
+    unsupported = "range-1961-1990" if use_datetime else "dt-2000-only"
+    return await _seed(app_client, load_test_data, exclude=unsupported), unsupported
 
 
 def _ids(resp) -> set[str]:
@@ -104,26 +119,19 @@ async def test_search_without_datetime_returns_every_item(app_client, seeded):
     assert _ids(await app_client.get(f"/collections/{cid}/items")) == ALL_IDS
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "interval,expected",
-    [
-        ("1950-06-15T00:00:00Z", {"dt-1950"}),
-        ("1950-01-01T00:00:00Z/1965-01-01T00:00:00Z", {"dt-1950", "range-1961-1990"}),
-        ("../1960-01-01T00:00:00Z", {"dt-1900", "dt-1950"}),
-        (
-            "1960-01-01T00:00:00Z/..",
-            {"dt-1969", "dt-1970", "dt-2300", "range-1961-1990", "dt-2000-only"},
-        ),
-        ("2200-01-01T00:00:00Z/2400-01-01T00:00:00Z", {"dt-2300"}),
-    ],
-)
-async def test_datetime_filter_matches_out_of_nanos_range(
-    app_client, seeded, use_datetime, interval, expected
-):
-    if not use_datetime:
-        expected = expected - {"dt-2000-only"}
-    cid = seeded
+INTERVALS = [
+    ("1950-06-15T00:00:00Z", {"dt-1950"}),
+    ("1950-01-01T00:00:00Z/1965-01-01T00:00:00Z", {"dt-1950", "range-1961-1990"}),
+    ("../1960-01-01T00:00:00Z", {"dt-1900", "dt-1950"}),
+    (
+        "1960-01-01T00:00:00Z/..",
+        {"dt-1969", "dt-1970", "dt-2300", "range-1961-1990", "dt-2000-only"},
+    ),
+    ("2200-01-01T00:00:00Z/2400-01-01T00:00:00Z", {"dt-2300"}),
+]
+
+
+async def _assert_datetime_filter(app_client, cid, interval, expected):
     post = await app_client.post(
         "/search", json={"collections": [cid], "datetime": interval}
     )
@@ -132,6 +140,32 @@ async def test_datetime_filter_matches_out_of_nanos_range(
         "/search", params={"collections": cid, "datetime": interval}
     )
     assert _ids(get) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interval,expected", INTERVALS)
+async def test_datetime_filter_matches_out_of_nanos_range(
+    app_client, seeded, use_datetime, interval, expected
+):
+    if not use_datetime:
+        expected = expected - {"dt-2000-only"}
+    await _assert_datetime_filter(app_client, seeded, interval, expected)
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interval,expected", INTERVALS)
+async def test_datetime_filter_with_index_filtering_matches_out_of_nanos_range(
+    app_client, seeded_with_index_filtering, use_datetime, interval, expected
+):
+    cid, unsupported = seeded_with_index_filtering
+    expected = expected - {unsupported}
+    if not use_datetime:
+        expected = expected - {"dt-2000-only"}
+    await _assert_datetime_filter(app_client, cid, interval, expected)
+    assert _ids(await app_client.get(f"/search?collections={cid}")) == ALL_IDS - {
+        unsupported
+    }
 
 
 @pytest.mark.asyncio
