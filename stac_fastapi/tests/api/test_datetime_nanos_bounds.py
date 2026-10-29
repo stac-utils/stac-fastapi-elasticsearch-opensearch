@@ -5,7 +5,6 @@ from copy import deepcopy
 
 import pytest
 import pytest_asyncio
-from fastapi import HTTPException
 
 from stac_fastapi.core.utilities import get_bool_env
 
@@ -169,74 +168,6 @@ async def test_catalog_collection_items_outside_nanos_range(
         params={"datetime": interval},
     )
     assert _ids(resp) == expected
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("dt", ["1950-01-01T00:00:00Z", "2300-01-01T00:00:00Z"])
-async def test_item_write_outside_nanos_range_returns_400(
-    catalogs_app_client, seeded, load_test_data, dt
-):
-    item = load_test_data("test_item.json")
-    item.update(id="dt-1970", collection=seeded)
-    item["properties"].update(datetime=dt, start_datetime=dt, end_datetime=dt)
-
-    post = await catalogs_app_client.post(
-        f"/collections/{seeded}/items", json={**item, "id": _uid("new")}
-    )
-    put = await catalogs_app_client.put(
-        f"/collections/{seeded}/items/dt-1970", json=item
-    )
-
-    for resp in (post, put):
-        assert resp.status_code == 400, resp.text
-        detail = resp.json()["detail"]
-        assert "properties." in detail and dt in detail
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("dt", ["1950-01-01T00:00:00Z", "2300-01-01T00:00:00Z"])
-async def test_item_patch_outside_nanos_range_returns_400_with_validator(
-    catalogs_app_client, seeded, monkeypatch, dt
-):
-    """With the STAC validator on, PATCH writes the merged item through create_item."""
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
-    resp = await catalogs_app_client.patch(
-        f"/collections/{seeded}/items/dt-1970",
-        json={"properties": {"datetime": dt, "start_datetime": dt, "end_datetime": dt}},
-        headers={"Content-Type": "application/merge-patch+json"},
-    )
-    assert resp.status_code == 400, resp.text
-    detail = resp.json()["detail"]
-    assert "properties." in detail and dt in detail
-
-
-@pytest.mark.datetime_filtering
-@pytest.mark.asyncio
-async def test_item_post_outside_nanos_range_with_index_filtering_returns_400(
-    app_client, seeded_with_index_filtering, load_test_data
-):
-    cid, _ = seeded_with_index_filtering
-    dt = "1950-01-01T00:00:00Z"
-    item = _item(load_test_data("test_item.json"), _uid("old"), dt, dt, dt)
-    item["collection"] = cid
-    resp = await app_client.post(f"/collections/{cid}/items", json=item)
-    assert resp.status_code == 400, resp.text
-    detail = resp.json()["detail"]
-    assert "properties." in detail and dt in detail
-
-
-@pytest.mark.asyncio
-async def test_create_item_outside_nanos_range_raises_400(txn_client, ctx):
-    item = deepcopy(ctx.item)
-    item["id"] = _uid("old")
-    item["properties"]["datetime"] = "1950-01-01T00:00:00Z"
-    item = await txn_client.database.async_prep_create_item(
-        item=item, base_url=str(MockRequest.base_url)
-    )
-
-    with pytest.raises(HTTPException) as exc:
-        await txn_client.database.create_item(item)
-    assert exc.value.status_code == 400
 
 
 @pytest.mark.asyncio

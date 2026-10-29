@@ -1465,14 +1465,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             if version:
                 raise precondition_failed(f"Item {item_id}")
             raise ItemAlreadyExistsError(item_id, collection_id)
-        except BadRequestError as e:
-            # e.g. a date outside the date_nanos range; caused_by names the bound.
-            reason = _search_error_reason(e)
-            error = e.info.get("error") if isinstance(e.info, dict) else None
-            caused_by = error.get("caused_by") if isinstance(error, dict) else None
-            if isinstance(caused_by, dict) and caused_by.get("reason"):
-                reason = f"{reason}: {caused_by['reason']}"
-            raise HTTPException(status_code=400, detail=reason) from e
         return DocumentVersion.from_hit(response)
 
     @retry_on_connection_error

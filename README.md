@@ -1719,7 +1719,7 @@ The system uses a precise naming convention:
 
 Item `datetime`, `start_datetime` and `end_datetime` are mapped `date_nanos` by default, and Elasticsearch and OpenSearch can store that type only from 1970-01-01 to 2262-04-11T23:47:16.854775807Z. Set `USE_DATETIME_NANOS=false` to store and search historical or far-future items, such as climate series that start in 1950. The three fields are then mapped `date`, which covers any RFC 3339 date at millisecond precision.
 
-With the default `true`, creating or replacing a single item dated outside that range returns `400`, unless `ENABLE_REDIS_QUEUE=true` queues the write. An item `datetime` filter is limited to the range, so an interval entirely outside it, such as `../1960-01-01T00:00:00Z`, returns no items.
+With the default `true`, an item `datetime` filter is limited to the range, so an interval entirely outside it, such as `../1960-01-01T00:00:00Z`, returns no items.
 
 The flag sets the mapping of item indexes created after the change. A `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` entry for these fields still takes precedence.
 
