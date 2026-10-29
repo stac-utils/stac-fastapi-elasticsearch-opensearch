@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- With `USE_DATETIME_NANOS=false`, item searches without `datetime` on `POST /search`, `GET /search` and `GET /collections/{collection_id}/items` returned `400`, because every search added a `0001`–`9999` range that the `date_nanos` mapping rejects. A search without `datetime` no longer adds a datetime range. [#968](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/968)
+- With `USE_DATETIME_NANOS=false`, item searches without `datetime` on `POST /search`, `GET /search` and `GET /collections/{collection_id}/items` returned `400`, because every search added a `0001`–`9999` range that the `date_nanos` mapping rejects. A search without `datetime`, or with an empty one (`?datetime=`), no longer adds a datetime range. [#968](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/968)
 - On OpenSearch, a descending `sortby` on `properties.datetime`, `properties.start_datetime` or `properties.end_datetime` no longer times out when its pages reach items without that field. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 - Item search pagination with `sortby` no longer skips an item when an item with the same `id` in another collection has the same sort values: item sorts now break ties on `collection` after `id`. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 - The README example for overriding the `datetime` mapping used a top-level path and left item `properties.datetime` unchanged. It now uses `properties.properties.properties`. [#969](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/969)

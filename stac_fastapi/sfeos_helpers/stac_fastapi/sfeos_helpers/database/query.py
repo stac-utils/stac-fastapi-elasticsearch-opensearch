@@ -510,14 +510,14 @@ def populate_sort_shared(
 
     Returns:
         dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
-            configurations, or None if no sort was specified.
+            configurations, or an ascending 'id' sort if no sort was specified.
 
     Notes:
         This function transforms a list of sort specifications into the format required by
         Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
         directly used in search requests.
-        Always includes 'id', and 'collection' for items, as tie-breakers to ensure
-        unique pagination tokens.
+        A non-empty sortby always gets 'id', and 'collection' for items, as
+        tie-breakers to ensure unique pagination tokens.
         Documents missing the sort field sort last in either direction.
     """
     if sortby:
