@@ -646,7 +646,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         datetime_search = return_date(datetime)
 
-        if not datetime_search:
+        if datetime_search["gte"] is None and datetime_search["lte"] is None:
             return search, datetime_search
 
         nested_datetime_field = DatabaseLogic.__nested_field__(
