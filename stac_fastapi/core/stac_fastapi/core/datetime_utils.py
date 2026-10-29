@@ -1,5 +1,6 @@
 """Utility functions to handle datetime parsing."""
 
+import re
 from datetime import datetime, timezone
 
 from stac_fastapi.core.utilities import get_bool_env
@@ -19,8 +20,7 @@ def format_datetime_range(date_str: str) -> str:
     use_datetime_nanos = get_bool_env("USE_DATETIME_NANOS", default=True)
 
     if use_datetime_nanos:
-        MIN_DATE_NANOS = datetime(1970, 1, 1, tzinfo=timezone.utc)
-        MAX_DATE_NANOS = datetime(2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc)
+        # Bounds outside 1970-2262 are kept; return_date clamps or empties them.
 
         def normalize(dt):
             """Normalize datetime string and preserve nano second precision."""
@@ -28,17 +28,17 @@ def format_datetime_range(date_str: str) -> str:
             if not dt or dt == "..":
                 return ".."
             dt_utc = rfc3339_str_to_datetime(dt).astimezone(timezone.utc)
-            if dt_utc < MIN_DATE_NANOS:
-                dt_utc = MIN_DATE_NANOS
-            if dt_utc > MAX_DATE_NANOS:
-                dt_utc = MAX_DATE_NANOS
+            fraction = re.search(r":\d{2}\.(\d+)", dt)
+            if fraction and len(fraction.group(1)) > 6:
+                # Engines read up to nine digits; a UTC offset leaves the fraction as is.
+                return f"{dt_utc:%Y-%m-%dT%H:%M:%S}.{fraction.group(1)[:9]}Z"
             dt_normalized = dt_utc.isoformat(timespec="auto").replace("+00:00", "Z")
             if "." not in dt_normalized:
                 dt_normalized = dt_normalized.replace("Z", ".0Z")
             return dt_normalized
 
         if not isinstance(date_str, str):
-            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
+            return "../.."
 
         if "/" not in date_str:
             return f"{normalize(date_str)}/{normalize(date_str)}"
@@ -46,21 +46,8 @@ def format_datetime_range(date_str: str) -> str:
         try:
             start, end = date_str.split("/", 1)
         except Exception:
-            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
-
-        normalized_start = normalize(start)
-        normalized_end = normalize(end)
-
-        if normalized_start == "..":
-            normalized_start = MIN_DATE_NANOS.isoformat(timespec="auto").replace(
-                "+00:00", "Z"
-            )
-        if normalized_end == "..":
-            normalized_end = MAX_DATE_NANOS.isoformat(timespec="auto").replace(
-                "+00:00", "Z"
-            )
-
-        return f"{normalized_start}/{normalized_end}"
+            return "../.."
+        return f"{normalize(start)}/{normalize(end)}"
 
     else:
 
