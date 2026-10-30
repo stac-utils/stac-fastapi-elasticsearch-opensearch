@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Collection search with an open-ended `datetime` replaced the open end with 1800-01-01 or 2999-12-31, so `../1700-01-01T00:00:00Z` missed a collection whose temporal extent is 1600–1650. An open end no longer adds a limit on that side. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 - Quote `STAC_FASTAPI_DESCRIPTION` in affected compose files — the unquoted `SFEOS:` prefix made `docker compose` read each environment list item as a map, so those compose files failed to load. [#963](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/963)
 - Items stored without a `bbox`, or with a `null` one (such as items with a `null` geometry), are served without the key instead of with `"bbox": []` or `"bbox": null`, which STAC prohibits for null geometry. [#965](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/965)
+- A `datetime` bound that can't be represented in UTC, such as `0001-01-01T00:00:00+01:00` or `9999-12-31T23:59:59-01:00`, returns `400` on `GET /search`, `GET /collections` and `GET /aggregate` instead of `500`. [#980](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/980)
 
 ## [v8.0.0] - 2026-10-23
 

@@ -3,8 +3,20 @@
 import re
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
+
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
+
+
+def _to_utc(value: str) -> datetime:
+    try:
+        return rfc3339_str_to_datetime(value).astimezone(timezone.utc)
+    except OverflowError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid datetime: {value} is outside the range that can be represented in UTC.",
+        )
 
 
 def format_datetime_range(date_str: str) -> str:
@@ -27,7 +39,7 @@ def format_datetime_range(date_str: str) -> str:
             dt = dt.strip()
             if not dt or dt == "..":
                 return ".."
-            dt_utc = rfc3339_str_to_datetime(dt).astimezone(timezone.utc)
+            dt_utc = _to_utc(dt)
             fraction = re.search(r":\d{2}\.(\d+)", dt)
             if fraction and len(fraction.group(1)) > 6:
                 # Engines read up to nine digits; a UTC offset leaves the fraction as is.
@@ -56,8 +68,7 @@ def format_datetime_range(date_str: str) -> str:
             dt = dt.strip()
             if not dt or dt == "..":
                 return ".."
-            dt_obj = rfc3339_str_to_datetime(dt)
-            dt_utc = dt_obj.astimezone(timezone.utc)
+            dt_utc = _to_utc(dt)
             return dt_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
         if not isinstance(date_str, str):
