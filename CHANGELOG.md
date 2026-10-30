@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v8.1.0] - 2026-10-30
+
 ### Changed
 
 - `USE_DATETIME_NANOS=false` now also maps item `datetime`, `start_datetime` and `end_datetime` as `date` instead of `date_nanos`, so items dated before 1970 or after 2262 can be stored and searched. The mapping applies to item indexes created after the change; existing deployments reindex their item indexes, as the README describes. A custom mapping for these fields still takes precedence. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
@@ -1135,7 +1137,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.0...main
+[v8.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0...v8.1.0
 [v8.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...v8.0.0
 [v7.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...v7.2.0
 [v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0
