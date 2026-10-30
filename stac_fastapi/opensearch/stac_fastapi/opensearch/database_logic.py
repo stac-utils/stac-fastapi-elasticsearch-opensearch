@@ -658,7 +658,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         datetime_search = return_date(datetime)
 
-        if not datetime_search:
+        if datetime_search.get("empty"):
+            return search.filter(Q("match_none")), datetime_search
+        if datetime_search["gte"] is None and datetime_search["lte"] is None:
             return search, datetime_search
 
         # USE_DATETIME env var
@@ -1466,6 +1468,14 @@ class DatabaseLogic(BaseDatabaseLogic):
             if version:
                 raise precondition_failed(f"Item {item_id}")
             raise ItemAlreadyExistsError(item_id, collection_id)
+        except RequestError as e:
+            # e.g. a date outside the date_nanos range; caused_by names the bound.
+            reason = _search_error_reason(e)
+            error = e.info.get("error") if isinstance(e.info, dict) else None
+            caused_by = error.get("caused_by") if isinstance(error, dict) else None
+            if isinstance(caused_by, dict) and caused_by.get("reason"):
+                reason = f"{reason}: {caused_by['reason']}"
+            raise HTTPException(status_code=400, detail=reason) from e
         return DocumentVersion.from_hit(response)
 
     @retry_on_connection_error
