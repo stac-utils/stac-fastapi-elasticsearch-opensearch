@@ -44,7 +44,14 @@ async def test_get_catalog_aggregations(app_client):
     resp = await app_client.get("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 7
+    # every aggregation the server can run, not only the defaults
+    names = {agg["name"] for agg in resp.json()["aggregations"]}
+    assert len(names) == 16
+    assert {
+        "total_count",
+        "platform_frequency",
+        "centroid_geohex_grid_frequency",
+    } <= names
 
 
 @pytest.mark.asyncio
@@ -53,7 +60,8 @@ async def test_post_catalog_aggregations(app_client):
     resp = await app_client.post("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 7
+    # every aggregation the server can run, not only the defaults
+    assert len(resp.json()["aggregations"]) == 16
 
 
 @pytest.mark.asyncio
@@ -820,3 +828,75 @@ async def test_post_aggregate_geometry_geohash_frequency(app_client, ctx):
     assert resp.status_code == 200
     assert len(resp.json()["aggregations"][0]["buckets"]) > 1
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "r6hhb"
+
+
+def test_root_advertises_every_mapped_aggregation():
+    """ALL_AGGREGATIONS mirrors AGGREGATION_MAPPING by hand; a mapping added
+    without a list entry would be refused at the root with no test failing."""
+    from stac_fastapi.sfeos_helpers.aggregation.client import (
+        EsAsyncBaseAggregationClient,
+    )
+    from stac_fastapi.sfeos_helpers.mappings import AGGREGATION_MAPPING
+
+    names = {agg["name"] for agg in EsAsyncBaseAggregationClient.ALL_AGGREGATIONS}
+    assert names == set(AGGREGATION_MAPPING)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "aggregation,status",
+    [
+        ("platform_frequency", 200),
+        ("cloud_cover_frequency", 200),
+        ("this_is_not_an_aggregation", 400),
+    ],
+)
+async def test_root_aggregate_accepts_any_available_aggregation(
+    app_client, ctx, aggregation, status
+):
+    """The root ``/aggregate`` with no ``collections`` accepts any aggregation the
+    server can run, default or not, and still rejects an unknown name."""
+    get = await app_client.get("/aggregate", params={"aggregations": aggregation})
+    post = await app_client.post("/aggregate", json={"aggregations": [aggregation]})
+
+    for resp in (get, post):
+        assert resp.status_code == status
+        if status == 200:
+            (agg,) = resp.json()["aggregations"]
+            assert agg["name"] == aggregation
+            assert agg["data_type"] == "frequency_distribution"
+        else:
+            assert "not supported at catalog level" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_root_aggregate_is_not_limited_by_the_named_collections(
+    app_client, ctx, load_test_data
+):
+    """At the root, naming collections filters the items but does not restrict the
+    aggregations to what those collections advertise. The sub-resource route does."""
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "counts-only"
+    test_collection["aggregations"] = [{"name": "total_count", "data_type": "integer"}]
+    resp = await app_client.post("/collections", json=test_collection)
+    assert resp.status_code == 201
+
+    try:
+        root = await app_client.post(
+            "/aggregate",
+            json={
+                "collections": ["counts-only"],
+                "aggregations": ["platform_frequency"],
+            },
+        )
+        assert root.status_code == 200
+        assert root.json()["aggregations"][0]["name"] == "platform_frequency"
+
+        scoped = await app_client.post(
+            "/collections/counts-only/aggregate",
+            json={"aggregations": ["platform_frequency"]},
+        )
+        assert scoped.status_code == 400
+        assert "not supported by collection counts-only" in scoped.json()["detail"]
+    finally:
+        await app_client.delete("/collections/counts-only")
