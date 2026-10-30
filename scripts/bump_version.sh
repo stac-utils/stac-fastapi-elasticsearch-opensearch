@@ -28,7 +28,7 @@ NEW="${1:?usage: $0 X.Y.Z}"
     exit 1
 }
 TODAY="$(date +%F)"
-PKGS="stac-fastapi-core|stac-fastapi-elasticsearch|stac-fastapi-opensearch|sfeos-helpers"
+PKGS="stac-fastapi[.-]core|stac-fastapi-elasticsearch|stac-fastapi-opensearch|sfeos-helpers"
 
 # 1. package __version__ modules (source of truth for hatch builds)
 for f in stac_fastapi/*/stac_fastapi/*/version.py; do
