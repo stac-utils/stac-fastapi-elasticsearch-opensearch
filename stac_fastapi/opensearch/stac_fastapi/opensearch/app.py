@@ -139,7 +139,7 @@ def instantiate_api(
 
     title = os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch")
     description = os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch")
-    api_version = os.getenv("STAC_FASTAPI_VERSION", "8.1.0")
+    api_version = os.getenv("STAC_FASTAPI_VERSION", "8.1.1")
 
     app_config_local = {
         "title": title,
