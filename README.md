@@ -136,6 +136,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Interacting with the API](#interacting-with-the-api)
   - [Configure the API](#configure-the-api)
   - [Collection Pagination](#collection-pagination)
+  - [Dates before 1970 or after 2262](#dates-before-1970-or-after-2262)
   - [Sorting and Time-Range Items (`datetime: null`)](#sorting-and-time-range-items-datetime-null)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
   - [Redis for navigation](#redis-for-navigation)
@@ -1089,7 +1090,7 @@ You can customize additional settings in your `.env` file:
 | `RAISE_ON_BULK_ERROR` | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. Malformed `bulk_items` entries (not a JSON object, or without a non-empty string `id`) follow this flag: rejected with `400` when `true`, reported per item in `errors` when `false`. The same applies to `bulk_items` entries whose `collection` differs from the path collection (an absent, `null` or `""` `collection` is filled from the path regardless of this flag) and to `bulk_items` items that fail STAC validation when `ENABLE_STAC_VALIDATOR=true`. **Note:** single Item `POST`/`PUT` validation errors always raise regardless of this flag. ItemCollection validation failures follow this flag when at least one item is written; an ItemCollection with no writable items returns `400` (with `ENABLE_REDIS_QUEUE=true`, `202` and zero items queued), and the `MAX_BATCH_ERROR_SIZE` threshold rejection is unconditional (see [Chunked Validation with Fail-Fast](#chunked-validation-with-fail-fast)). | `false` | Optional |
 | `DATABASE_REFRESH` | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
 | `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
-| `USE_DATETIME_NANOS` | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`. | `true` | Optional |
+| `USE_DATETIME_NANOS` | Sets the precision and storable range of item `datetime`, `start_datetime` and `end_datetime`. When `true`, they are mapped `date_nanos`: nanosecond precision, and only dates from 1970-01-01 to 2262-04-11 can be stored. When `false`, they are mapped `date`: millisecond precision, and any RFC 3339 date can be stored. The mapping applies to item indexes created after the change; see [Dates before 1970 or after 2262](#dates-before-1970-or-after-2262). | `true` | Optional |
 | `PROPERTIES_DATETIME_FIELD` | Specifies the field used for single datetime of the items in the backend database. | `properties.datetime` | Optional |
 | `PROPERTIES_START_DATETIME_FIELD` | Specifies the field used for the lower value of a datetime range for the items in the backend database. | `properties.start_datetime` | Optional |
 | `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
@@ -1714,16 +1715,36 @@ The system uses a precise naming convention:
   curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
   ```
 
+## Dates before 1970 or after 2262
+
+Item `datetime`, `start_datetime` and `end_datetime` are mapped `date_nanos` by default, and Elasticsearch and OpenSearch can store that type only from 1970-01-01 to 2262-04-11T23:47:16.854775807Z. Set `USE_DATETIME_NANOS=false` to store and search historical or far-future items, such as climate series that start in 1950. The three fields are then mapped `date`, which covers any RFC 3339 date at millisecond precision.
+
+With the default `true`, an item `datetime` filter is limited to the range, so an interval entirely outside it, such as `../1960-01-01T00:00:00Z`, returns no items.
+
+The flag sets the mapping of item indexes created after the change. A `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` entry for these fields still takes precedence.
+
+**Existing deployments** must reindex their item indexes into new indexes that get the `date` mapping (see [Reindexing](#reindexing)). Do this in a maintenance window:
+
+1. Stop ingestion and wait until queued and in-flight writes finish. Keep writes paused until step 5 is done; an item written between the copy and the cutover is lost.
+2. Restart every API instance, and the item queue worker if `ENABLE_REDIS_QUEUE=true`, with `USE_DATETIME_NANOS=false`. Each process reads the item mapping at startup and gives it to the item indexes it creates. The API also rewrites the item index template at startup, which step 3 relies on.
+3. Reindex each item index into a new index whose name starts with the item index prefix (`STAC_ITEMS_INDEX_PREFIX`, `items_` by default), so that the template applies to it.
+4. Move every alias of the old index to the new one with the same alias attributes. That includes the collection alias (`items_<collection>`) and, with `ENABLE_DATETIME_INDEX_FILTERING=true`, the datetime aliases.
+5. Close or delete the old index. Searches across all collections read `items_*`, so an old index left open returns every item twice.
+
+Until an old index is reindexed, it keeps the `date_nanos` mapping: it rejects items dated outside 1970–2262, and it can't answer an open-ended interval (`../2000`, `2000/..`) or one with a bound outside that range. A search that reaches only old indexes returns `400`. A search that also reaches new indexes returns `200` without any of the old indexes' items, in range or not, because the engine leaves out the results of the shards that fail. On OpenSearch, paging with `next` links across old and reindexed indexes can occasionally skip an item, so finish the reindex before relying on sorted pagination.
+
+Switching back to `USE_DATETIME_NANOS=true` also needs a reindex, and items dated outside 1970–2262 can't be copied into the `date_nanos` indexes.
+
 ## Sorting and Time-Range Items (`datetime: null`)
 
 Due to a combination of the STAC specification's rules for time-range items and underlying OpenSearch/Elasticsearch pagination constraints, this API implements specific fallback behaviors for sorting.
 
-In STAC, items representing a time range (e.g., a multi-day composite) set their `datetime` field to `null` and provide a `start_datetime` and `end_datetime`. To prevent `search_after` pagination from crashing on these null values, the API assigns missing dates to the extreme past or future depending on your sort direction.
+In STAC, items representing a time range (e.g., a multi-day composite) set their `datetime` field to `null` and provide a `start_datetime` and `end_datetime`. Items missing the sort field sort last, in either sort direction. Sorts on `datetime`, `start_datetime` and `end_datetime` compare values in milliseconds, so items less than a millisecond apart are ordered by the next sort field.
 
 **What this means for your search results:**
 
 * **Default Sort (Newest First):** The API evaluates `datetime` first. All single-snapshot items (which have a `datetime`) will appear chronologically at the top of your search results. All time-range items (which have `datetime: null`) will be grouped together and appear chronologically at the absolute bottom of the search results.
-* **Sorting by `start_datetime`:** If you want to prioritize time-range items, you can explicitly query `?sortby=-start_datetime`. This reverses the behavior: time-range items will sort chronologically at the top of your results, and single-snapshot items (which are missing a start date) will be pushed to the bottom.
+* **Sorting by `start_datetime`:** If you want to prioritize time-range items, you can explicitly query `?sortby=-properties.start_datetime`. This reverses the behavior: time-range items will sort chronologically at the top of your results, and single-snapshot items (which are missing a start date) will be pushed to the bottom.
 
 **Best Practice:** If your workflow relies on interleaving both single-snapshot and time-range items perfectly by date, we recommend filtering by specific datetime intervals in your query rather than relying strictly on the global sort order.
 
@@ -1899,9 +1920,9 @@ The merge follows these rules:
 **Example - Overriding a value (replaced):**
 
 ```json
-// Default has: {"properties": {"datetime": {"type": "date_nanos"}}}
-// Custom has:  {"properties": {"datetime": {"type": "date"}}}
-// Result:      {"properties": {"datetime": {"type": "date"}}}
+// Default has: {"properties": {"properties": {"properties": {"datetime": {"type": "date_nanos"}}}}}
+// Custom has:  {"properties": {"properties": {"properties": {"datetime": {"type": "date"}}}}}
+// Result:      {"properties": {"properties": {"properties": {"datetime": {"type": "date"}}}}}
 ```
 
 #### JSON Structure
