@@ -1383,3 +1383,93 @@ async def test_connection_error_max_retries():
 
     assert mock_search_func.call_count == 5
     assert "attempt 5" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sortby", [None, "%2Bproperties.datetime", "-properties.datetime"]
+)
+async def test_pagination_across_null_datetime_items(
+    app_client, txn_client, load_test_data, sortby
+):
+    """search_after tokens taken from null-datetime hits page on (#967)."""
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"null-dt-{uuid.uuid4().hex[:8]}"
+    await create_collection(txn_client, collection)
+    url = f"/search?collections={collection['id']}&limit=1"
+    if sortby:
+        url += f"&sortby={sortby}"
+    ids = []
+    try:
+        item = load_test_data("test_item.json")
+        item["collection"] = collection["id"]
+        await create_item(txn_client, {**item, "id": "with-datetime"})
+        for item_id in ("null-a", "null-b"):
+            null_item = deepcopy(item)
+            null_item["id"] = item_id
+            null_item["properties"]["datetime"] = None
+            await create_item(txn_client, null_item)
+
+        while url:
+            resp = await app_client.get(url)
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            ids += [f["id"] for f in body["features"]]
+            url = next(
+                (li["href"] for li in body["links"] if li["rel"] == "next"), None
+            )
+    finally:
+        await txn_client.delete_collection(collection["id"])
+
+    assert ids[0] == "with-datetime"
+    assert sorted(ids[1:]) == ["null-a", "null-b"]
+
+
+@pytest.mark.asyncio
+async def test_sortby_pagination_keeps_same_id_items_from_two_collections(
+    app_client, txn_client, load_test_data
+):
+    """Equal sort values and ids in two collections still page to both items."""
+    suffix = uuid.uuid4().hex[:8]
+    collection_ids = [f"tie-a-{suffix}", f"tie-b-{suffix}"]
+    item = load_test_data("test_item.json")
+    item["id"] = "same-id"
+    # Within one millisecond, so the datetime sort values tie.
+    datetimes = ["2000-01-01T00:00:00.000100Z", "2000-01-01T00:00:00.000200Z"]
+    url = (
+        f"/search?collections={','.join(collection_ids)}&limit=1"
+        "&sortby=%2Bproperties.datetime"
+    )
+    seen = []
+    created = []
+    try:
+        for collection_id, dt in zip(collection_ids, datetimes):
+            collection = load_test_data("test_collection.json")
+            collection["id"] = collection_id
+            await create_collection(txn_client, collection)
+            created.append(collection_id)
+            await create_item(
+                txn_client,
+                {
+                    **item,
+                    "collection": collection_id,
+                    "properties": {**item["properties"], "datetime": dt},
+                },
+            )
+
+        while url:
+            resp = await app_client.get(url)
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            seen += [f["collection"] for f in body["features"]]
+            url = next(
+                (li["href"] for li in body["links"] if li["rel"] == "next"), None
+            )
+    finally:
+        for collection_id in created:
+            await txn_client.delete_collection(collection_id)
+
+    assert sorted(seen) == collection_ids
