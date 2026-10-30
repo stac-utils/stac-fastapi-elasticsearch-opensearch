@@ -19,6 +19,8 @@ from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ES_ITEMS_MAPPINGS,
+    ITEM_DATETIME_SORT,
+    ITEM_DATETIME_SORT_FIELDS,
     Geometry,
 )
 
@@ -360,7 +362,7 @@ def apply_collections_datetime_filter_shared(
     Notes:
         - This function is specifically for filtering collections by their temporal extent
         - It queries the extent.temporal.interval field
-        - Open-ended ranges (..) are replaced with concrete dates (1800-01-01 for start, 2999-12-31 for end)
+        - An open end (..) adds no range on that side; "../.." only requires a temporal extent
     """
     if not datetime_str:
         return None
@@ -368,28 +370,21 @@ def apply_collections_datetime_filter_shared(
     # Parse the datetime string into start and end
     if "/" in datetime_str:
         start, end = datetime_str.split("/")
-        # Replace open-ended ranges with concrete dates
-        if start == "..":
-            # For open-ended start, use a very early date
-            start = "1800-01-01T00:00:00Z"
-        if end == "..":
-            # For open-ended end, use a far future date
-            end = "2999-12-31T23:59:59Z"
     else:
         # If it's just a single date, use it for both start and end
         start = end = datetime_str
 
+    must: list[dict[str, Any]] = []
+    if end != "..":
+        # Check if any date in the array is less than or equal to the query end date
+        # This will match if the collection's start date is before or equal to the query end date
+        must.append({"range": {"extent.temporal.interval": {"lte": end}}})
+    if start != "..":
+        # Check if any date in the array is greater than or equal to the query start date
+        # This will match if the collection's end date is after or equal to the query start date
+        must.append({"range": {"extent.temporal.interval": {"gte": start}}})
     return {
-        "bool": {
-            "must": [
-                # Check if any date in the array is less than or equal to the query end date
-                # This will match if the collection's start date is before or equal to the query end date
-                {"range": {"extent.temporal.interval": {"lte": end}}},
-                # Check if any date in the array is greater than or equal to the query start date
-                # This will match if the collection's end date is after or equal to the query start date
-                {"range": {"extent.temporal.interval": {"gte": start}}},
-            ]
-        }
+        "bool": {"must": must or [{"exists": {"field": "extent.temporal.interval"}}]}
     }
 
 
@@ -508,18 +503,16 @@ def populate_sort_shared(
 
     Returns:
         dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
-            configurations, or None if no sort was specified.
+            configurations, or an ascending 'id' sort if no sort was specified.
 
     Notes:
         This function transforms a list of sort specifications into the format required by
         Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
         directly used in search requests.
-        Always includes 'id' as secondary sort to ensure unique pagination tokens.
-        Injects concrete missing fallbacks for temporal fields to prevent search_after
-        pagination crashes on null values.
+        A non-empty sortby always gets 'id', and 'collection' for items, as
+        tie-breakers to ensure unique pagination tokens.
+        Documents missing the sort field sort last in either direction.
     """
-    temporal_fields = {"datetime", "start_datetime", "end_datetime"}
-
     if sortby:
         validate_sort_fields_shared(s.field for s in sortby)
         sort_config = {}
@@ -536,24 +529,18 @@ def populate_sort_shared(
                 unmapped_type = (
                     field_types.get(s.field) or field_types.get(field_name) or "keyword"
                 )
-            sort_obj = {"order": direction, "unmapped_type": unmapped_type}
-
-            # Inject concrete fallbacks for temporal fields using epoch milliseconds
-            # to avoid Java NumberFormatException when OpenSearch tries to parse ISO strings
-            if field_name in temporal_fields:
-                if direction == "desc":
-                    # Push missing dates to 1970-01-01 (epoch 0)
-                    sort_obj["missing"] = 0
-                else:
-                    # Push missing dates to 2100-01-01 (epoch 4102444800000)
-                    sort_obj["missing"] = 4102444800000
-            else:
-                # For non-date metadata fields, use _last
-                sort_obj["missing"] = "_last"
-
-            sort_config[field_name] = sort_obj
+            sort_config[field_name] = {
+                "order": direction,
+                "unmapped_type": unmapped_type,
+                "missing": "_last",
+            }
+            if not is_collection and field_name in ITEM_DATETIME_SORT_FIELDS:
+                sort_config[field_name].update(ITEM_DATETIME_SORT)
 
         sort_config.setdefault("id", {"order": "asc"})
+        # Item ids are unique only within a collection.
+        if not is_collection:
+            sort_config.setdefault("collection", {"order": "asc"})
         return sort_config
     else:
         return {"id": {"order": "asc"}}
