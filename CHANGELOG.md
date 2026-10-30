@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- JSON Patch `add` with the append index `-` (for example `/links/-`) appends after the last element, as RFC 6902 requires. It used to fail with `400 script_exception: compile error`, and the index computed for it pointed at the last element instead of the position after it. [#976](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/976)
+
 ## [v8.1.1] - 2026-10-30
 
 ### Fixed

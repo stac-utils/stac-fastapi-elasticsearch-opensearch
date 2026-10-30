@@ -204,3 +204,50 @@ async def test_validation_typeerror_is_not_reclassified(txn_client, ctx, monkeyp
             "application/json-patch+json",
         )
     validation.assert_awaited_once()
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+async def test_json_patch_add_dash_appends_to_array(
+    app_client, ctx, txn_client, monkeypatch, validator
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    url, document = _target(ctx, "item")
+    first = {"rel": "cite-as", "href": "https://doi.org/10.1234/first"}
+    second = {"rel": "describedby", "href": "https://example.com/errata"}
+    before = (await txn_client.database.client.get(**document))["_source"]["links"]
+
+    response = await app_client.patch(
+        url,
+        json=[
+            {"op": "add", "path": "/links/-", "value": first},
+            {"op": "add", "path": "/links/-", "value": second},
+        ],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert response.status_code == 200, response.text
+    stored = (await txn_client.database.client.get(**document))["_source"]["links"]
+    # With the validator on, the item is serialised again and its "collection"
+    # link is regenerated, so look at the appended links only.
+    appended = [link for link in stored if link["rel"] in (first["rel"], second["rel"])]
+    assert appended == [first, second]
+    assert len(stored) == len(before) + 2
+
+
+async def test_json_patch_add_dash_appends_to_properties_array(
+    app_client, ctx, txn_client
+):
+    url, document = _target(ctx, "item")
+    seed = deepcopy(ctx.item)
+    seed["properties"]["tags"] = ["a", "b"]
+    assert (await app_client.put(url, json=seed)).status_code == 200
+
+    response = await app_client.patch(
+        url,
+        json=[{"op": "add", "path": "/properties/tags/-", "value": "c"}],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert response.status_code == 200, response.text
+    stored = (await txn_client.database.client.get(**document))["_source"]
+    assert stored["properties"]["tags"] == ["a", "b", "c"]

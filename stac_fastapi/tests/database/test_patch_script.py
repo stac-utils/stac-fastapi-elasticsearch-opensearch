@@ -175,3 +175,39 @@ def test_repeated_same_operation_keeps_every_binding():
             assert script["params"] == dict(zip(("p0", "p1"), values))
             assert "params.p0" in script["source"]
             assert "params.p1" in script["source"]
+
+
+def test_append_index_addresses_the_position_after_the_last_element():
+    path = ElasticPath(path="/links/-")
+
+    assert path.key == -1
+    assert path.raw_key == "-"
+    assert path.es_key == "ctx._source['links'].size()"
+
+
+def test_explicit_negative_index_still_counts_from_the_end():
+    path = ElasticPath(path="/links/-2")
+
+    assert path.raw_key == "-2"
+    assert path.es_key == "ctx._source['links'].size() - 2"
+
+
+def test_positive_index_and_member_names_are_unchanged():
+    assert ElasticPath(path="/links/0").es_key == "0"
+    assert ElasticPath(path="/assets/x-y.nc/title").es_key == "title"
+
+
+def test_add_append_script_keeps_the_map_fallback_compilable():
+    commands = ESCommandSet()
+    operation = PatchAddReplaceTest.model_validate(
+        {"op": "add", "path": "/links/-", "value": {"rel": "cite-as"}}
+    )
+
+    add_commands(commands, operation, ElasticPath(path=operation.path), None, {})
+
+    (command,) = commands
+    assert "['links'].add(ctx._source['links'].size(), params.p0)" in command
+    # The else branch assigns into a map, so its key must be the plain member
+    # name and not the Painless expression used for the list branch.
+    assert "ctx._source['links']['-'] = params.p0;" in command
+    assert "['ctx._source" not in command
