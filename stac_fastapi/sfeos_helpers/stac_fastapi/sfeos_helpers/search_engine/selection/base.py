@@ -10,7 +10,7 @@ class BaseIndexSelector(ABC):
     async def select_indexes(
         self,
         collection_ids: list[str] | None,
-        datetime_search: str,
+        datetime_search: str | dict | None,
         for_insertion: bool = False,
     ) -> str:
         """Select appropriate indexes asynchronously.
