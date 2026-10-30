@@ -2411,7 +2411,7 @@ requires-dist = [
     { name = "stac-fastapi-catalogs-extension", marker = "extra == 'catalogs'", specifier = "==1.0.0" },
     { name = "stac-fastapi-extensions", specifier = "==7.0.0" },
     { name = "stac-fastapi-types", specifier = "==7.0.0" },
-    { name = "stac-pydantic", specifier = ">=3.7,<3.8" },
+    { name = "stac-pydantic", specifier = ">=3.7.1,<3.8" },
     { name = "stac-valid", marker = "extra == 'validator'", specifier = ">=4.6.1,<4.7" },
     { name = "starlette", specifier = ">=0.35.0,<1.10.0" },
     { name = "uvicorn", specifier = ">=0.23,<0.55" },
@@ -2583,16 +2583,16 @@ wheels = [
 
 [[package]]
 name = "stac-pydantic"
-version = "3.7.0"
+version = "3.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "geojson-pydantic" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/33/b0f8dc8543450e94241b0ea6230144f1ea26a0fc91b113f15bdccc3db84b/stac_pydantic-3.7.0.tar.gz", hash = "sha256:4e9817929b1d2bba0083befe0af8453d4680c75d69bda9641978ad61d3f611af", size = 16317, upload-time = "2026-10-09T15:19:13.202Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/77/4e1a7eca17ab4f4c1e04a9d4ee2a6130384cb620fd4314a7b7f6d872d2fd/stac_pydantic-3.7.1.tar.gz", hash = "sha256:62bf04b3a7a207bb9fff785ef142c86c855a51468e55a2d0a2192b5e990bbffc", size = 16336, upload-time = "2026-10-20T09:40:39.905Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/b5/fb83f04f7034605de7cf2adf455be169cd76868180134961f257c44b7111/stac_pydantic-3.7.0-py3-none-any.whl", hash = "sha256:aa4731c303a417afabf0dacc6cffc31414694f59ed5f501e4161a8b0e3d9477e", size = 25541, upload-time = "2026-10-09T15:19:11.884Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/4d/6dd3f6ca22ec89bcbee2a2febf09617626212b3717991a08128b25fdd085/stac_pydantic-3.7.1-py3-none-any.whl", hash = "sha256:55ca2c84dc5be09299720b145f372daf2a3ae40f5845fab2ddc383cfbf287b57", size = 25550, upload-time = "2026-10-20T09:40:41.203Z" },
 ]
 
 [[package]]
