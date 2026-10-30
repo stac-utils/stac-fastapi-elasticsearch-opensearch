@@ -1060,7 +1060,11 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, collection_ids=search_request.collections
             )
 
-        datetime_parsed = format_datetime_range(date_str=search_request.datetime)
+        datetime_parsed = (
+            format_datetime_range(date_str=search_request.datetime)
+            if search_request.datetime
+            else None
+        )
         try:
             search, datetime_search = self.database.apply_datetime_filter(
                 search=search, datetime=datetime_parsed
