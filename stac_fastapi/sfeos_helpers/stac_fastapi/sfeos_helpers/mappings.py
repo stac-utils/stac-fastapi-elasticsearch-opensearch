@@ -170,7 +170,12 @@ def get_mappings(
         else "STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING"
     )
 
-    mappings = copy.deepcopy(_BASE_MAPPINGS)
+    mappings: dict[str, Any] = copy.deepcopy(_BASE_MAPPINGS)
+
+    # date_nanos stores only 1970-2262; date covers any RFC 3339 datetime at millisecond precision.
+    if is_items and not get_bool_env("USE_DATETIME_NANOS", default=True):
+        for field in ("datetime", "start_datetime", "end_datetime"):
+            mappings["properties"]["properties"]["properties"][field] = {"type": "date"}
 
     # Apply dynamic mapping configuration
     dynamic_config = (
@@ -295,15 +300,22 @@ _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE = str.maketrans(
 
 ITEM_INDICES = f"{ITEMS_ALIAS_PREFIX}*"
 
+ITEM_DATETIME_SORT_FIELDS = (
+    "properties.datetime",
+    "properties.start_datetime",
+    "properties.end_datetime",
+)
+# Millisecond comparison sorts date and date_nanos indexes together and avoids an
+# OpenSearch hang paging date_nanos into missing values; needs a date unmapped_type.
+ITEM_DATETIME_SORT = {
+    "numeric_type": "date",
+    "unmapped_type": "date",
+    "missing": "_last",
+}
+
 DEFAULT_SORT = {
-    "properties.datetime": {
-        "order": "desc",
-        "missing": 0,
-    },
-    "properties.start_datetime": {
-        "order": "desc",
-        "missing": 0,
-    },
+    "properties.datetime": {"order": "desc", **ITEM_DATETIME_SORT},
+    "properties.start_datetime": {"order": "desc", **ITEM_DATETIME_SORT},
     "id": {"order": "desc"},
     "collection": {"order": "desc"},
 }

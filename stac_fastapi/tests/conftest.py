@@ -547,3 +547,42 @@ async def mock_datetime_env(datetime_filtering_env, monkeypatch):
 def stac_validator_off(monkeypatch):
     """Disable the STAC validator for tests that exercise non-validation behavior."""
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+
+
+async def use_datetime_nanos(value: bool) -> None:
+    """Rebuild the item mapping and index template for USE_DATETIME_NANOS=value.
+
+    The item mapping is computed at import, so the mapping modules are reloaded
+    and the server-side index template rewritten. The caller sets the env var.
+    """
+    import importlib
+
+    import stac_fastapi.sfeos_helpers.database.index as index_module
+    import stac_fastapi.sfeos_helpers.mappings as mappings_module
+    import stac_fastapi.sfeos_helpers.search_engine.index_operations as index_ops_module
+
+    assert get_bool_env("USE_DATETIME_NANOS", default=True) is value
+    for module in (mappings_module, index_module, index_ops_module):
+        importlib.reload(module)
+    await create_index_templates()
+
+
+@pytest_asyncio.fixture()
+async def datetime_nanos_off(txn_client, monkeypatch):
+    """Map item datetimes as ``date`` (USE_DATETIME_NANOS=false) for one test."""
+    await delete_collections_and_items(txn_client)
+    try:
+        with monkeypatch.context() as m:
+            m.setenv("USE_DATETIME_NANOS", "false")
+            await use_datetime_nanos(False)
+            yield
+    finally:
+        await delete_collections_and_items(txn_client)
+        restored_value = get_bool_env("USE_DATETIME_NANOS", default=True)
+        await use_datetime_nanos(restored_value)
+        template = await txn_client.database.client.indices.get_index_template(
+            name=f"template_{ITEMS_INDEX_PREFIX}"
+        )
+        restored = template["index_templates"][0]["index_template"]["template"]
+        props = restored["mappings"]["properties"]["properties"]["properties"]
+        assert props["datetime"]["type"] == ("date_nanos" if restored_value else "date")

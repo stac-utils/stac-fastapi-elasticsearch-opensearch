@@ -1899,3 +1899,108 @@ async def test_put_item_after_index_rollover_no_duplicate(
         body={"query": {"term": {"_id": doc_id}}},
     )
     assert count["count"] == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_datetime", ["true", "false"])
+async def test_size_split_of_pre_epoch_collection_has_no_inverted_alias(
+    datetime_filtering_env,
+    datetime_nanos_off,
+    app_client,
+    load_test_data,
+    txn_client,
+    monkeypatch,
+    use_datetime,
+):
+    monkeypatch.setenv("USE_DATETIME", use_datetime)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = "hist"
+    assert (await app_client.post("/collections", json=collection)).status_code == 201
+
+    base = load_test_data("test_item.json")
+    base["collection"] = "hist"
+    first, second = deepcopy(base), deepcopy(base)
+    first["id"], second["id"] = "item-1950", "item-1965"
+    first["properties"].update(
+        datetime="1950-06-01T00:00:00Z",
+        start_datetime="1950-01-01T00:00:00Z",
+        end_datetime="1950-12-31T00:00:00Z",
+    )
+    second["properties"].update(
+        datetime="1965-06-15T00:00:00Z",
+        start_datetime="1965-06-01T00:00:00Z",
+        end_datetime="1965-06-30T00:00:00Z",
+    )
+    resp = await app_client.post("/collections/hist/items", json=first)
+    assert resp.status_code == 201, resp.text
+    with patch(
+        "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized",
+        return_value=True,
+    ):
+        resp = await app_client.post("/collections/hist/items", json=second)
+    assert resp.status_code == 201, resp.text
+
+    indices = await txn_client.database.client.indices.get_alias(
+        index=index_alias_by_collection_id("hist")
+    )
+    aliases = {a for info in indices.values() for a in info.get("aliases", {})}
+    prefix = ITEMS_INDEX_PREFIX
+    if use_datetime == "true":
+        expected = {
+            f"{prefix}datetime_hist_1950-06-01-1950-06-01",
+            f"{prefix}datetime_hist_1965-06-16",
+        }
+    else:
+        expected = {
+            f"{prefix}start_datetime_hist_1950-01-01-1950-01-01",
+            f"{prefix}end_datetime_hist_1950-12-31",
+            f"{prefix}start_datetime_hist_1950-01-02",
+            f"{prefix}end_datetime_hist_1965-06-30",
+        }
+    assert aliases == expected | {index_alias_by_collection_id("hist")}
+    assert not any("1970-01-11" in alias for alias in aliases)
+
+    for dt, item_id in (
+        ("1950-06-01T00:00:00Z", "item-1950"),
+        ("1965-06-15T00:00:00Z", "item-1965"),
+    ):
+        resp = await app_client.get(
+            "/search", params={"collections": "hist", "datetime": dt}
+        )
+        assert resp.status_code == 200, resp.text
+        assert [f["id"] for f in resp.json()["features"]] == [item_id]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method, datetime_value, expected_count",
+    [
+        ("GET", "2020-02-10T00:00:00Z/2020-02-12T00:00:00Z", 1),
+        ("POST", None, 1),
+        ("POST", "2020-02-10T00:00:00Z/2020-02-12T00:00:00Z", 1),
+        ("POST", "2021-01-01T00:00:00Z/2021-12-31T00:00:00Z", 0),
+        ("GET", "2020-02-10T00:00:00Z/..", 1),
+        ("POST", "2020-02-10T00:00:00Z/..", 1),
+        ("POST", "../2020-02-12T00:00:00Z", 1),
+        ("POST", "2020-02-10T00:00:00Z", 1),
+    ],
+)
+async def test_aggregate_total_count_with_start_end_datetime_index(
+    mock_datetime_env, app_client, ctx, method, datetime_value, expected_count
+):
+    params = {"collections": [ctx.item["collection"]], "aggregations": ["total_count"]}
+    if datetime_value:
+        params["datetime"] = datetime_value
+
+    if method == "GET":
+        response = await app_client.get(
+            "/aggregate",
+            params={**params, "collections": ",".join(params["collections"])},
+        )
+    else:
+        response = await app_client.post("/aggregate", json=params)
+
+    assert response.status_code == 200
+    assert response.json()["aggregations"][0]["value"] == expected_count

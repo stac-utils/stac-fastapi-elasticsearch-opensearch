@@ -460,19 +460,21 @@ class DatetimeIndexManager:
             if is_first_split:
                 epoch_date = date(1970, 1, 11)
                 closed_start = extract_first_date_from_index(current_alias)
-                historical_end = closed_start - timedelta(days=1)
+                # A first index starting on or before the epoch leaves no gap to fill.
+                if closed_start > epoch_date:
+                    historical_end = closed_start - timedelta(days=1)
 
-                await self.index_operations.create_datetime_index(
-                    self.client,
-                    collection_id,
-                    start_datetime=f"{epoch_date}-{historical_end}",
-                    datetime=None,
-                    end_datetime=str(epoch_date),
-                )
-                logger.info(
-                    f"Created historical index for collection '{collection_id}' "
-                    f"covering {epoch_date} to {historical_end}"
-                )
+                    await self.index_operations.create_datetime_index(
+                        self.client,
+                        collection_id,
+                        start_datetime=f"{epoch_date}-{historical_end}",
+                        datetime=None,
+                        end_datetime=str(epoch_date),
+                    )
+                    logger.info(
+                        f"Created historical index for collection '{collection_id}' "
+                        f"covering {epoch_date} to {historical_end}"
+                    )
 
             return new_index_alias
         else:
