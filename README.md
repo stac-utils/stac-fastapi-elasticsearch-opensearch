@@ -1719,6 +1719,8 @@ The system uses a precise naming convention:
 
 Item `datetime`, `start_datetime` and `end_datetime` are mapped `date_nanos` by default, and Elasticsearch and OpenSearch can store that type only from 1970-01-01 to 2262-04-11T23:47:16.854775807Z. Set `USE_DATETIME_NANOS=false` to store and search historical or far-future items, such as climate series that start in 1950. The three fields are then mapped `date`, which covers any RFC 3339 date at millisecond precision.
 
+With the default `true`, an item `datetime` filter is limited to the range, so an interval entirely outside it, such as `../1960-01-01T00:00:00Z`, returns no items.
+
 The flag sets the mapping of item indexes created after the change. A `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` entry for these fields still takes precedence.
 
 **Existing deployments** must reindex their item indexes into new indexes that get the `date` mapping (see [Reindexing](#reindexing)). Do this in a maintenance window:
@@ -1729,7 +1731,7 @@ The flag sets the mapping of item indexes created after the change. A `STAC_FAST
 4. Move every alias of the old index to the new one with the same alias attributes. That includes the collection alias (`items_<collection>`) and, with `ENABLE_DATETIME_INDEX_FILTERING=true`, the datetime aliases.
 5. Close or delete the old index. Searches across all collections read `items_*`, so an old index left open returns every item twice.
 
-Until an old index is reindexed, it keeps the `date_nanos` mapping: it rejects items dated outside 1970–2262, and it can't answer an open-ended interval (`../2000`, `2000/..`) or one with a bound outside that range. A search that reaches only old indexes returns `400`. A search that also reaches new indexes returns `200` without any of the old indexes' items, in range or not, because the engine leaves out the results of the shards that fail.
+Until an old index is reindexed, it keeps the `date_nanos` mapping: it rejects items dated outside 1970–2262, and it can't answer an open-ended interval (`../2000`, `2000/..`) or one with a bound outside that range. A search that reaches only old indexes returns `400`. A search that also reaches new indexes returns `200` without any of the old indexes' items, in range or not, because the engine leaves out the results of the shards that fail. On OpenSearch, paging with `next` links across old and reindexed indexes can occasionally skip an item, so finish the reindex before relying on sorted pagination.
 
 Switching back to `USE_DATETIME_NANOS=true` also needs a reindex, and items dated outside 1970–2262 can't be copied into the `date_nanos` indexes.
 

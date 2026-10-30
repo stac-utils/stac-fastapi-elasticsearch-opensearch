@@ -362,7 +362,7 @@ def apply_collections_datetime_filter_shared(
     Notes:
         - This function is specifically for filtering collections by their temporal extent
         - It queries the extent.temporal.interval field
-        - Open-ended ranges (..) are replaced with concrete dates (1800-01-01 for start, 2999-12-31 for end)
+        - An open end (..) adds no range on that side; "../.." only requires a temporal extent
     """
     if not datetime_str:
         return None
@@ -370,28 +370,21 @@ def apply_collections_datetime_filter_shared(
     # Parse the datetime string into start and end
     if "/" in datetime_str:
         start, end = datetime_str.split("/")
-        # Replace open-ended ranges with concrete dates
-        if start == "..":
-            # For open-ended start, use a very early date
-            start = "1800-01-01T00:00:00Z"
-        if end == "..":
-            # For open-ended end, use a far future date
-            end = "2999-12-31T23:59:59Z"
     else:
         # If it's just a single date, use it for both start and end
         start = end = datetime_str
 
+    must: list[dict[str, Any]] = []
+    if end != "..":
+        # Check if any date in the array is less than or equal to the query end date
+        # This will match if the collection's start date is before or equal to the query end date
+        must.append({"range": {"extent.temporal.interval": {"lte": end}}})
+    if start != "..":
+        # Check if any date in the array is greater than or equal to the query start date
+        # This will match if the collection's end date is after or equal to the query start date
+        must.append({"range": {"extent.temporal.interval": {"gte": start}}})
     return {
-        "bool": {
-            "must": [
-                # Check if any date in the array is less than or equal to the query end date
-                # This will match if the collection's start date is before or equal to the query end date
-                {"range": {"extent.temporal.interval": {"lte": end}}},
-                # Check if any date in the array is greater than or equal to the query start date
-                # This will match if the collection's end date is after or equal to the query start date
-                {"range": {"extent.temporal.interval": {"gte": start}}},
-            ]
-        }
+        "bool": {"must": must or [{"exists": {"field": "extent.temporal.interval"}}]}
     }
 
 
