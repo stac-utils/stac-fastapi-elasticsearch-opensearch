@@ -18,6 +18,8 @@ from stac_fastapi.sfeos_helpers.database import (  # noqa: E402
 )
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX  # noqa: E402
 
+from ..conftest import delete_collections_and_items  # noqa: E402
+
 
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
@@ -2004,3 +2006,39 @@ async def test_aggregate_total_count_with_start_end_datetime_index(
 
     assert response.status_code == 200
     assert response.json()["aggregations"][0]["value"] == expected_count
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_items_of_collection_without_item_indexes_return_empty_for_datetime_index(
+    datetime_filtering_env, app, app_client, load_test_data, txn_client, monkeypatch
+):
+    await delete_collections_and_items(txn_client)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"empty-{uuid.uuid4()}"
+    response = await app_client.post("/collections", json=collection)
+    assert response.status_code == 201
+
+    engine_calls = []
+    db_client = app.state.database_logic.client
+    for name in ("search", "count"):
+
+        async def spy(*args, _name=name, _original=getattr(db_client, name), **kwargs):
+            engine_calls.append((_name, kwargs.get("index")))
+            return await _original(*args, **kwargs)
+
+        monkeypatch.setattr(db_client, name, spy)
+
+    try:
+        for url in (
+            f"/collections/{collection['id']}/items",
+            f"/search?collections={collection['id']}",
+        ):
+            response = await app_client.get(url)
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result["features"] == []
+            assert result["numberMatched"] == 0
+        assert engine_calls == []
+    finally:
+        await delete_collections_and_items(txn_client)
