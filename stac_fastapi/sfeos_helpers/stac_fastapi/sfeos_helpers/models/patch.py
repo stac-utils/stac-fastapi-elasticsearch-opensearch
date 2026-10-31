@@ -63,7 +63,10 @@ class ElasticPath(BaseModel):
         data["path"] = data["nest"] + "/" + data["key"]
 
         data["es_key"] = data["key"]
-        data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
+        data["es_nest"] = "".join(
+            f"[{part}]" if part.isascii() and part.isdigit() else f"['{part}']"
+            for part in data["parts"]
+        )
         data["es_path"] = data["es_nest"] + f"['{data['es_key']}']"
 
         if data["key"].lstrip("-").isdigit() or data["key"] == "-":

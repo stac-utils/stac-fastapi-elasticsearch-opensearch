@@ -561,6 +561,17 @@ def check_commands(
                     f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
                 )
 
+            elif path_part.isascii() and path_part.isdigit():
+                # ponytail: a numeric member name inside a path is read as an array
+                # index (400 on objects); dispatch on List/Map per segment if needed.
+                commands.append(
+                    f"if (!(ctx._source{part_nest} instanceof ArrayList)"
+                    f" || ctx._source{part_nest}.size() <= {path_part})"
+                    f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
+                )
+                part_nest += f"[{path_part}]"
+                continue
+
             else:
                 commands.append(
                     f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
@@ -634,12 +645,18 @@ def add_commands(
         index (int): operation index, names the value a move removed
 
     """
-    if from_path is not None:
+    if from_path is not None and operation.op == "move":
+        value = f"{from_path.variable_name}_{index}"
+
+    elif from_path is not None and isinstance(from_path.key, int):
+        source = f"ctx._source{from_path.es_nest}"
         value = (
-            f"{from_path.variable_name}_{index}"
-            if operation.op == "move"
-            else f"deepCopy(ctx._source{from_path.es_path})"
+            f"deepCopy({source} instanceof ArrayList"
+            f" ? {source}[{from_path.es_key}] : {source}['{from_path.key}'])"
         )
+
+    elif from_path is not None:
+        value = f"deepCopy(ctx._source{from_path.es_path})"
 
     else:
         param_key = _allocate_script_param(params, operation.value)
@@ -668,6 +685,7 @@ def test_commands(
     """
     param_key = _allocate_script_param(params, operation.value)
     value = f"params.{param_key}"
+    target = f"ctx._source{path.es_path}"
 
     if isinstance(path.key, int):
         commands.append(
@@ -677,11 +695,12 @@ def test_commands(
             f" != ' + ctx._source{path.es_path});}}"
             f"}} else "
         )
+        target = f"ctx._source{path.es_nest}['{path.key}']"
 
     commands.append(
-        f"if (ctx._source{path.es_path} != {value})"
+        f"if ({target} != {value})"
         f"{{Debug.explain('Test failed `{path.path}`"
-        f" != ' + ctx._source{path.es_path});}}"
+        f" != ' + {target});}}"
     )
 
 

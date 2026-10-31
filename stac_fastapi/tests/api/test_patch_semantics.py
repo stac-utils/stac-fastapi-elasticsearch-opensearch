@@ -215,6 +215,14 @@ async def test_invalid_json_patch_is_400_without_mutation(
             {"op": "remove", "path": "/x"},
             {"op": "replace", "path": "/x", "value": 2},
         ],
+        [{"op": "replace", "path": "/l/0/k", "value": 2}],
+        [{"op": "add", "path": "/l/0/m", "value": 3}],
+        [{"op": "remove", "path": "/l/0/k"}],
+        [{"op": "copy", "from": "/n/1", "path": "/q"}],
+        [
+            {"op": "test", "path": "/n/1", "value": "v"},
+            {"op": "add", "path": "/q", "value": 1},
+        ],
     ],
     ids=[
         "copy-twice",
@@ -223,6 +231,11 @@ async def test_invalid_json_patch_is_400_without_mutation(
         "copy-add",
         "copy-replace",
         "remove-replace",
+        "replace-in-array-element",
+        "add-in-array-element",
+        "remove-in-array-element",
+        "copy-numeric-member",
+        "test-numeric-member",
     ],
 )
 async def test_json_patch_applies_operations_in_order_on_copies(
@@ -231,7 +244,14 @@ async def test_json_patch_applies_operations_in_order_on_copies(
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
     url, document = _target(ctx, resource)
     seed = deepcopy(getattr(ctx, resource))
-    fields = {"a": ["x", "y", "z"], "b": ["x"], "o": {"k": 1}, "x": 1}
+    fields = {
+        "a": ["x", "y", "z"],
+        "b": ["x"],
+        "o": {"k": 1},
+        "x": 1,
+        "l": [{"k": 1}],
+        "n": {"1": "v"},
+    }
     (seed["properties"] if resource == "item" else seed).update(deepcopy(fields))
     assert (await app_client.put(url, json=seed)).status_code == 200
     before = await txn_client.database.client.get(**document)
@@ -257,8 +277,8 @@ async def test_json_patch_applies_operations_in_order_on_copies(
     assert response.status_code == 200, response.text
     for result in (response.json(), after["_source"]):
         container = result["properties"] if resource == "item" else result
-        assert {key: container.get(key) for key in "abcopx"} == {
-            key: expected.get(key) for key in "abcopx"
+        assert {key: container.get(key) for key in "abcopxlnq"} == {
+            key: expected.get(key) for key in "abcopxlnq"
         }
 
 

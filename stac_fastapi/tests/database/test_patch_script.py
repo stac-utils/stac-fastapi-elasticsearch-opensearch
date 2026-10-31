@@ -248,3 +248,30 @@ def test_datetime_guards_follow_deep_copy_function():
     assert source.count("def deepCopy(") == 1
     assert source.index("def __stac_datetime") < source.index("= deepCopy(ctx._source")
     assert source.rindex("__stac_datetime") > source.index("= deepCopy(ctx._source")
+
+
+def test_array_element_in_path_is_indexed_not_keyed():
+    replace = PatchAddReplaceTest.model_validate(
+        {"op": "replace", "path": "/properties/l/0/k", "value": 2}
+    )
+
+    source = operations_to_script([replace])["source"]
+
+    assert ElasticPath(path="/l/0/k").es_nest == "['l'][0]"
+    assert "containsKey('0')" not in source
+    assert "ctx._source['properties']['l'][0]['k'] = params.p0;" in source
+
+
+def test_numeric_member_of_object_is_read_by_string_key():
+    copy = PatchMoveCopy.model_validate(
+        {"op": "copy", "path": "/properties/q", "from": "/properties/n/1"}
+    )
+    test = PatchAddReplaceTest.model_validate(
+        {"op": "test", "path": "/properties/n/1", "value": "v"}
+    )
+
+    copy_source = operations_to_script([copy])["source"]
+    test_source = operations_to_script([test])["source"]
+
+    assert "ctx._source['properties']['n']['1']" in copy_source
+    assert "ctx._source['properties']['n']['1'] != params.p0" in test_source
