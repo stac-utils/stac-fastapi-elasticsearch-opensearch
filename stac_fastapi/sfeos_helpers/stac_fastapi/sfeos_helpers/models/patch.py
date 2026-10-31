@@ -75,6 +75,7 @@ class ElasticPath(BaseModel):
 
     path: str | None = None
     key: str | int | None = None
+    raw_key: str | None = None
     nest: str | None = None
 
     es_path: str | None = None
@@ -97,6 +98,7 @@ class ElasticPath(BaseModel):
         data["parts"] = data["path"].lstrip("/").split("/")
 
         data["key"] = data["parts"].pop(-1)
+        data["raw_key"] = data["key"]
         data["nest"] = "/".join(data["parts"])
         data["path"] = data["nest"] + "/" + data["key"]
 
@@ -106,11 +108,13 @@ class ElasticPath(BaseModel):
 
         if data["key"].lstrip("-").isdigit() or data["key"] == "-":
             data["key"] = -1 if data["key"] == "-" else int(data["key"])
-            data["es_key"] = (
-                f"ctx._source{data['es_nest']}.size() - {-data['key']}"
-                if data["key"] < 0
-                else str(data["key"])
-            )
+            if data["raw_key"] == "-":
+                # RFC 6902: "-" is the position after the last element (append).
+                data["es_key"] = f"ctx._source{data['es_nest']}.size()"
+            elif data["key"] < 0:
+                data["es_key"] = f"ctx._source{data['es_nest']}.size() - {-data['key']}"
+            else:
+                data["es_key"] = str(data["key"])
             data["es_path"] = data["es_nest"] + f"[{data['es_key']}]"
 
         data[

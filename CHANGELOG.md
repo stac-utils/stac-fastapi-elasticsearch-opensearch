@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- JSON Patch `add` with the append index `-` (for example `/links/-`) appends after the last element, as RFC 6902 requires. It used to fail with `400 script_exception: compile error`, and the index computed for it pointed at the last element instead of the position after it. [#976](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/976)
 - With `ENABLE_DATETIME_INDEX_FILTERING=true`, listing items of a collection and searching it now return an empty result when no item index matches the collections and datetime, instead of searching every index and failing on the default sort. Collections whose items are still in simple (non-datetime) indexes now return empty results under datetime filtering and must be reindexed into datetime indexes. [#883](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/883)
 
 ## [v8.1.1] - 2026-10-30
