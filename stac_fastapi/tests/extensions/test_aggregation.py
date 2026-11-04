@@ -945,3 +945,30 @@ async def test_root_aggregate_accepts_a_collection_s_own_aggregation(
         assert resp.json()["aggregations"][0]["name"] == "instrument_frequency"
     finally:
         await app_client.delete("/collections/with-instruments")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "aggregation",
+    ["centroid_geohex_grid_frequency", "geometry_geohash_grid_frequency"],
+)
+async def test_root_aggregate_answers_400_when_the_licence_refuses(
+    app, app_client, ctx, aggregation
+):
+    """On a basic Elasticsearch licence, geohex_grid and grid aggregations on
+    geo_shape are refused by the engine. The root answers 400 with the engine's
+    reason, not 500. On a higher licence, and on OpenSearch, they run."""
+    if os.getenv("BACKEND", "elasticsearch").lower() != "elasticsearch":
+        pytest.skip("OpenSearch has no licence tiers")
+    licence = await app.state.database_logic.client.license.get()
+    basic = licence["license"]["type"] == "basic"
+
+    resp = await app_client.post("/aggregate", json={"aggregations": [aggregation]})
+
+    if basic:
+        assert resp.status_code == 400
+        assert "licence" in resp.json()["detail"]
+        assert "license is non-compliant" in resp.json()["detail"]
+    else:
+        assert resp.status_code == 200
+        assert resp.json()["aggregations"][0]["name"] == aggregation

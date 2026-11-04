@@ -4,6 +4,8 @@ Stac-fastapi-elasticsearch-opensearch supports the STAC API [Aggregation Extensi
 
 The root `/aggregations` advertises every aggregation below, and the root `/aggregate` accepts any of them, with or without `collections`. A collection's `/aggregations` returns the aggregations declared in its `aggregations` field (or the defaults when it has none), and `/collections/{collection_id}/aggregate` accepts only those.
 
+On Elasticsearch, `centroid_geohex_grid_frequency` and the `geometry_*` grid aggregations need a licence above basic; on a basic licence `/aggregate` answers `400` with the engine's reason. OpenSearch runs all of them.
+
 A field named `aggregations` should be added to the Collection object for the collection for which the aggregations are available, for example:
 
 Available aggregations are:
