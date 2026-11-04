@@ -176,16 +176,6 @@ class DatetimeIndexManager:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Both 'start_datetime' and 'end_datetime' fields are required",
                 )
-            if not (start <= end):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="'start_datetime' must be <= 'end_datetime'",
-                )
-            if dt and not (start <= dt <= end):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="'start_datetime' <= 'datetime' <= 'end_datetime' is required",
-                )
 
         return ProductDatetimes(
             start_datetime=start_str,
@@ -470,19 +460,21 @@ class DatetimeIndexManager:
             if is_first_split:
                 epoch_date = date(1970, 1, 11)
                 closed_start = extract_first_date_from_index(current_alias)
-                historical_end = closed_start - timedelta(days=1)
+                # A first index starting on or before the epoch leaves no gap to fill.
+                if closed_start > epoch_date:
+                    historical_end = closed_start - timedelta(days=1)
 
-                await self.index_operations.create_datetime_index(
-                    self.client,
-                    collection_id,
-                    start_datetime=f"{epoch_date}-{historical_end}",
-                    datetime=None,
-                    end_datetime=str(epoch_date),
-                )
-                logger.info(
-                    f"Created historical index for collection '{collection_id}' "
-                    f"covering {epoch_date} to {historical_end}"
-                )
+                    await self.index_operations.create_datetime_index(
+                        self.client,
+                        collection_id,
+                        start_datetime=f"{epoch_date}-{historical_end}",
+                        datetime=None,
+                        end_datetime=str(epoch_date),
+                    )
+                    logger.info(
+                        f"Created historical index for collection '{collection_id}' "
+                        f"covering {epoch_date} to {historical_end}"
+                    )
 
             return new_index_alias
         else:

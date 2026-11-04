@@ -8,6 +8,9 @@ from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 from starlette.requests import Request
 
+# OGC link relation that the Sort extension requires for all sortables endpoints.
+SORTABLES_REL = "http://www.opengis.net/def/rel/ogc/1.0/sortables"
+
 # Copied from pgstac links
 
 # These can be inferred from the item/collection, so they aren't included in the database
@@ -55,6 +58,15 @@ class BaseLinks:
 
     def link_self(self) -> dict:
         """Return the self link."""
+        if self.request.method == "POST" and hasattr(self.request, "postbody"):
+            return dict(
+                rel=Relations.self.value,
+                type=MimeTypes.json.value,
+                method="POST",
+                href=self.url,
+                body=self.request.postbody,
+            )
+
         return dict(rel=Relations.self.value, type=MimeTypes.json.value, href=self.url)
 
     def link_root(self) -> dict:
@@ -186,6 +198,20 @@ class CollectionLinks(BaseLinks):
                 type=MimeTypes.json.value,
                 href=urljoin(
                     self.base_url, f"collections/{self.collection_id}/aggregations"
+                ),
+            )
+        else:
+            return None
+
+    def link_sortables(self) -> dict[str, Any] | None:
+        """Create the `sortables` link."""
+        if "ItemCollectionSortExtension" in self.extensions:
+            return dict(
+                rel=SORTABLES_REL,
+                type=MimeTypes.jsonschema.value,
+                title="Sortables",
+                href=urljoin(
+                    self.base_url, f"collections/{self.collection_id}/sortables"
                 ),
             )
         else:

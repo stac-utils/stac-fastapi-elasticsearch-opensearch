@@ -142,8 +142,8 @@ app:
   env:
     # Application configuration
     STAC_FASTAPI_TITLE: "stac-fastapi"
-    STAC_FASTAPI_DESCRIPTION: "A STAC FastAPI with configurable backend"
-    STAC_FASTAPI_VERSION: "6.0.0"
+    STAC_FASTAPI_DESCRIPTION: "SFEOS: A STAC FastAPI with a configurable backend"
+    STAC_FASTAPI_VERSION: "8.1.1"
     STAC_FASTAPI_LANDING_PAGE_ID: "stac-fastapi"
     APP_HOST: "0.0.0.0"
     APP_PORT: "8080"
@@ -178,9 +178,18 @@ app:
   extraVolumeMounts: []
   extraVolumes: []
 
+  # Additional containers to add to deployment
+  extraContainers: []
+
   # Additional environment variables from secrets
   envFromSecret: {}
     # ES_API_KEY: "es-api-key-secret"
+
+  # Extra environment variable
+  extraEnv: []
+
+  # Load environment variables using envFrom
+  envFrom: []
 
   # Database authentication configuration for bundled backends
   databaseAuth:
@@ -371,7 +380,7 @@ redis:
   # Optional override for the generated Redis fullname
   fullnameOverride: ""
   # Default Redis database index used by the application
-  database: 0
+  # database:
   architecture: standalone
   master:
     service:
@@ -387,6 +396,7 @@ redis:
     enabled: false
     host: ""
     port: 6379
+    # database:
     # Optional secret that stores the Redis password for the external instance
     passwordSecret: ""
     passwordKey: "redis-password"

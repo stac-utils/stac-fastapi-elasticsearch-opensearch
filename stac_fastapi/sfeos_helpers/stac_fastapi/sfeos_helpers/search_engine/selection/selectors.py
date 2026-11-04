@@ -1,6 +1,7 @@
 """Async index selectors with datetime-based filtering."""
+
 import logging
-from typing import Any, cast
+from typing import Any
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
@@ -8,7 +9,7 @@ from stac_fastapi.sfeos_helpers.database import (
     filter_indexes_by_datetime_range,
     return_date,
 )
-from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES, ITEMS_INDEX_PREFIX
+from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES, ITEMS_ALIAS_PREFIX
 
 from ...database import indices
 from .base import BaseIndexSelector
@@ -82,7 +83,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
     async def select_indexes(
         self,
         collection_ids: list[str] | None,
-        datetime_search: str,
+        datetime_search: str | dict | None,
         for_insertion: bool = False,
     ) -> str:
         """Select indexes filtered by collection IDs and datetime criteria.
@@ -168,7 +169,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         return bool(datetime_search)
 
     def parse_datetime_filters(
-        self, datetime: str | dict, for_insertion: bool
+        self, datetime: str | dict | None, for_insertion: bool
     ) -> dict[str, dict[str, Any]]:
         """Parse datetime string into structured filter criteria.
 
@@ -195,7 +196,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 "end_datetime": {"gte": None, "lte": None},
             }
 
-        dt_dict = cast(dict, datetime)
+        dt_dict = datetime if isinstance(datetime, dict) else parsed_datetime
         return {
             "datetime": {
                 "gte": parsed_datetime.get("gte") if self.use_datetime else None,
@@ -214,13 +215,13 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
     async def get_all_collection_ids(self) -> list[str] | None:
         """Return all known collection IDs derived from cached alias keys.
 
-        Strips the ITEMS_INDEX_PREFIX from each alias key to derive collection IDs.
+        Strips the ITEMS_ALIAS_PREFIX from each alias key to derive collection IDs.
 
         Returns:
             list[str] | None: List of collection IDs from the alias cache.
         """
         aliases = await self.alias_loader.get_aliases()
-        prefix_len = len(ITEMS_INDEX_PREFIX)
+        prefix_len = len(ITEMS_ALIAS_PREFIX)
         return [alias[prefix_len:] for alias in aliases.keys()]
 
 
@@ -230,7 +231,7 @@ class UnfilteredIndexSelector(BaseIndexSelector):
     async def select_indexes(
         self,
         collection_ids: list[str] | None,
-        datetime_search: str,
+        datetime_search: str | dict | None,
         for_insertion: bool = False,
     ) -> str:
         """Select all indices for given collections without datetime filtering.

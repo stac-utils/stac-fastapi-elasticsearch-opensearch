@@ -170,7 +170,12 @@ def get_mappings(
         else "STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING"
     )
 
-    mappings = copy.deepcopy(_BASE_MAPPINGS)
+    mappings: dict[str, Any] = copy.deepcopy(_BASE_MAPPINGS)
+
+    # date_nanos stores only 1970-2262; date covers any RFC 3339 datetime at millisecond precision.
+    if is_items and not get_bool_env("USE_DATETIME_NANOS", default=True):
+        for field in ("datetime", "start_datetime", "end_datetime"):
+            mappings["properties"]["properties"]["properties"][field] = {"type": "date"}
 
     # Apply dynamic mapping configuration
     dynamic_config = (
@@ -272,6 +277,7 @@ class Geometry(Protocol):  # noqa
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
+ITEMS_ALIAS_PREFIX = os.getenv("STAC_ITEMS_ALIAS_PREFIX", ITEMS_INDEX_PREFIX)
 
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "\\",
@@ -292,10 +298,24 @@ _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE = str.maketrans(
     "", "", "".join(ES_INDEX_NAME_UNSUPPORTED_CHARS)
 )
 
-ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-{COLLECTIONS_INDEX}*"
+ITEM_INDICES = f"{ITEMS_ALIAS_PREFIX}*"
+
+ITEM_DATETIME_SORT_FIELDS = (
+    "properties.datetime",
+    "properties.start_datetime",
+    "properties.end_datetime",
+)
+# Millisecond comparison sorts date and date_nanos indexes together and avoids an
+# OpenSearch hang paging date_nanos into missing values; needs a date unmapped_type.
+ITEM_DATETIME_SORT = {
+    "numeric_type": "date",
+    "unmapped_type": "date",
+    "missing": "_last",
+}
 
 DEFAULT_SORT = {
-    "properties.datetime": {"order": "desc"},
+    "properties.datetime": {"order": "desc", **ITEM_DATETIME_SORT},
+    "properties.start_datetime": {"order": "desc", **ITEM_DATETIME_SORT},
     "id": {"order": "desc"},
     "collection": {"order": "desc"},
 }
@@ -303,7 +323,7 @@ DEFAULT_SORT = {
 ES_ITEMS_SETTINGS = {
     "index": {
         "sort.field": list(DEFAULT_SORT.keys()),
-        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
+        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],  # type: ignore
         "mapping.coerce": COERCE_GLOBAL,
     }
 }
@@ -427,6 +447,10 @@ _BASE_ES_COLLECTIONS_MAPPINGS = {
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
         "id": {"type": "keyword"},
+        "title": {
+            "type": "text",
+            "fields": {"keyword": {"type": "keyword"}},
+        },
         "parent_ids": {"type": "keyword"},
         "bbox_shape": {"type": "geo_shape"},
         "extent.temporal.interval": {
@@ -545,18 +569,23 @@ AGGREGATION_MAPPING = (
 
 
 ES_MAPPING_TYPE_TO_JSON: dict[
-    str, Literal["string", "number", "boolean", "object", "array", "null"]
+    str, Literal["string", "number", "boolean", "object", "array", "null", "integer"]
 ] = {
+    "boolean": "boolean",
+    "constant_keyword": "string",
     "date": "string",
     "date_nanos": "string",
+    "ip": "string",
     "keyword": "string",
     "match_only_text": "string",
     "text": "string",
+    "version": "string",
     "wildcard": "string",
     "byte": "number",
     "double": "number",
     "float": "number",
     "half_float": "number",
+    "integer": "integer",
     "long": "number",
     "scaled_float": "number",
     "short": "number",

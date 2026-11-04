@@ -6,20 +6,22 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 from fastapi import HTTPException, Path, Request
-from pygeofilter.backends.cql2_json import to_cql2
-from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
+from pydantic import ValidationError
 from stac_pydantic.shared import BBox
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.extensions.aggregation import EsAggregationExtensionPostRequest
-from stac_fastapi.core.session import Session
-from stac_fastapi.extensions.core.aggregation.client import AsyncBaseAggregationClient
-from stac_fastapi.extensions.core.aggregation.types import (
-    Aggregation,
-    AggregationCollection,
+from stac_fastapi.core.extensions.filter import (
+    CQL2FilterError,
+    check_cql2_literals,
+    cql2_text_to_json,
 )
+from stac_fastapi.core.session import Session
+from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
+from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
+from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -210,12 +212,30 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             HTTPException: If the filter language is not supported
         """
         if filter_lang == "cql2-text":
-            return orjson.loads(to_cql2(parse_cql2_text(filter)))
+            try:
+                return cql2_text_to_json(filter)
+            except CQL2FilterError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}."
+                )
         elif filter_lang == "cql2-json":
             if isinstance(filter, str):
-                return orjson.loads(unquote_plus(filter))
-            else:
-                return filter
+                # Already percent-decoded by Starlette; decoding again would corrupt
+                # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
+                try:
+                    filter = orjson.loads(filter)
+                except orjson.JSONDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid filter parameter: expected valid CQL2 JSON.",
+                    )
+            try:
+                check_cql2_literals(filter)
+            except CQL2FilterError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}."
+                )
+            return filter
         else:
             raise HTTPException(
                 status_code=400,
@@ -267,14 +287,25 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 collections = [str(collection_id)]
 
             if intersects:
-                base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+                try:
+                    base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+                except orjson.JSONDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid intersects parameter: expected valid JSON.",
+                    )
 
             if datetime:
                 base_args["datetime"] = format_datetime_range(datetime)
 
             if filter_expr:
                 base_args["filter"] = self.get_filter(filter_expr, filter_lang)
-            aggregate_request = EsAggregationExtensionPostRequest(**base_args)
+            try:
+                aggregate_request = EsAggregationExtensionPostRequest(**base_args)
+            except ValidationError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid aggregation parameters."
+                )
         else:
             # Workaround for optional path param in POST requests
             if "collections" in path:
@@ -326,15 +357,23 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 search=search, intersects=aggregate_request.intersects
             )
 
+        supported_aggregations = None
         if aggregate_request.collections:
             search = self.database.apply_collections_filter(
                 search=search, collection_ids=aggregate_request.collections
             )
             # validate that aggregations are supported for all collections
-            for collection_id in aggregate_request.collections:
-                aggregation_info = await self.get_aggregations(
-                    collection_id=collection_id, request=request
-                )
+            for col in aggregate_request.collections:
+                try:
+                    aggregation_info = await self.get_aggregations(
+                        collection_id=col, request=request
+                    )
+                except NotFoundError:
+                    if collection_id:  # /collections/{collection_id}/aggregate
+                        raise
+                    # like /search, skip a missing collection; it has no index to search
+                    collections = [c for c in collections if c != col]
+                    continue
                 supported_aggregations = (
                     aggregation_info["aggregations"] + self.DEFAULT_AGGREGATIONS
                 )
@@ -343,9 +382,9 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     if agg_name not in set([x["name"] for x in supported_aggregations]):
                         raise HTTPException(
                             status_code=400,
-                            detail=f"Aggregation {agg_name} not supported by collection {collection_id}",
+                            detail=f"Aggregation {agg_name} not supported by collection {col}",
                         )
-        else:
+        if supported_aggregations is None:  # no collection named, or none exists
             # Validate that the aggregations requested are supported by the catalog
             aggregation_info = await self.get_aggregations(request=request)
             supported_aggregations = aggregation_info["aggregations"]
@@ -448,7 +487,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": urljoin(collection_endpoint, "aggregate"),
+                        "href": urljoin(collection_endpoint + "/", "aggregate"),
                     },
                 ]
             )

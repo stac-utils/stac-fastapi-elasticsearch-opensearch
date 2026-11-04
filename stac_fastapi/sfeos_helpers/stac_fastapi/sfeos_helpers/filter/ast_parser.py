@@ -16,6 +16,18 @@ from stac_fastapi.core.extensions.filter import (
 )
 
 
+def _temporal_literal(value: Any) -> Any:
+    """Return the string of a CQL2 JSON timestamp or date literal.
+
+    ``{"timestamp": "2020-01-01T00:00:00Z"}`` and ``{"date": "2020-01-01"}``
+    become their strings, as the query builders and the datetime index
+    selection expect; other values are returned as they are.
+    """
+    if isinstance(value, dict) and len(value) == 1:
+        return value.get("timestamp", value.get("date", value))
+    return value
+
+
 class Cql2AstParser:
     """Parse CQL2 into AST tree."""
 
@@ -60,7 +72,7 @@ class Cql2AstParser:
             else:
                 field = str(args[0])
 
-            value = args[1] if len(args) > 1 else None
+            value = _temporal_literal(args[1]) if len(args) > 1 else None
 
             return ComparisonNode(op=op, field=field, value=value)
 
@@ -75,14 +87,15 @@ class Cql2AstParser:
 
             if op == AdvancedComparisonOp.BETWEEN:
                 if len(args) == 2 and isinstance(args[1], list) and len(args[1]) == 2:
-                    value = (args[1][0], args[1][1])
+                    bounds = args[1]
                 elif len(args) == 3:
-                    value = (args[1], args[2])
+                    bounds = args[1:]
                 else:
                     raise ValueError(
                         f"BETWEEN operator expects either [property, [lower, upper]] or [property, lower, upper], "
                         f"got format with {len(args)} args: {args}"
                     )
+                value = (_temporal_literal(bounds[0]), _temporal_literal(bounds[1]))
 
             elif op == AdvancedComparisonOp.IN:
                 if len(args) != 2:
@@ -91,7 +104,7 @@ class Cql2AstParser:
                     )
                 if not isinstance(args[1], list):
                     raise ValueError(f"IN operator expects list, got {type(args[1])}")
-                value = args[1]
+                value = [_temporal_literal(element) for element in args[1]]
 
             elif op == AdvancedComparisonOp.LIKE:
                 if len(args) != 2:

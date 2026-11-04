@@ -16,6 +16,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_MAPPINGS,
     ES_ITEMS_SETTINGS,
     ITEM_INDICES,
+    ITEMS_ALIAS_PREFIX,
     ITEMS_INDEX_PREFIX,
 )
 
@@ -47,8 +48,12 @@ def index_alias_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index alias derived from the collection id.
     """
-    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-    return f"{ITEMS_INDEX_PREFIX}{cleaned}"
+    cleaned = (
+        "*"
+        if collection_id == "*"
+        else collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+    )
+    return f"{ITEMS_ALIAS_PREFIX}{cleaned}"
 
 
 def indices(collection_ids: list[str] | None) -> str:
@@ -326,3 +331,18 @@ async def delete_item_index_shared(settings: Any, collection_id: str) -> None:
     else:
         await client.indices.delete(index=name, ignore=[404])
     await client.close()
+
+
+async def index_behind_alias(client: Any, alias: str, index: str) -> bool:
+    """Tell whether `index` is one of the indices that `alias` resolves to.
+
+    A conditional write or delete that targets the version's index calls this
+    first: an alias moved to another index since the version was read means the
+    version is gone, and the write would land in, or the cleanup touch, the
+    wrong index.
+    """
+    resolved = await client.indices.resolve_index(name=alias)
+    behind = {entry["name"] for entry in resolved.get("indices", [])}
+    for entry in resolved.get("aliases", []):
+        behind.update(entry.get("indices", []))
+    return index in behind

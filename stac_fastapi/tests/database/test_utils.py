@@ -111,7 +111,9 @@ async def test_check_item_exists_in_alias_with_multiple_items(ctx, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_check_item_exists_with_different_datetime(ctx, txn_client):
+async def test_check_item_exists_with_different_datetime(
+    ctx, txn_client, stac_validator_off
+):
     """
     Test that check_item_exists_in_alias finds items regardless of datetime value.
 

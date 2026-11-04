@@ -45,6 +45,8 @@ jobs:
           DISABLE_SECURITY_PLUGIN: true
           DISABLE_INSTALL_DEMO_CONFIG: true
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+          # The PATCH regression matrix compiles many distinct update scripts.
+          script.context.update.max_compilations_rate: 300/5m
           action.destructive_requires_name: false
         ports:
           - 9202:9202
@@ -80,33 +82,27 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
+          version: "0.9.*"
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            **/pyproject.toml
 
       - name: Lint code
         if: ${{ matrix.python-version == '3.12' }}
         run: |
-          python -m pip install pre-commit
-          pre-commit run --all-files
+          uv run pre-commit run --all-files
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip wheel pytest-timeout
-          pip install ./stac_fastapi/core[catalogs]
-          pip install ./stac_fastapi/sfeos_helpers
-          pip install ./stac_fastapi/elasticsearch[dev,server]
-          pip install ./stac_fastapi/opensearch[dev,server]
+          uv sync --all-extras
 
       - name: Run test suite
         run: |
-          pytest -svvv --timeout=300
+          uv run pytest -svvv --timeout=300
         env:
           ENVIRONMENT: testing
           ES_PORT: ${{ matrix.port }}

@@ -2,48 +2,95 @@ import asyncio
 import copy
 import json
 import os
-from typing import Any, Callable
+from typing import Any, Callable, List
 
 import pytest
 import pytest_asyncio
-from fastapi import Depends, HTTPException, security, status
+from fastapi import Depends, HTTPException
+from fastapi import params as fastapi_params
+from fastapi import security, status
+from fastapi.routing import BaseRoute
 from httpx import ASGITransport, AsyncClient
 from pydantic import ConfigDict
 from stac_pydantic import api
 
-from stac_fastapi.api.app import StacApi
-from stac_fastapi.core.basic_auth import BasicAuth
-from stac_fastapi.core.core import (
+import stac_fastapi.api.routes
+
+
+def _patched_add_route_dependencies(
+    routes: List[BaseRoute], scopes: List[dict], dependencies: List[Depends]
+) -> None:
+    """Add dependencies to routes, with FastAPI >= 0.137 _IncludedRouter support."""
+    for route in routes:
+        # 1. Safely recurse into FastAPI >= 0.137 _IncludedRouters
+        if hasattr(route, "original_router"):
+            _patched_add_route_dependencies(
+                route.original_router.routes, scopes, dependencies
+            )
+            continue
+
+        # 2. Recurse into Mounts or older Starlette sub-routers
+        if hasattr(route, "routes") and route.routes:
+            _patched_add_route_dependencies(route.routes, scopes, dependencies)
+            continue
+
+        # 3. Skip anything that isn't a standard endpoint with dependencies attribute
+        if (
+            not hasattr(route, "path")
+            or not hasattr(route, "dependencies")
+            or not hasattr(route, "methods")
+        ):
+            continue
+
+        # 4. Check if route matches any scope and add dependencies
+        for scope in scopes:
+            # Check if route matches scope path
+            scope_path_matches = scope["path"] == "*" or scope["path"] == route.path
+            if not scope_path_matches:
+                continue
+
+            # Check if route matches scope method
+            scope_method_matches = (
+                scope["method"] == "*" or scope["method"] in route.methods
+            )
+            if not scope_method_matches:
+                continue
+
+            # Route matches this scope - add dependencies and stop checking other scopes
+            for dep in dependencies:
+                if isinstance(dep, fastapi_params.Depends):
+                    route.dependencies.append(dep)
+                else:
+                    route.dependencies.append(fastapi_params.Depends(dep))
+            break  # Only apply the first matching scope's dependencies
+
+
+# Apply the monkey-patch BEFORE StacApi is imported
+stac_fastapi.api.routes.add_route_dependencies = _patched_add_route_dependencies
+
+from stac_fastapi.core.basic_auth import BasicAuth  # noqa: E402
+from stac_fastapi.core.core import (  # noqa: E402
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.core.extensions import QueryExtension
-from stac_fastapi.core.extensions.aggregation import (
-    EsAggregationExtensionGetRequest,
-    EsAggregationExtensionPostRequest,
-)
-from stac_fastapi.core.rate_limit import setup_rate_limit
-from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.extensions.core import (
-    AggregationExtension,
-    FieldsExtension,
-    FilterExtension,
-    FreeTextExtension,
-    SortExtension,
-    TokenPaginationExtension,
-    TransactionExtension,
-)
-from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
-from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
-from stac_fastapi.types.config import Settings
+from stac_fastapi.core.rate_limit import setup_rate_limit  # noqa: E402
+from stac_fastapi.core.utilities import get_bool_env  # noqa: E402
+from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX  # noqa: E402
+from stac_fastapi.types.config import Settings  # noqa: E402
 
+# Pin the test environment to CI defaults regardless of compose.yml, which
+# enables extra features for dev servers (validator, catalogs route, OS rate
+# limit). Tests that need them opt in explicitly (catalogs_app fixtures,
+# monkeypatch in the validator tests).
+os.environ["ENABLE_STAC_VALIDATOR"] = "false"
+os.environ["ENABLE_CATALOGS_ROUTE"] = "false"
+os.environ.pop("STAC_FASTAPI_RATE_LIMIT", None)
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
-os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 os.environ.setdefault("DATABASE_REFRESH", "true")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from stac_fastapi.opensearch.app import app_config
+    from stac_fastapi.opensearch.app import instantiate_api
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
     from stac_fastapi.opensearch.config import OpensearchSettings as SearchSettings
     from stac_fastapi.opensearch.database_logic import (
@@ -52,7 +99,7 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         create_index_templates,
     )
 else:
-    from stac_fastapi.elasticsearch.app import app_config
+    from stac_fastapi.elasticsearch.app import instantiate_api
     from stac_fastapi.elasticsearch.config import (
         AsyncElasticsearchSettings as AsyncSettings,
     )
@@ -217,7 +264,11 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
-    return StacApi(**app_config).app
+    """Return a fresh FastAPI app with no route dependencies."""
+    api = instantiate_api()
+    api.app.router.dependencies = []
+    api.app.state.database_logic = api.client.database
+    return api.app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -234,10 +285,11 @@ async def app_client(app):
 @pytest_asyncio.fixture(scope="session")
 async def app_rate_limit():
     """Fixture to get the FastAPI app with test-specific rate limiting."""
-    app = StacApi(**app_config).app
-    setup_rate_limit(app, rate_limit="2/minute")
+    api = instantiate_api()
+    api.app.router.dependencies = []
+    setup_rate_limit(api.app, rate_limit="2/minute")
 
-    return app
+    return api.app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -253,17 +305,17 @@ async def app_client_rate_limit(app_rate_limit):
 
 @pytest_asyncio.fixture(scope="session")
 async def app_basic_auth():
-    """Fixture to get the FastAPI app with basic auth configured."""
+    """Fixture to get the FastAPI app with basic auth configured cleanly."""
+    # 1. Get a fresh, isolated app from the factory
+    api = instantiate_api()
+    app = api.app
 
-    # Create a copy of the app config
-    test_config = app_config.copy()
-
-    # Create basic auth dependency wrapped in Depends
+    # 2. Create basic auth dependency
     basic_auth = Depends(
         BasicAuth(credentials=[{"username": "admin", "password": "admin"}])
     )
 
-    # Define public routes that don't require auth
+    # 3. Define public routes that don't require auth
     public_paths = {
         "/": ["GET"],
         "/conformance": ["GET"],
@@ -277,28 +329,22 @@ async def app_basic_auth():
         "/_mgmt/ping": ["GET"],
     }
 
-    # Initialize route dependencies with public paths
-    test_config["route_dependencies"] = [
-        (
-            [{"path": path, "method": method} for method in methods],
-            [],  # No auth for public routes
-        )
+    # 4. Build scopes list for public routes (no auth required)
+    public_scopes = [
+        {"path": path, "method": method}
         for path, methods in public_paths.items()
+        for method in methods
     ]
 
-    # Add catch-all route with basic auth
-    test_config["route_dependencies"].extend(
-        [
-            (
-                [{"path": "*", "method": "*"}],
-                [basic_auth],
-            )  # Require auth for all other routes
-        ]
+    # 5. Apply public routes with no dependencies
+    _patched_add_route_dependencies(app.router.routes, public_scopes, [])
+
+    # 6. Apply catch-all with basic auth
+    _patched_add_route_dependencies(
+        app.router.routes, [{"path": "*", "method": "*"}], [basic_auth]
     )
 
-    # Create the app with basic auth
-    api = StacApi(**test_config)
-    return api.app
+    return app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -328,17 +374,17 @@ def must_be_bob(
 @pytest_asyncio.fixture(scope="session")
 async def route_dependencies_app():
     """Fixture to get the FastAPI app with custom route dependencies."""
-    # Create a copy of the app config
-    test_config = app_config.copy()
+    # Get a fresh app from the factory
+    api = instantiate_api()
+    app = api.app
 
-    # Define route dependencies
-    test_config["route_dependencies"] = [
-        ([{"method": "GET", "path": "/collections"}], [Depends(must_be_bob)])
-    ]
+    # Define route dependencies (explicitly override any from app_config)
+    scopes = [{"method": "GET", "path": "/collections"}]
 
-    # Create the app with custom route dependencies
-    api = StacApi(**test_config)
-    return api.app
+    # Apply the route dependencies
+    _patched_add_route_dependencies(app.router.routes, scopes, [Depends(must_be_bob)])
+
+    return app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -355,112 +401,40 @@ async def route_dependencies_client(route_dependencies_app):
 
 def build_test_app():
     """Build a test app with configurable transaction extensions."""
-    # Create a copy of the base config
-    test_config = app_config.copy()
+    # 1. Read the environment variable that the test monkeypatched
+    transactions_enabled = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
 
-    # Get transaction extensions setting
-    TRANSACTIONS_EXTENSIONS = get_bool_env(
-        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
-    )
+    # 2. Pass it into a fresh settings object
+    test_settings = AsyncSettings(enable_transactions_extensions=transactions_enabled)
+    test_database = DatabaseLogic()
 
-    # Configure extensions
-    settings = AsyncSettings()
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
+    # 3. Call the factory!
+    api = instantiate_api(settings=test_settings, database_logic=test_database)
 
-    search_extensions = [
-        FieldsExtension(),
-        SortExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-    ]
+    # 4. Clear route dependencies (like BasicAuth) for tests
+    api.app.router.dependencies = []
 
-    # Add transaction extension if enabled
-    if TRANSACTIONS_EXTENSIONS:
-        search_extensions.append(
-            TransactionExtension(
-                client=TransactionsClient(
-                    database=database, session=None, settings=settings
-                ),
-                settings=settings,
-            )
-        )
-
-    # Update extensions in config
-    extensions = [aggregation_extension] + search_extensions
-    test_config["extensions"] = extensions
-
-    # Update client with new extensions
-    test_config["client"] = CoreClient(
-        database=database,
-        session=None,
-        extensions=extensions,
-        post_request_model=test_config["search_post_request_model"],
-    )
-
-    # Create and return the app
-    api = StacApi(**test_config)
     return api.app
 
 
-def build_test_app_with_catalogs():
+def build_test_app_with_catalogs(transactions_enabled: bool = True):
     """Build a test app with catalogs extension enabled."""
-    from stac_fastapi_catalogs_extension import (
-        CatalogsExtension,
-        CatalogsTransactionExtension,
+    # Turn on the flag in settings
+    test_settings = AsyncSettings(
+        enable_catalogs_route=True,
+        enable_transactions_extensions=transactions_enabled,
     )
-
-    from stac_fastapi.core.catalogs_client import CatalogsClient
-
-    # Get the base config
-    test_config = app_config.copy()
-
-    # Get database and settings (already imported above)
     test_database = DatabaseLogic()
-    test_settings = SearchSettings()
 
-    # Create shared catalogs client
-    catalogs_client = CatalogsClient(database=test_database)
-
-    # Add catalogs extension
-    catalogs_extension = CatalogsExtension(
-        client=catalogs_client,
-        settings=test_settings.model_dump(),
+    # Let the factory do all the hard work!
+    api = instantiate_api(
+        settings=test_settings,
+        database_logic=test_database,
     )
 
-    # Add catalogs transaction extension
-    catalogs_transaction_extension = CatalogsTransactionExtension(
-        client=catalogs_client,
-        settings=test_settings.model_dump(),
-    )
+    # Clear auth dependencies for testing
+    api.app.router.dependencies = []
 
-    # Add to extensions if not already present
-    if not any(isinstance(ext, CatalogsExtension) for ext in test_config["extensions"]):
-        test_config["extensions"].append(catalogs_extension)
-    if not any(
-        isinstance(ext, CatalogsTransactionExtension)
-        for ext in test_config["extensions"]
-    ):
-        test_config["extensions"].append(catalogs_transaction_extension)
-
-    # Update client with new extensions
-    test_config["client"] = CoreClient(
-        database=test_database,
-        session=None,
-        extensions=test_config["extensions"],
-        post_request_model=test_config["search_post_request_model"],
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-    )
-
-    # Create and return the app
-    api = StacApi(**test_config)
     return api.app
 
 
@@ -482,11 +456,133 @@ async def catalogs_app_client(catalogs_app):
         yield c
 
 
+def get_flattened_routes(router_obj, prefix=""):
+    """
+    Recursively extracts all flattened routes from a FastAPI app,
+    navigating through Mounts, APIRouters, and FastAPI >= 0.137 _IncludedRouters.
+    """
+    api_routes = set()
+    routes = getattr(router_obj, "routes", [])
+
+    for route in routes:
+        # 1. Standard Endpoints (APIRoute)
+        if hasattr(route, "methods") and route.methods:
+            for m in route.methods:
+                if m == "HEAD":
+                    continue
+                r_path = getattr(route, "path", "")
+                full_path = f"{prefix}{r_path}".replace("//", "/")
+                api_routes.add(f"{m} {full_path}")
+
+        # 2. Recurse into Mounts (Starlette)
+        if hasattr(route, "app") and hasattr(route.app, "routes"):
+            r_path = getattr(route, "path", getattr(route, "prefix", ""))
+            next_prefix = f"{prefix}{r_path}"
+            api_routes.update(get_flattened_routes(route.app, next_prefix))
+
+        # 3. Recurse into FastAPI >= 0.137 _IncludedRouter wrappers
+        if hasattr(route, "original_router"):
+            r_prefix = getattr(route, "prefix", "")
+            if not r_prefix and hasattr(route, "include_context"):
+                r_prefix = getattr(route.include_context, "prefix", "")
+            next_prefix = f"{prefix}{r_prefix}"
+            api_routes.update(get_flattened_routes(route.original_router, next_prefix))
+
+        # 4. Recurse into classic FastAPI/Starlette Routers (< 0.137)
+        elif hasattr(route, "routes") and route is not router_obj:
+            r_path = getattr(route, "path", getattr(route, "prefix", ""))
+            next_prefix = f"{prefix}{r_path}"
+            api_routes.update(get_flattened_routes(route, next_prefix))
+
+    return api_routes
+
+
 @pytest_asyncio.fixture()
-async def mock_datetime_env(txn_client, monkeypatch):
-    """Set USE_DATETIME environment variable to False for testing."""
-    monkeypatch.setenv("USE_DATETIME", "false")
-    if hasattr(txn_client.database.async_index_selector, "cache_manager"):
-        await txn_client.database.async_index_selector.cache_manager.clear_cache()
+async def datetime_filtering_env(txn_client, app, monkeypatch):
+    """Enable datetime index filtering for a test.
+
+    Sets ENABLE_DATETIME_INDEX_FILTERING=True so these tests run under a plain
+    ``pytest`` invocation without requiring the environment variable at process
+    start. Because the index inserter and selector are chosen when each
+    DatabaseLogic instance is constructed, the strategy objects on the shared
+    test database and the app's database are rebuilt under the new flag and
+    restored afterwards.
+    """
+    from stac_fastapi.sfeos_helpers.search_engine import (
+        IndexInsertionFactory,
+        IndexSelectorFactory,
+    )
+
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "true")
+
+    databases = {id(db): db for db in (txn_client.database, app.state.database_logic)}
+    saved = {
+        db_id: (db.async_index_inserter, db.async_index_selector)
+        for db_id, db in databases.items()
+    }
+    for db in databases.values():
+        db.async_index_inserter = IndexInsertionFactory.create_insertion_strategy(
+            db.client
+        )
+        db.async_index_selector = IndexSelectorFactory.create_selector(db.client)
+        if hasattr(db.async_index_selector, "cache_manager"):
+            await db.async_index_selector.cache_manager.clear_cache()
+
     yield
-    monkeypatch.setenv("USE_DATETIME", "true")
+
+    for db_id, db in databases.items():
+        db.async_index_inserter, db.async_index_selector = saved[db_id]
+        if hasattr(db.async_index_selector, "cache_manager"):
+            await db.async_index_selector.cache_manager.clear_cache()
+
+
+@pytest_asyncio.fixture()
+async def mock_datetime_env(datetime_filtering_env, monkeypatch):
+    """Datetime index filtering with USE_DATETIME=False (start/end sharding)."""
+    monkeypatch.setenv("USE_DATETIME", "false")
+    yield
+
+
+@pytest.fixture
+def stac_validator_off(monkeypatch):
+    """Disable the STAC validator for tests that exercise non-validation behavior."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+
+
+async def use_datetime_nanos(value: bool) -> None:
+    """Rebuild the item mapping and index template for USE_DATETIME_NANOS=value.
+
+    The item mapping is computed at import, so the mapping modules are reloaded
+    and the server-side index template rewritten. The caller sets the env var.
+    """
+    import importlib
+
+    import stac_fastapi.sfeos_helpers.database.index as index_module
+    import stac_fastapi.sfeos_helpers.mappings as mappings_module
+    import stac_fastapi.sfeos_helpers.search_engine.index_operations as index_ops_module
+
+    assert get_bool_env("USE_DATETIME_NANOS", default=True) is value
+    for module in (mappings_module, index_module, index_ops_module):
+        importlib.reload(module)
+    await create_index_templates()
+
+
+@pytest_asyncio.fixture()
+async def datetime_nanos_off(txn_client, monkeypatch):
+    """Map item datetimes as ``date`` (USE_DATETIME_NANOS=false) for one test."""
+    await delete_collections_and_items(txn_client)
+    try:
+        with monkeypatch.context() as m:
+            m.setenv("USE_DATETIME_NANOS", "false")
+            await use_datetime_nanos(False)
+            yield
+    finally:
+        await delete_collections_and_items(txn_client)
+        restored_value = get_bool_env("USE_DATETIME_NANOS", default=True)
+        await use_datetime_nanos(restored_value)
+        template = await txn_client.database.client.indices.get_index_template(
+            name=f"template_{ITEMS_INDEX_PREFIX}"
+        )
+        restored = template["index_templates"][0]["index_template"]["template"]
+        props = restored["mappings"]["properties"]["properties"]["properties"]
+        assert props["datetime"]["type"] == ("date_nanos" if restored_value else "date")

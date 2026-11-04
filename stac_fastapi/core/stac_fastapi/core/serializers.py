@@ -11,12 +11,55 @@ from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.core.models import Catalog
-from stac_fastapi.core.models.links import CollectionLinks
+from stac_fastapi.core.models.links import SORTABLES_REL, CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env, get_excluded_from_items
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
 
 logger = logging.getLogger(__name__)
+
+
+# Relations of the links SFEOS generates for its own collection endpoints. Per
+# the catalogs spec they are API-owned — `canonical` is the global endpoint and
+# `duplicate` another scoped path — so a stored copy is ours and is dropped on
+# read, like the rels stac-fastapi infers (self, root, ...).
+GENERATED_COLLECTION_RELS = {
+    "queryables",
+    "aggregate",
+    "aggregations",
+    "canonical",
+    "duplicate",
+    SORTABLES_REL,
+}
+
+# `related` is dual-use: generated for poly-hierarchy parents, but also a
+# generic rel users store for external resources such as DOIs. A stored
+# `related` counts as a generated copy only when its href is one this read
+# generated or resolves inside this API.
+DUAL_USE_COLLECTION_RELS = {"related"}
+
+
+def _without_generated(
+    stored: list[dict], generated: list[dict], base_url: str
+) -> list[dict]:
+    """Drop stored copies of the links this read generated for our endpoints.
+
+    Stored hrefs are already absolute because the caller resolves them against
+    ``base_url`` first.
+    """
+    rels = {link["rel"] for link in generated}
+    owned = GENERATED_COLLECTION_RELS & rels
+    dual = DUAL_USE_COLLECTION_RELS & rels
+    hrefs = {link["href"] for link in generated}
+    return [
+        link
+        for link in stored
+        if link["rel"] not in owned
+        and not (
+            link["rel"] in dual
+            and (link["href"] in hrefs or link["href"].startswith(base_url))
+        )
+    ]
 
 
 @attr.s
@@ -43,6 +86,7 @@ class Serializer(abc.ABC):
         resource_type: str,  # "Collection" or "Catalog"
         parent_ids: list[str],
         context_parent_id: str | None = None,
+        hide_alternate_parents: bool = False,
     ) -> list[dict]:
         """Generate HATEOAS links for poly-hierarchical STAC resources.
 
@@ -56,6 +100,9 @@ class Serializer(abc.ABC):
             parent_ids: List of parent catalog IDs.
             context_parent_id: The current catalog context (if accessing via scoped endpoint).
                               None means accessing via global endpoint (e.g., /collections/{id}).
+            hide_alternate_parents: If True, do not advertise rel="related" or
+                rel="duplicate" links to alternative parents. Useful for multi-tenant
+                deployments to prevent information leakage about other tenants.
 
         Returns:
             List of link dictionaries following STAC link relation conventions.
@@ -79,18 +126,19 @@ class Serializer(abc.ABC):
                     "title": "Root Catalog",
                 }
             )
-            # All catalog parents become rel="related" links
-            for pid in unique_pids:
-                is_root = pid in ("stac-fastapi", "root")
-                if not is_root:
-                    links.append(
-                        {
-                            "rel": "related",
-                            "href": f"{base_url}catalogs/{pid}",
-                            "type": "application/json",
-                            "title": pid,
-                        }
-                    )
+            # All catalog parents become rel="related" links (unless hidden)
+            if not hide_alternate_parents:
+                for pid in unique_pids:
+                    is_root = pid in ("stac-fastapi", "root")
+                    if not is_root:
+                        links.append(
+                            {
+                                "rel": "related",
+                                "href": f"{base_url}catalogs/{pid}",
+                                "type": "application/json",
+                                "title": pid,
+                            }
+                        )
         elif not unique_pids and resource_type == "Catalog":
             # Root catalog with no parents
             links.append(
@@ -102,18 +150,21 @@ class Serializer(abc.ABC):
                 }
             )
         else:
-            # Scoped endpoint or catalog: first parent → parent, rest → related
+            # Scoped endpoint or catalog: first parent → parent, rest → related (unless hidden)
             for idx, pid in enumerate(unique_pids):
                 is_root = pid in ("stac-fastapi", "root")
                 href = base_url if is_root else f"{base_url}catalogs/{pid}"
-                links.append(
-                    {
-                        "rel": "parent" if idx == 0 else "related",
-                        "href": href,
-                        "type": "application/json",
-                        "title": "Root Catalog" if is_root else pid,
-                    }
-                )
+                rel = "parent" if idx == 0 else "related"
+                # Parent is always shown; related links for alternate parents are optional
+                if rel == "parent" or not hide_alternate_parents:
+                    links.append(
+                        {
+                            "rel": rel,
+                            "href": href,
+                            "type": "application/json",
+                            "title": "Root Catalog" if is_root else pid,
+                        }
+                    )
 
         # 3. Generate Canonical Link (Collections only - always points to global endpoint)
         if resource_type == "Collection":
@@ -123,7 +174,7 @@ class Serializer(abc.ABC):
             )
 
         # 4. Generate Duplicate Links (Collections only - catalogs don't have scoped read endpoints)
-        if resource_type == "Collection":
+        if resource_type == "Collection" and not hide_alternate_parents:
             for pid in unique_pids:
                 if pid == context_parent_id:
                     continue  # Skip current context
@@ -155,7 +206,27 @@ class ItemSerializer(Serializer):
         Returns:
             A dictionary representation of the item ready for database insertion.
         """
+        # Add required STAC v1.0.0 collection link if item has collection field
         item_links = resolve_links(stac_data.get("links", []), base_url)
+
+        # Ensure collection link exists (required by STAC v1.0.0 spec)
+        if stac_data.get("collection"):
+            collection_id = stac_data["collection"]
+
+            # Check if collection link already exists
+            has_collection_link = any(
+                link.get("rel") == "collection" for link in item_links
+            )
+
+            if not has_collection_link:
+                # Add collection link
+                collection_link = {
+                    "rel": "collection",
+                    "href": f"{base_url}collections/{collection_id}",
+                    "type": "application/json",
+                }
+                item_links.append(collection_link)
+
         stac_data["links"] = item_links
         if get_bool_env("STAC_ALTERNATE_ASSETS"):
             for asset_key, asset in stac_data["assets"].items():
@@ -246,11 +317,15 @@ class ItemSerializer(Serializer):
             id=item_id,
             collection=collection_id,
             geometry=item.get("geometry", {}),
-            bbox=item.get("bbox", []),
+            bbox=item.get("bbox"),
             properties=item.get("properties", {}),
             links=item_links,
             assets=assets,
         )
+
+        # STAC prohibits bbox on null-geometry items, so never invent one.
+        if stac_item["bbox"] is None:
+            del stac_item["bbox"]
 
         if excluded_fields := os.getenv("EXCLUDED_FROM_ITEMS"):
             for field_path in excluded_fields.split(","):
@@ -368,16 +443,30 @@ class CollectionSerializer(Serializer):
                 link for link in collection_links if link.get("rel") != "parent"
             ]
 
+            # Get hide_alternate_parents flag from app state
+            hide_alternate_parents = (
+                getattr(request.app.state, "catalogs_hide_alternate_parents", False)
+                if request and hasattr(request.app, "state")
+                else False
+            )
+
             # Generate poly-hierarchy links using helper method
             context_parent_id = request.path_params.get("catalog_id")
             dynamic_links = cls.generate_poly_hierarchy_links(
-                base_url, collection_id, "Collection", parent_ids, context_parent_id
+                base_url,
+                collection_id,
+                "Collection",
+                parent_ids,
+                context_parent_id,
+                hide_alternate_parents,
             )
             collection_links.extend(dynamic_links)
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            collection_links += _without_generated(
+                resolve_links(original_links, base_url), collection_links, base_url
+            )
 
         collection["links"] = collection_links
 
@@ -432,15 +521,29 @@ class CollectionSerializer(Serializer):
                 link for link in collection_links if link.get("rel") != "parent"
             ]
 
+            # Get hide_alternate_parents flag from app state
+            hide_alternate_parents = (
+                getattr(request.app.state, "catalogs_hide_alternate_parents", False)
+                if request and hasattr(request.app, "state")
+                else False
+            )
+
             # Generate poly-hierarchy links using helper method (catalog_id is the context)
             dynamic_links = cls.generate_poly_hierarchy_links(
-                base_url, collection_id, "Collection", parent_ids, catalog_id
+                base_url,
+                collection_id,
+                "Collection",
+                parent_ids,
+                catalog_id,
+                hide_alternate_parents,
             )
             collection_links.extend(dynamic_links)
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            collection_links += _without_generated(
+                resolve_links(original_links, base_url), collection_links, base_url
+            )
 
         collection["links"] = collection_links
 
@@ -496,10 +599,22 @@ class CatalogSerializer(Serializer):
 
         catalog_links = resolve_links(catalog.get("links", []), base_url)
 
+        # Get hide_alternate_parents flag from app state
+        hide_alternate_parents = (
+            getattr(request.app.state, "catalogs_hide_alternate_parents", False)
+            if request and hasattr(request.app, "state")
+            else False
+        )
+
         # Generate poly-hierarchy links using helper method (catalog_id is the context)
         context_parent_id = request.path_params.get("parent_catalog_id")
         dynamic_links = cls.generate_poly_hierarchy_links(
-            base_url, catalog.get("id"), "Catalog", parent_ids, context_parent_id
+            base_url,
+            catalog.get("id"),
+            "Catalog",
+            parent_ids,
+            context_parent_id,
+            hide_alternate_parents,
         )
         catalog_links.extend(dynamic_links)
 

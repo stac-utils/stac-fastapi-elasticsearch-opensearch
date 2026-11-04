@@ -4,14 +4,12 @@ import uuid
 from typing import Any, Dict, List, Literal
 
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.sfeos_helpers.database import (
-    index_alias_by_collection_id,
-    index_by_collection_id,
-)
+from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
     ES_ITEMS_MAPPINGS,
     ES_ITEMS_SETTINGS,
+    ITEMS_ALIAS_PREFIX,
     ITEMS_INDEX_PREFIX,
 )
 
@@ -39,18 +37,29 @@ class IndexOperations:
         Returns:
             str: Created index name.
         """
-        index_name = f"{index_by_collection_id(collection_id)}-000001"
         alias_name = index_alias_by_collection_id(collection_id)
 
+        # Idempotent: when the alias exists, the collection has its index already.
+        if await client.indices.exists_alias(name=alias_name):
+            return next(iter(await client.indices.get_alias(name=alias_name)))
+
+        # A name of its own per creation, as datetime indices get, so a collection
+        # deleted and created again never reuses an index name (ETags hash it).
+        # The alias marks it as the write index, so a concurrent create of another
+        # name is refused by the engine (an alias has one write index) instead
+        # of adding a second index. Hard to reach: create_collection writes the
+        # collection document first, with op_type=create.
+        index_name = self.create_index_name(collection_id)
+        aliases = {alias_name: {"is_write_index": True}}
         if hasattr(client, "options"):
             await client.options(ignore_status=[400]).indices.create(
                 index=index_name,
-                body=self._create_index_body({alias_name: {}}),
+                body=self._create_index_body(aliases),
             )
         else:
             await client.indices.create(
                 index=index_name,
-                body=self._create_index_body({alias_name: {}}),
+                body=self._create_index_body(aliases),
                 params={"ignore": [400]},
             )
         return index_name
@@ -185,7 +194,7 @@ class IndexOperations:
             str: Formatted alias name with prefix, type, collection ID, and date.
         """
         cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-        return f"{ITEMS_INDEX_PREFIX}{name}_{cleaned.lower()}_{start_date}"
+        return f"{ITEMS_ALIAS_PREFIX}{name}_{cleaned.lower()}_{start_date}"
 
     @staticmethod
     def _create_index_body(aliases: Dict[str, Dict]) -> Dict[str, Any]:

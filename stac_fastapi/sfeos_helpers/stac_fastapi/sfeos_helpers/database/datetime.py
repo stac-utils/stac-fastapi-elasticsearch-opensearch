@@ -9,16 +9,29 @@ import re
 from datetime import date
 from datetime import datetime as datetime_type
 from datetime import timezone
+from typing import Any
 
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.types.rfc3339 import DateTimeType
+from stac_fastapi.types.rfc3339 import DateTimeType, rfc3339_str_to_datetime
 
 logger = logging.getLogger(__name__)
 
 
+MAX_DATE_NANOS = datetime_type(2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc)
+# datetime holds microseconds; the engine maximum has 807 more nanoseconds.
+MAX_DATE_NANOS_STR = "2262-04-11T23:47:16.854775807Z"
+
+
+def _past_max_nanos(value: str, parsed: datetime_type) -> bool:
+    """Whether an RFC 3339 string is after MAX_DATE_NANOS_STR, compared to the nanosecond."""
+    fraction = re.search(r":\d{2}\.(\d+)", value)
+    nanos = int(fraction.group(1)[6:9].ljust(3, "0")) if fraction else 0
+    return (parsed, nanos) > (MAX_DATE_NANOS, 807)
+
+
 def return_date(
     interval: DateTimeType | str | None,
-) -> dict[str, str | None]:
+) -> dict[str, Any]:
     """
     Convert a date interval to an Elasticsearch/OpenSearch query format.
 
@@ -35,18 +48,16 @@ def return_date(
 
     Returns:
         dict: A dictionary representing the date interval for use in filtering search results,
-            always containing 'gte' and 'lte' keys.
+            always containing 'gte' and 'lte' keys. With USE_DATETIME_NANOS, a string
+            interval entirely outside 1970-2262 returns both as None and 'empty': True.
     """
-    result: dict[str, str | None] = {"gte": None, "lte": None}
+    result: dict[str, Any] = {"gte": None, "lte": None}
     use_datetime_nanos = get_bool_env("USE_DATETIME_NANOS", default=True)
     if interval is None:
         return result
 
     if use_datetime_nanos:
         MIN_DATE_NANOS = datetime_type(1970, 1, 1, tzinfo=timezone.utc)
-        MAX_DATE_NANOS = datetime_type(
-            2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc
-        )
 
         if isinstance(interval, str):
             if "/" in interval:
@@ -57,11 +68,26 @@ def return_date(
                 result["lte"] = (
                     parts[1]
                     if len(parts) > 1 and parts[1] != ".."
-                    else MAX_DATE_NANOS.isoformat()
+                    else MAX_DATE_NANOS_STR
                 )
             else:
                 converted_time = interval if interval != ".." else None
                 result["gte"] = result["lte"] = converted_time
+            if result["gte"] is None:
+                return result
+            try:
+                gte = rfc3339_str_to_datetime(result["gte"])
+                lte = rfc3339_str_to_datetime(result["lte"])
+            except ValueError:
+                # Not RFC 3339 (e.g. a bare date): leave it to the engine.
+                return result
+            # Clamping would match items at 1970 or 2262, so a disjoint interval is empty.
+            if lte < MIN_DATE_NANOS or _past_max_nanos(result["gte"], gte):
+                return {"gte": None, "lte": None, "empty": True}
+            if gte < MIN_DATE_NANOS:
+                result["gte"] = MIN_DATE_NANOS.isoformat()
+            if _past_max_nanos(result["lte"], lte):
+                result["lte"] = MAX_DATE_NANOS_STR
             return result
 
         if isinstance(interval, datetime_type):

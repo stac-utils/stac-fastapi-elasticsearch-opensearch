@@ -1,8 +1,9 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import urlsafe_b64encode
 from copy import deepcopy
 from typing import Any, Iterable, Type
 
@@ -12,15 +13,18 @@ import orjson
 from fastapi import HTTPException
 from opensearchpy import Q, Search
 from opensearchpy.exceptions import ConflictError as OSConflictError
+from opensearchpy.exceptions import ConnectionError as OSConnectionError
+from opensearchpy.exceptions import ConnectionTimeout as OSConnectionTimeout
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from opensearchpy.exceptions import RequestError
 from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.etag import DocumentVersion, precondition_failed
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
-from stac_fastapi.extensions.core.transaction.request import (
+from stac_fastapi.extensions.transaction.request import (
     PartialCollection,
     PartialItem,
     PatchOperation,
@@ -30,6 +34,7 @@ from stac_fastapi.opensearch.config import (
 )
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
 from stac_fastapi.sfeos_helpers.database import (
+    PARENT_ID_SCRIPT,
     ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
@@ -40,9 +45,13 @@ from stac_fastapi.sfeos_helpers.database import (
     check_item_exists_in_alias,
     check_item_exists_in_alias_sync,
     create_index_templates_shared,
+    decode_search_after_token_shared,
     delete_item_index_shared,
+    find_existing_item_ids,
+    find_item_in_alias,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
+    index_behind_alias,
     mk_actions,
     mk_item_id,
     populate_sort_shared,
@@ -52,7 +61,7 @@ from stac_fastapi.sfeos_helpers.database import (
     search_children_with_pagination_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
-    update_catalog_in_index_shared,
+    unlink_catalog_children_shared,
     validate_refresh,
 )
 from stac_fastapi.sfeos_helpers.database.catalogs import (
@@ -62,11 +71,14 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
+    format_collection_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
+    is_hidden,
     merge_to_operations,
     operations_to_script,
+    protect_datetime_script,
     validate_datetime_operations,
 )
 from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
@@ -76,7 +88,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ITEM_INDICES,
-    ITEMS_INDEX_PREFIX,
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
@@ -91,6 +102,30 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
+
+
+def _search_error_reason(e: Exception) -> str:
+    """Extract the engine error reason from a RequestError body.
+
+    The error body is not always a dict (it can be a string or None), so fall
+    back to the stringified exception when no reason can be extracted.
+    Multi-index failures report "all shards failed" as the top-level reason;
+    the useful text (e.g. "No mapping found for [x] in order to sort on") is
+    in root_cause, so prefer it when present.
+    """
+    info = getattr(e, "info", None)
+    error = info.get("error") if isinstance(info, dict) else None
+    if isinstance(error, dict):
+        root_cause = error.get("root_cause")
+        if (
+            isinstance(root_cause, list)
+            and root_cause
+            and isinstance(root_cause[0], dict)
+            and root_cause[0].get("reason")
+        ):
+            return root_cause[0]["reason"]
+        return error.get("reason") or str(e)
+    return error or str(e)
 
 
 async def create_index_templates() -> None:
@@ -145,6 +180,8 @@ async def delete_item_index(collection_id: str) -> None:
 @attr.s
 class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
+
+    not_found_error_class = OSNotFoundError
 
     async_settings: AsyncSearchSettings = attr.ib(factory=AsyncSearchSettings)
     sync_settings: SyncSearchSettings = attr.ib(factory=SyncSearchSettings)
@@ -225,39 +262,18 @@ class DatabaseLogic(BaseDatabaseLogic):
             A tuple of (collections, next pagination token if any).
         """
         # Format the sort parameter
-        formatted_sort = []
-        if sort:
-            for item in sort:
-                field = item.get("field")
-                direction = item.get("direction", "asc")
-                if field:
-                    formatted_sort.append({field: {"order": direction}})
-            # Always include id as a secondary sort to ensure consistent pagination
-            if not any("id" in item for item in formatted_sort):
-                formatted_sort.append({"id": {"order": "asc"}})
-        else:
-            formatted_sort = [{"id": {"order": "asc"}}]
+        formatted_sort = format_collection_sort_shared(sort)
 
+        size = min(limit + 1, MAX_LIMIT)
         body = {
             "sort": formatted_sort,
-            "size": limit,
+            "size": size,
         }
 
-        # Handle search_after token - split by '|' to get all sort values
-        search_after = None
-        if token:
-            try:
-                # The token should be a pipe-separated string of sort values
-                # e.g., "2023-01-01T00:00:00Z|collection-1"
-                search_after = token.split("|")
-                # If the number of sort fields doesn't match token parts, ignore the token
-                if len(search_after) != len(formatted_sort):
-                    search_after = None
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
-                body["search_after"] = search_after
+        # Handle search_after token (opaque base64, like the catalog routes)
+        search_after = decode_token_to_search_after(token)
+        if search_after is not None and len(search_after) == len(formatted_sort):
+            body["search_after"] = search_after
 
         # Build the query part of the body
         query_parts = []
@@ -273,8 +289,16 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Convert string filter to dict if needed
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
-            # Convert the filter to an OpenSearch query using the filter module
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
+            # Convert the filter to an OpenSearch query using the filter module.
+            # The mapping fetch is outside the try so a connection error is
+            # retried by @retry_on_connection_error, not reported as a 400.
+            queryables_mapping = await self.get_collections_queryables_mapping()
+            try:
+                es_query = filter_module.to_es(queryables_mapping, filter)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}."
+                )
             query_parts.append(es_query)
 
         # Apply query extension if provided
@@ -342,23 +366,21 @@ class DatabaseLogic(BaseDatabaseLogic):
             # e.g., "Fielddata is disabled on text fields in [title]"
             raise HTTPException(
                 status_code=400,
-                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+                detail=f"Search request error: {_search_error_reason(e)}",
             )
 
         hits = response["hits"]["hits"]
+        page = hits[:limit]
         collections = [
             self.collection_serializer.db_to_stac(
                 collection=hit["_source"], request=request, extensions=self.extensions
             )
-            for hit in hits
+            for hit in page
         ]
 
         next_token = None
-        if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                # Join all sort values with '|' to create the token
-                next_token = "|".join(str(val) for val in next_token_values)
+        if len(hits) == size:
+            next_token = encode_search_after_to_token(page[-1].get("sort"))
 
         # Get the total count of collections
         matched = (
@@ -377,7 +399,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         return collections, next_token, matched
 
     @retry_on_connection_error
-    async def get_one_item(self, collection_id: str, item_id: str) -> dict:
+    async def get_one_item(
+        self, collection_id: str, item_id: str, *, include_hidden: bool = False
+    ) -> dict:
         """Retrieve a single item from the database.
 
         Args:
@@ -395,12 +419,56 @@ class DatabaseLogic(BaseDatabaseLogic):
             with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
             Item is hidden if hide_item_path is configured via env var.
         """
+        item, _ = await self.get_one_item_with_version(
+            collection_id, item_id, include_hidden=include_hidden
+        )
+        return item
+
+    @retry_on_connection_error
+    async def get_one_item_with_version(
+        self, collection_id: str, item_id: str, *, include_hidden: bool = False
+    ) -> tuple[dict, DocumentVersion]:
+        """Retrieve a single item and the version of its stored document.
+
+        Args:
+            collection_id (str): The id of the Collection that the Item belongs to.
+            item_id (str): The id of the Item.
+            include_hidden (bool): Return the item even if HIDE_ITEM_PATH hides it,
+                as a write needs the stored document.
+
+        Returns:
+            The source data for the Item, and its stored version.
+
+        Raises:
+            NotFoundError: If the specified Item does not exist in the Collection.
+        """
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            # A real-time mget over the alias's concrete indexes, so a document
+            # written a moment ago is found before the next refresh, and the
+            # hit carries the current seq_no and primary_term already.
+            HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
+            try:
+                hit = await find_item_in_alias(
+                    self.client,
+                    index_alias_by_collection_id(collection_id),
+                    mk_item_id(item_id, collection_id),
+                )
+            except OSNotFoundError:
+                hit = None
+            if hit is None or (
+                not include_hidden and is_hidden(hit["_source"], HIDE_ITEM_PATH)
+            ):
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            return hit["_source"], DocumentVersion.from_hit(hit)
+
         try:
             base_query = {"term": {"_id": mk_item_id(item_id, collection_id)}}
 
             HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
 
-            if HIDE_ITEM_PATH:
+            if HIDE_ITEM_PATH and not include_hidden:
                 query = add_hidden_filter(base_query, HIDE_ITEM_PATH)
             else:
                 query = base_query
@@ -410,6 +478,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 body={
                     "query": query,
                     "size": 1,
+                    "seq_no_primary_term": True,
                 },
             )
             if response["hits"]["total"]["value"] == 0:
@@ -417,7 +486,18 @@ class DatabaseLogic(BaseDatabaseLogic):
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
 
-            return response["hits"]["hits"][0]["_source"]
+            hit = response["hits"]["hits"][0]
+            # The search found the document and applied the hidden filter, but
+            # its version is as of the last refresh. A get by id is real time,
+            # so the tag names the current version even before a refresh.
+            document = await self.client.get(index=hit["_index"], id=hit["_id"])
+            # The search filtered as of the last refresh; the current document
+            # may have become hidden since.
+            if not include_hidden and is_hidden(document["_source"], HIDE_ITEM_PATH):
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            return document["_source"], DocumentVersion.from_hit(document)
         except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
@@ -434,10 +514,24 @@ class DatabaseLogic(BaseDatabaseLogic):
             dict: A dictionary containing the Queryables mappings.
         """
         mappings = await self.client.indices.get_mapping(
-            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+            index=index_alias_by_collection_id(collection_id),
         )
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
+        )
+
+    async def get_collections_queryables_mapping(self) -> dict:
+        """Retrieve mapping of Queryables for collection search.
+
+        Used when translating CQL2 filters applied to collection search so that field
+        paths are resolved against the collections index rather than the items index.
+
+        Returns:
+            dict: A dictionary containing the Collection Queryables mappings.
+        """
+        mappings = await self.client.indices.get_mapping(index=COLLECTIONS_INDEX)
+        return await get_queryables_mapping_shared(
+            collection_id=COLLECTIONS_INDEX, mappings=mappings
         )
 
     async def get_all_collection_queryables(self) -> list[dict]:
@@ -458,8 +552,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             response = await self.client.search(
                 index=COLLECTIONS_INDEX,
                 scroll="2m",  # Keep the search context alive for 2 minutes
-                size=1000,  # Fetch in memory-safe chunks of 1000
                 body={
+                    "size": 1000,  # Fetch in memory-safe chunks of 1000
                     "_source": ["id"],
                     "query": {"term": {"type": "Collection"}},
                 },
@@ -564,7 +658,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         datetime_search = return_date(datetime)
 
-        if not datetime_search:
+        if datetime_search.get("empty"):
+            return search.filter(Q("match_none")), datetime_search
+        if datetime_search["gte"] is None and datetime_search["lte"] is None:
             return search, datetime_search
 
         # USE_DATETIME env var
@@ -875,19 +971,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search, metadata
 
     @staticmethod
-    def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
+    def populate_sort(
+        sortby: list, field_types: dict[str, str] | None = None
+    ) -> dict[str, dict[str, str]] | None:
         """Create a sort configuration for OpenSearch queries.
 
         This method delegates to the shared implementation in populate_sort_shared.
 
         Args:
             sortby (List): A list of sort specifications, each containing a field and direction.
+            field_types (dict[str, str] | None): Optional map of sortable field
+                names to their engine field type, used for unmapped_type.
 
         Returns:
             dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
                 configurations, or None if no sort was specified.
         """
-        return populate_sort_shared(sortby=sortby)
+        return populate_sort_shared(sortby=sortby, field_types=field_types)
 
     @retry_on_datetime_not_found
     @retry_on_connection_error
@@ -924,6 +1024,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
+        search_after = decode_search_after_token_shared(token, sort)
+
+        # An explicitly empty collection scope (e.g. catalog search on a catalog
+        # with no collections) matches nothing. Return early, after the token
+        # has been decoded so a bad token still fails validation (#935).
+        if collection_ids == []:
+            return [], 0, None
+
         search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
@@ -939,6 +1047,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
             )
+            # No matching item index; an empty index would search all indexes (#883).
+            if not index_param:
+                return [], 0, None
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
@@ -950,10 +1061,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         elif query:
             search_body["query"] = query
 
-        search_after = None
-
-        if token:
-            search_after = orjson.loads(urlsafe_b64decode(token))
         if search_after:
             search_body["search_after"] = search_after
 
@@ -990,6 +1097,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {_search_error_reason(e)}",
+            )
 
         count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
 
@@ -1085,6 +1199,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             db_response = await search_task
         except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except RequestError as e:
+            # Catch OS 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "No mapping found for [field] in order to sort on"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {_search_error_reason(e)}",
+            )
 
         return db_response
 
@@ -1093,6 +1214,11 @@ class DatabaseLogic(BaseDatabaseLogic):
     async def check_collection_exists(self, collection_id: str):
         """Database logic to check if a collection exists."""
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
+            raise NotFoundError(f"Collection {collection_id} does not exist")
+
+    def check_collection_exists_sync(self, collection_id: str):
+        """Database logic to check if a collection exists, using the sync client."""
+        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
     async def _check_item_exists_in_collection(
@@ -1205,9 +1331,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
-        # Check if the collection exists
-        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise NotFoundError(f"Collection {item['collection']} does not exist")
+        self.check_collection_exists_sync(item["collection"])
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -1220,8 +1344,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         item: Item,
         base_url: str = "",
         upsert: bool = False,
+        existing_hit: dict | None = None,
+        version: DocumentVersion | None = None,
         **kwargs: Any,
-    ):
+    ) -> DocumentVersion:
         """Database logic for creating one item.
 
         Args:
@@ -1230,13 +1356,19 @@ class DatabaseLogic(BaseDatabaseLogic):
             upsert (bool, optional): If False (default), performs an insert-only operation
                 that rejects duplicates (op_type="create"). If True, performs an upsert
                 that overwrites existing items (op_type="index").
+            existing_hit (dict, optional): A write-lookup hit already fetched via
+                ``get_item_hit_for_write``. When given, the existing-document check
+                reuses it instead of querying the alias again.
+            version (DocumentVersion, optional): Only overwrite this stored version
+                of the item (If-Match).
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
             ItemAlreadyExistsError: If the item already exists and upsert is False.
+            HTTPException: 412 if `version` is no longer the stored version.
 
         Returns:
-            None
+            DocumentVersion: The version this write stored.
         """
         # todo: check if collection exists, but cache
         item_id = item["id"]
@@ -1254,47 +1386,100 @@ class DatabaseLogic(BaseDatabaseLogic):
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
 
-        if upsert and isinstance(self.async_index_inserter, DatetimeIndexInserter):
-            existing_item = await self.get_one_item(collection_id, item_id)
-            primary_datetime_name = self.async_index_inserter.primary_datetime_name
-
-            existing_primary_datetime = existing_item.get("properties", {}).get(
-                primary_datetime_name
-            )
-            new_primary_datetime = item.get("properties", {}).get(primary_datetime_name)
-
-            if existing_primary_datetime != new_primary_datetime:
-                self.async_index_inserter.validate_datetime_field_update(
-                    f"properties/{primary_datetime_name}"
-                )
-
-            if primary_datetime_name == "start_datetime":
-                existing_end_datetime = existing_item.get("properties", {}).get(
-                    "end_datetime"
-                )
-                new_end_datetime = item.get("properties", {}).get("end_datetime")
-
-                if existing_end_datetime != new_end_datetime:
-                    self.async_index_inserter.validate_datetime_field_update(
-                        "properties/end_datetime"
+        existing_index = None
+        if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            # ``_id`` uniqueness is enforced per index only, so an item
+            # re-ingested with a datetime that resolves to a different physical
+            # index would otherwise be silently duplicated. Check the
+            # collection alias, which spans all of its datetime-sharded indexes.
+            # A missing alias means no index exists yet, so nothing can be a
+            # duplicate.
+            if existing_hit is not None:
+                hit = existing_hit
+            else:
+                try:
+                    hit = await find_item_in_alias(
+                        self.client,
+                        index_alias_by_collection_id(collection_id),
+                        mk_item_id(item_id, collection_id),
                     )
+                except OSNotFoundError:
+                    hit = None
+            existing_item = hit.get("_source") if hit else None
+            existing_index = hit.get("_index") if hit else None
+            if not upsert:
+                if existing_item is not None:
+                    raise ItemAlreadyExistsError(item_id, collection_id)
+            elif existing_item is not None:
+                primary_datetime_name = self.async_index_inserter.primary_datetime_name
+
+                existing_primary_datetime = existing_item.get("properties", {}).get(
+                    primary_datetime_name
+                )
+                new_primary_datetime = item.get("properties", {}).get(
+                    primary_datetime_name
+                )
+
+                if existing_primary_datetime != new_primary_datetime:
+                    self.async_index_inserter.validate_datetime_field_update(
+                        f"properties/{primary_datetime_name}"
+                    )
+
+                if primary_datetime_name == "start_datetime":
+                    existing_end_datetime = existing_item.get("properties", {}).get(
+                        "end_datetime"
+                    )
+                    new_end_datetime = item.get("properties", {}).get("end_datetime")
+
+                    if existing_end_datetime != new_end_datetime:
+                        self.async_index_inserter.validate_datetime_field_update(
+                            "properties/end_datetime"
+                        )
 
         item = await self.async_prep_create_item(item=item, base_url=base_url)
 
-        target_index = await self.async_index_inserter.get_target_index(
-            collection_id, item
-        )
-
+        # A conditional write replaces the stored document where it is; an
+        # unconditional update must overwrite the document where it already
+        # lives, since re-routing by datetime could send it to a newer physical
+        # index after a rollover and leave the original copy behind (#571);
+        # a new item goes to the index the inserter picks.
+        if version:
+            target_index = version.index
+        elif upsert and existing_index:
+            target_index = existing_index
+        else:
+            target_index = await self.async_index_inserter.get_target_index(
+                collection_id, item
+            )
+        if version and not await self.client.indices.exists(index=version.index):
+            # The index is gone, so the version's document is too; writing would
+            # create an empty index under the old name. A deletion in the moment
+            # between this check and the write still can; the write then gets
+            # 409 (no such document), which becomes 412.
+            raise precondition_failed(f"Item {item_id}")
+        # Index the item in the database
         try:
-            await self.client.index(
+            response = await self.client.index(
                 index=target_index,
                 id=mk_item_id(item_id, collection_id),
                 body=item,
                 refresh=refresh,
                 **({} if upsert else {"op_type": "create"}),
+                **(version.write_kwargs() if version else {}),
             )
         except OSConflictError:
+            if version:
+                raise precondition_failed(f"Item {item_id}")
             raise ItemAlreadyExistsError(item_id, collection_id)
+        except RequestError as e:
+            # e.g. a date outside the date_nanos range; caused_by names the bound.
+            reason = _search_error_reason(e)
+            error = e.info.get("error") if isinstance(e.info, dict) else None
+            caused_by = error.get("caused_by") if isinstance(error, dict) else None
+            if isinstance(caused_by, dict) and caused_by.get("reason"):
+                reason = f"{reason}: {caused_by['reason']}"
+            raise HTTPException(status_code=400, detail=reason) from e
+        return DocumentVersion.from_hit(response)
 
     @retry_on_connection_error
     async def merge_patch_item(
@@ -1304,6 +1489,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         item: PartialItem,
         base_url: str,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Item:
         """Database logic for merge patching an item following RF7396.
 
@@ -1326,6 +1512,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             base_url=base_url,
             create_nest=True,
             refresh=refresh,
+            version=version,
         )
 
     @retry_on_connection_error
@@ -1337,6 +1524,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Item:
         """Database logic for json patching an item following RF6902.
 
@@ -1370,46 +1558,74 @@ class DatabaseLogic(BaseDatabaseLogic):
                 script_operations.append(operation)
 
         try:
-            search_response = await self.client.search(
-                index=index_alias_by_collection_id(collection_id),
-                body={
-                    "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
-                    "size": 1,
-                },
-            )
-            if search_response["hits"]["total"]["value"] == 0:
-                raise NotFoundError(
-                    f"Item {item_id} does not exist inside Collection {collection_id}"
+            if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+                # Real-time mget over the alias's concrete indexes so a patch
+                # on a document that has not been refreshed yet still finds it.
+                hit = await self.get_item_hit_for_write(collection_id, item_id)
+                existing_source = hit["_source"]
+                document_index = hit["_index"]
+            else:
+                search_response = await self.client.search(
+                    index=index_alias_by_collection_id(collection_id),
+                    body={
+                        "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
+                        "size": 1,
+                    },
                 )
+                if search_response["hits"]["total"]["value"] == 0:
+                    raise NotFoundError(
+                        f"Item {item_id} does not exist inside Collection {collection_id}"
+                    )
+                existing_source = search_response["hits"]["hits"][0]["_source"]
+                document_index = search_response["hits"]["hits"][0]["_index"]
 
-            existing_source = search_response["hits"]["hits"][0]["_source"]
             validate_datetime_operations(
                 operations,
                 existing_source,
                 self.async_index_inserter.validate_datetime_field_update,
             )
 
+            # Write to database using script operations
             if script_operations:
                 script = operations_to_script(
                     script_operations, create_nest=create_nest
                 )
-                document_index = search_response["hits"]["hits"][0]["_index"]
-                await self.client.update(
-                    index=document_index,
-                    id=mk_item_id(item_id, collection_id),
-                    body={"script": script},
-                    refresh=True,
-                )
+                if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+                    protect_datetime_script(
+                        script, self.async_index_inserter.use_datetime
+                    )
+                if version and document_index != version.index:
+                    # The version's document is gone; a replacement lives in
+                    # another index, so the tag no longer matches.
+                    raise precondition_failed(f"Item {item_id}")
+                try:
+                    await self.client.update(
+                        index=document_index,
+                        id=mk_item_id(item_id, collection_id),
+                        body={"script": script},
+                        refresh=True,
+                        **(version.write_kwargs() if version else {}),
+                    )
+                except OSNotFoundError:
+                    if version:
+                        # The version's document is gone from its index, so
+                        # the tag no longer matches.
+                        raise precondition_failed(f"Item {item_id}")
+                    raise
         except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
+        except OSConflictError:
+            if version:
+                raise precondition_failed(f"Item {item_id}")
+            raise
         except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
 
-        item = await self.get_one_item(collection_id, item_id)
+        item = await self.get_item_for_write(collection_id, item_id)
 
         if new_collection_id:
             item["collection"] = new_collection_id
@@ -1438,12 +1654,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         return item
 
     @retry_on_connection_error
-    async def delete_item(self, item_id: str, collection_id: str, **kwargs: Any):
+    async def delete_item(
+        self,
+        item_id: str,
+        collection_id: str,
+        version: DocumentVersion | None = None,
+        **kwargs: Any,
+    ):
         """Delete a single item from the database.
 
         Args:
             item_id (str): The id of the Item to be deleted.
             collection_id (str): The id of the Collection that the Item belongs to.
+            version (DocumentVersion, optional): Only delete this stored version
+                of the item (If-Match); 412 otherwise.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -1460,6 +1684,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.info(
             f"Deleting item {item_id} from collection {collection_id} with refresh={refresh}"
         )
+
+        if version is not None:
+            try:
+                await self.client.delete(
+                    index=version.index,
+                    id=mk_item_id(item_id, collection_id),
+                    refresh=refresh,
+                    **version.write_kwargs(),
+                )
+            except (OSConflictError, OSNotFoundError):
+                raise precondition_failed(f"Item {item_id}")
+            return
 
         try:
             await self.client.delete_by_query(
@@ -1523,7 +1759,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         return result
 
     @retry_on_connection_error
-    async def create_collection(self, collection: Collection, **kwargs: Any):
+    async def create_collection(
+        self, collection: Collection, **kwargs: Any
+    ) -> DocumentVersion:
         """Create a single collection in the database.
 
         Args:
@@ -1548,9 +1786,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the creation attempt
         logger.info(f"Creating collection {collection_id} with refresh={refresh}")
 
-        if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
-            raise ConflictError(f"Collection {collection_id} already exists")
-
         if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
             "ENABLE_COLLECTIONS_SEARCH_ROUTE"
         ):
@@ -1558,12 +1793,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             add_bbox_shape_to_collection(collection)
 
         try:
-            await self.client.index(
+            response = await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
                 body=collection,
                 refresh=refresh,
+                op_type="create",
             )
+        except OSConflictError:
+            raise ConflictError(f"Collection {collection_id} already exists")
         except Exception as e:
             logger.error(
                 f"Error indexing collection {collection_id}: {e}", exc_info=True
@@ -1573,8 +1811,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.async_index_inserter.create_simple_index(
                 self.client, collection_id
             )
+        return DocumentVersion.from_hit(response)
 
-    @retry_on_connection_error
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.
 
@@ -1592,6 +1830,24 @@ class DatabaseLogic(BaseDatabaseLogic):
             This function searches for a collection in the database using the specified `collection_id` and returns the found
             collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
         """
+        collection, _ = await self.find_collection_with_version(collection_id)
+        return collection
+
+    @retry_on_connection_error
+    async def find_collection_with_version(
+        self, collection_id: str
+    ) -> tuple[Collection, DocumentVersion]:
+        """Find a collection and the version of its stored document.
+
+        Args:
+            collection_id (str): The ID of the collection to be found.
+
+        Returns:
+            The collection, and its stored version.
+
+        Raises:
+            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+        """
         try:
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
@@ -1599,17 +1855,32 @@ class DatabaseLogic(BaseDatabaseLogic):
         except OSNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
-        return collection["_source"]
+        # The collections index is shared with Catalog documents; verify
+        # the document is actually a Collection.
+        if collection["_source"].get("type") != "Collection":
+            raise NotFoundError(f"Collection {collection_id} not found")
+
+        return collection["_source"], DocumentVersion.from_hit(collection)
 
     @retry_on_connection_error
     async def update_collection(
-        self, collection_id: str, collection: Collection, **kwargs: Any
-    ) -> None:
+        self,
+        collection_id: str,
+        collection: Collection,
+        preserve_parent_ids: bool = False,
+        version: DocumentVersion | None = None,
+        **kwargs: Any,
+    ) -> DocumentVersion | None:
         """Update a collection from the database.
 
         Args:
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
+            preserve_parent_ids (bool): Keep the stored catalog memberships
+                (`parent_ids`) instead of taking them from `collection`. The
+                write is conditional on the version read, retried on conflict.
+            version (DocumentVersion, optional): Only replace this stored version
+                of the collection (If-Match); 412 otherwise, without retrying.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -1637,27 +1908,35 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_dict = (
             collection
             if isinstance(collection, dict)
-            else collection.model_dump()
-            if hasattr(collection, "model_dump")
-            else dict(collection)
+            else (
+                collection.model_dump()
+                if hasattr(collection, "model_dump")
+                else dict(collection)
+            )
         )
 
         if collection_id != collection_dict.get("id"):
+            if version is not None:
+                # A create, a reindex and a delete: no one conditional write covers
+                # it. No route renames (PUT and PATCH refuse an id change).
+                raise ValueError("A conditional update cannot change the collection id")
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
 
             await self.create_collection(collection_dict, refresh=refresh)
 
+            source_alias = index_alias_by_collection_id(collection_id)
+            destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
+
+            # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
-                    "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
-                    },
-                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
+                    "dest": {"index": destination_alias},
+                    "source": {"index": source_alias},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,
@@ -1665,6 +1944,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
 
             await self.delete_collection(collection_id=collection_id, **kwargs)
+            return None
 
         else:
             if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
@@ -1673,12 +1953,114 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
                 add_bbox_shape_to_collection(collection_dict)
 
-            await self.client.index(
-                index=COLLECTIONS_INDEX,
-                id=collection_id,
-                body=collection_dict,
-                refresh=refresh,
+            if not preserve_parent_ids:
+                if version is not None and not await index_behind_alias(
+                    self.client, COLLECTIONS_INDEX, version.index
+                ):
+                    raise precondition_failed(f"Collection {collection_id}")
+                try:
+                    response = await self.client.index(
+                        index=version.index if version else COLLECTIONS_INDEX,
+                        id=collection_id,
+                        body=collection_dict,
+                        refresh=refresh,
+                        **(version.write_kwargs() if version else {}),
+                    )
+                except OSConflictError:
+                    raise precondition_failed(f"Collection {collection_id}")
+                return DocumentVersion.from_hit(response)
+
+            # parent_ids is backend-owned; a concurrent link/unlink must not be lost.
+            # With If-Match, a concurrent write fails the request instead.
+            for _ in range(1 if version else 3):
+                try:
+                    existing = await self.client.get(
+                        index=COLLECTIONS_INDEX, id=collection_id
+                    )
+                except OSNotFoundError:
+                    raise NotFoundError(f"Collection {collection_id} not found")
+                if existing["_source"].get("type") != "Collection":
+                    raise NotFoundError(f"Collection {collection_id} not found")
+                if version and DocumentVersion.from_hit(existing).etag != version.etag:
+                    raise precondition_failed(f"Collection {collection_id}")
+
+                collection_dict.pop("parent_ids", None)
+                if "parent_ids" in existing["_source"]:
+                    collection_dict["parent_ids"] = existing["_source"]["parent_ids"]
+                try:
+                    response = await self.client.index(
+                        index=existing["_index"],
+                        id=collection_id,
+                        body=collection_dict,
+                        refresh=refresh,
+                        if_seq_no=existing["_seq_no"],
+                        if_primary_term=existing["_primary_term"],
+                    )
+                    return DocumentVersion.from_hit(response)
+                except OSConflictError:
+                    if version:
+                        raise precondition_failed(f"Collection {collection_id}")
+                    continue
+
+            raise ConflictError(
+                f"Collection {collection_id} was modified concurrently; retry the update"
             )
+
+    @retry_on_connection_error
+    async def update_parent_ids(
+        self,
+        doc_id: str,
+        doc_type: str,
+        parent_id: str,
+        add: bool,
+        refresh: bool | str = False,
+    ) -> dict:
+        """Atomically add or remove one parent id in a document's parent_ids.
+
+        Args:
+            doc_id: The id of the Collection or Catalog to update.
+            doc_type: "Collection" or "Catalog"; the stored type must match.
+            parent_id: The parent catalog id to add or remove.
+            add: Add `parent_id` if True, remove it if False.
+            refresh: Whether to refresh the index after the update.
+
+        Raises:
+            NotFoundError: If no `doc_type` document with this id exists.
+            ConflictError: If concurrent writes exhaust the update's retries.
+        """
+        try:
+            resp = await self.client.update(
+                index=COLLECTIONS_INDEX,
+                id=doc_id,
+                body={
+                    "script": {
+                        "lang": "painless",
+                        "source": PARENT_ID_SCRIPT,
+                        "params": {
+                            "parent_id": parent_id,
+                            "add": add,
+                            "type": doc_type,
+                        },
+                    }
+                },
+                _source=True,
+                retry_on_conflict=3,
+                refresh=validate_refresh(refresh),
+            )
+        except OSNotFoundError:
+            raise NotFoundError(f"{doc_type} {doc_id} not found")
+        except OSConflictError:
+            raise ConflictError(
+                f"{doc_type} {doc_id} was modified concurrently; retry the request"
+            )
+
+        source = resp["get"].get("_source") if "get" in resp else None
+        if source is None:
+            find = self.find_catalog if doc_type == "Catalog" else self.find_collection
+            return await find(doc_id)
+        if source.get("type") != doc_type:
+            raise NotFoundError(f"{doc_type} {doc_id} not found")
+        return source
 
     @retry_on_connection_error
     async def merge_patch_collection(
@@ -1687,6 +2069,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection: PartialCollection,
         base_url: str,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Collection:
         """Database logic for merge patching a collection following RF7396.
 
@@ -1708,6 +2091,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             base_url=base_url,
             create_nest=True,
             refresh=refresh,
+            version=version,
         )
 
     @retry_on_connection_error
@@ -1718,6 +2102,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
+        version: DocumentVersion | None = None,
     ) -> Collection:
         """Database logic for json patching a collection following RF6902.
 
@@ -1746,14 +2131,23 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         script = operations_to_script(script_operations, create_nest=create_nest)
 
+        if version is not None and not await index_behind_alias(
+            self.client, COLLECTIONS_INDEX, version.index
+        ):
+            raise precondition_failed(f"Collection {collection_id}")
         try:
             await self.client.update(
-                index=COLLECTIONS_INDEX,
+                index=version.index if version else COLLECTIONS_INDEX,
                 id=collection_id,
                 body={"script": script},
                 refresh=True,
+                **(version.write_kwargs() if version else {}),
             )
 
+        except OSConflictError:
+            if version:
+                raise precondition_failed(f"Collection {collection_id}")
+            raise
         except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
@@ -1774,12 +2168,19 @@ class DatabaseLogic(BaseDatabaseLogic):
         return collection
 
     @retry_on_connection_error
-    async def delete_collection(self, collection_id: str, **kwargs: Any):
+    async def delete_collection(
+        self,
+        collection_id: str,
+        version: DocumentVersion | None = None,
+        **kwargs: Any,
+    ):
         """Delete a collection from the database.
 
         Parameters:
             self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to be deleted.
+            version (DocumentVersion, optional): Only delete this stored version
+                of the collection (If-Match); 412 otherwise.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -1802,9 +2203,19 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the deletion attempt
         logger.info(f"Deleting collection {collection_id} with refresh={refresh}")
 
-        await self.client.delete(
-            index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
-        )
+        if version is not None and not await index_behind_alias(
+            self.client, COLLECTIONS_INDEX, version.index
+        ):
+            raise precondition_failed(f"Collection {collection_id}")
+        try:
+            await self.client.delete(
+                index=version.index if version else COLLECTIONS_INDEX,
+                id=collection_id,
+                refresh=refresh,
+                **(version.write_kwargs() if version else {}),
+            )
+        except OSConflictError:
+            raise precondition_failed(f"Collection {collection_id}")
         # Delete the item index for the collection
         await delete_item_index(collection_id)
         await self.async_index_inserter.refresh_cache()
@@ -1870,16 +2281,74 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise_on_error = False
         else:
             raise_on_error = self.async_settings.raise_on_bulk_error
-        actions = await self.async_index_inserter.prepare_bulk_actions(
-            collection_id, processed_items, op_type=op_type
-        )
 
-        success, errors = await helpers.async_bulk(
-            self.client,
-            actions,
-            refresh=refresh,
-            raise_on_error=raise_on_error,
-        )
+        # ``_id`` uniqueness is enforced per index only. Under datetime-sharded
+        # indexing, an item re-ingested with a datetime resolving to a different
+        # physical index would otherwise be silently duplicated, so check the
+        # collection alias (which spans all of its indexes) and report existing
+        # items as 409 conflicts in the shape callers expect from the bulk
+        # helper.
+        preexisting_conflicts: list[dict[str, Any]] = []
+        if op_type == "create" and isinstance(
+            self.async_index_inserter, DatetimeIndexInserter
+        ):
+            alias = index_alias_by_collection_id(collection_id)
+            try:
+                existing_ids = await find_existing_item_ids(
+                    self.client,
+                    alias,
+                    [
+                        mk_item_id(item["id"], item["collection"])
+                        for item in processed_items
+                    ],
+                )
+            except OSNotFoundError:
+                # No index exists under the alias yet, so nothing can be a
+                # duplicate.
+                existing_ids = set()
+            # Two items in this batch sharing an id but resolving to different
+            # physical indexes would both pass the per-index op_type="create"
+            # check, so dedupe within the batch as well; first occurrence wins.
+            seen_in_batch: set[str] = set()
+            new_items = []
+            for item in processed_items:
+                doc_id = mk_item_id(item["id"], item["collection"])
+                if doc_id in existing_ids or doc_id in seen_in_batch:
+                    preexisting_conflicts.append(
+                        {
+                            "create": {
+                                "_index": alias,
+                                "_id": doc_id,
+                                "status": 409,
+                                "error": {
+                                    "type": "version_conflict_engine_exception",
+                                    "reason": f"[{doc_id}]: version conflict, document already exists",
+                                    "index": alias,
+                                },
+                            }
+                        }
+                    )
+                else:
+                    seen_in_batch.add(doc_id)
+                    new_items.append(item)
+            processed_items = new_items
+
+        if processed_items:
+            actions = await self.async_index_inserter.prepare_bulk_actions(
+                collection_id, processed_items, op_type=op_type
+            )
+
+            success, errors = await helpers.async_bulk(
+                self.client,
+                actions,
+                refresh=refresh,
+                raise_on_error=raise_on_error,
+            )
+        else:
+            success, errors = 0, []
+
+        errors.extend(preexisting_conflicts)
+
         # Log the result
         logger.info(
             f"Bulk insert completed for collection {collection_id}: {success} successes, {len(errors)} errors"
@@ -1973,6 +2442,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     """CATALOGS LOGIC"""
 
+    async def _collections_filter_query(
+        self, filter: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Translate a CQL2 JSON filter on catalog or collection documents to a query."""
+        if not filter:
+            return None
+        queryables_mapping = await self.get_collections_queryables_mapping()
+        try:
+            return filter_module.to_es(queryables_mapping, filter)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error with cql2 filter: {e}")
+
     @retry_on_connection_error
     async def get_all_catalogs(
         self,
@@ -1980,6 +2461,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Any = None,
         sort: list[dict[str, Any]] | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of catalogs from OpenSearch, supporting pagination.
 
@@ -1988,6 +2470,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
             sort (list[dict[str, Any]] | None, optional): Optional sort parameter. Defaults to None.
+            filter (dict[str, Any] | None, optional): A CQL2 JSON filter the catalogs must match. Defaults to None.
 
         Returns:
             A tuple of (catalogs, next pagination token if any, optional count).
@@ -2007,31 +2490,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not formatted_sort:
             formatted_sort = [{"id": {"order": "asc"}}]
 
+        size = min(limit + 1, MAX_LIMIT)
         body = {
             "sort": formatted_sort,
-            "size": limit,
+            "size": size,
             "query": {"term": {"type": "Catalog"}},
             "_source": True,  # Ensure all fields including parent_ids are returned
         }
+        filter_query = await self._collections_filter_query(filter)
+        if filter_query:
+            body["query"] = {"bool": {"must": [body["query"], filter_query]}}
 
-        # Handle search_after token
-        search_after = None
-        if token:
-            try:
-                search_after = token.split("|")
-                # Validate token format: must have correct number of values and be non-empty
-                if len(search_after) != len(formatted_sort):
-                    search_after = None
-                else:
-                    # Validate each value is non-empty (check for patterns like "id||date")
-                    for val in search_after:
-                        if not val:
-                            search_after = None
-                            break
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
+        # Handle search_after token (opaque base64, like the other catalog routes)
+        search_after = decode_token_to_search_after(token)
+        if search_after is not None:
+            if len(search_after) != len(formatted_sort):
+                search_after = None  # a token from a different sort: start at page 1
+            else:
                 body["search_after"] = search_after
 
         # Search for catalogs in collections index
@@ -2041,13 +2516,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         hits = response["hits"]["hits"]
-        catalogs = [hit["_source"] for hit in hits]
+        page = hits[:limit]
+        catalogs = [hit["_source"] for hit in page]
 
         next_token = None
-        if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                next_token = "|".join(str(val) for val in next_token_values)
+        if len(hits) == size:
+            next_token = encode_search_after_to_token(page[-1].get("sort"))
 
         # Get the total count
         matched = (
@@ -2059,25 +2533,40 @@ class DatabaseLogic(BaseDatabaseLogic):
         return catalogs, next_token, matched
 
     @retry_on_connection_error
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False
+    ) -> DocumentVersion:
         """Create a catalog in OpenSearch.
 
         Args:
             catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
+
+        Returns:
+            DocumentVersion: The version of the stored document.
+
+        Raises:
+            ConflictError: If any document (Catalog or Collection) already
+                exists with the same id.
         """
         try:
-            await self.client.index(
+            response = await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=catalog.get("id"),
                 body=catalog,
                 refresh=refresh,
+                op_type="create",
+            )
+        except OSConflictError:
+            raise ConflictError(
+                f"A catalog or collection with id {catalog.get('id')} already exists"
             )
         except Exception as e:
             logger.error(
                 f"Error creating catalog {catalog.get('id')}: {e}", exc_info=True
             )
             raise
+        return DocumentVersion.from_hit(response)
 
     @retry_on_connection_error
     async def find_catalog(self, catalog_id: str) -> dict:
@@ -2105,19 +2594,103 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise NotFoundError(f"Catalog {catalog_id} not found")
 
     @retry_on_connection_error
-    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
+    async def find_catalog_with_version(
+        self, catalog_id: str
+    ) -> tuple[dict, DocumentVersion]:
+        """Find a catalog and the version of its stored document.
+
+        Args:
+            catalog_id (str): The ID of the catalog to find.
+
+        Returns:
+            The catalog document, and its stored version.
+
+        Raises:
+            NotFoundError: If the catalog is not found.
+        """
+        try:
+            response = await self.client.get(index=COLLECTIONS_INDEX, id=catalog_id)
+        except OSNotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+        # The collections index is shared with Collection documents.
+        if response["_source"].get("type") != "Catalog":
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+        return response["_source"], DocumentVersion.from_hit(response)
+
+    @retry_on_connection_error
+    async def unlink_catalog_orphans(self, catalog_id: str) -> None:
+        """Unlink children that still reference a catalog that no longer exists.
+
+        A delete that failed after it removed the catalog leaves them linked;
+        a retry calls this. Nothing is deleted: the id must name no document
+        at all, and a child must still reference it.
+        """
+        if await self.client.exists(index=COLLECTIONS_INDEX, id=catalog_id):
+            return
+        orphans = await self.client.count(
+            index=COLLECTIONS_INDEX,
+            body={"query": {"term": {"parent_ids": catalog_id}}},
+        )
+        if orphans["count"]:
+            await unlink_catalog_children_shared(self.client, catalog_id)
+
+    @retry_on_connection_error
+    async def delete_catalog(
+        self,
+        catalog_id: str,
+        refresh: bool = False,
+        version: DocumentVersion | None = None,
+    ) -> None:
         """Delete a catalog from OpenSearch.
+
+        With `version` (If-Match), the catalog is deleted only while that
+        version is stored, and before its children are unlinked, so a refused
+        delete (412) changes nothing.
 
         Args:
             catalog_id (str): The ID of the catalog to delete.
             refresh (bool): Whether to refresh the index after deletion.
+            version (DocumentVersion, optional): Only delete this stored version
+                of the catalog (If-Match); 412 otherwise.
+
+        Raises:
+            NotFoundError: If the document does not exist or is not a Catalog
+                (e.g. a Collection sharing the same index). Deleting a catalog
+                must never remove Collection or Item data.
         """
+        # Verify the document exists and is a Catalog before deleting; the
+        # collections index is shared with Collection documents.
+        await self.find_catalog(catalog_id)
+        if version is not None:
+            if not await index_behind_alias(
+                self.client, COLLECTIONS_INDEX, version.index
+            ):
+                raise precondition_failed(f"Catalog {catalog_id}")
+            try:
+                await self.client.delete(
+                    index=version.index,
+                    id=catalog_id,
+                    refresh=refresh,
+                    **version.write_kwargs(),
+                )
+            except OSNotFoundError:
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            except OSConflictError:
+                raise precondition_failed(f"Catalog {catalog_id}")
+            await unlink_catalog_children_shared(self.client, catalog_id)
+            return
+
         try:
+            await unlink_catalog_children_shared(self.client, catalog_id)
             await self.client.delete(
                 index=COLLECTIONS_INDEX,
                 id=catalog_id,
                 refresh=refresh,
             )
+        except OSNotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except ConflictError:
+            raise
         except Exception as e:
             logger.error(f"Error deleting catalog {catalog_id}: {e}", exc_info=True)
             raise
@@ -2130,6 +2703,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         resource_type: str | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get children of a catalog (both sub-catalogs and collections)."""
         # Decode token to search_after
@@ -2145,6 +2719,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit=limit,
             search_after=search_after,
             resource_type=resource_type,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2159,21 +2734,48 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
+        sort: list[dict[str, Any]] | None = None,
+        q: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
-        """Get collections within a catalog."""
+        """Get collections within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            limit (int): Number of results to return.
+            token (str | None): Pagination token.
+            request (Any): The request object.
+            filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
+            sort (list[dict[str, Any]] | None): Field/direction pairs from `sortby`.
+            q (list[str] | None): Free text search terms.
+
+        Returns:
+            Tuple containing list of collections, next token, and total count.
+        """
         # Decode token to search_after
         search_after = decode_token_to_search_after(token)
 
-        (
-            collections,
-            total_hits,
-            next_search_after,
-        ) = await search_collections_by_parent_id_with_pagination_shared(
-            es_client=self.client,
-            catalog_id=catalog_id,
-            limit=limit,
-            search_after=search_after,
-        )
+        formatted_sort = format_collection_sort_shared(sort)
+
+        try:
+            (
+                collections,
+                total_hits,
+                next_search_after,
+            ) = await search_collections_by_parent_id_with_pagination_shared(
+                es_client=self.client,
+                catalog_id=catalog_id,
+                limit=limit,
+                search_after=search_after,
+                filter_query=await self._collections_filter_query(filter),
+                free_text_query=apply_collections_free_text_filter_shared(q),
+                sort=formatted_sort,
+            )
+        except RequestError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+            )
 
         # Encode next_search_after to token
         next_token = encode_search_after_to_token(next_search_after)
@@ -2187,6 +2789,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get sub-catalogs within a catalog."""
         # Decode token to search_after
@@ -2201,6 +2804,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id=catalog_id,
             limit=limit,
             search_after=search_after,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2227,7 +2831,8 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             await self.create_catalog(
-                catalog, refresh=self.async_settings.database_refresh
+                catalog,
+                refresh=self.async_settings.database_refresh,
             )
         except Exception as e:
             logger.error(
@@ -2290,8 +2895,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime: str | None = None,
         limit: int = 10,
         sortby: str | None = None,
-        filter_expr: str | None = None,
-        filter_lang: str | None = None,
+        filter: dict[str, Any] | None = None,
         token: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
@@ -2312,6 +2916,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if datetime:
             search, datetime_search = self.apply_datetime_filter(search, datetime)
 
+        if filter:
+            try:
+                search, _ = await self.apply_cql2_filter(search, filter)
+            except (OSConnectionError, OSConnectionTimeout):
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
+                )
+
         sort_param = None
 
         return await self.execute_search(
@@ -2324,37 +2938,60 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
     @retry_on_connection_error
-    async def get_catalog_collection_item(
-        self,
-        catalog_id: str,
-        collection_id: str,
-        item_id: str,
-        request: Any,
-    ) -> Any:
-        """Get a specific item from a collection within a catalog.
-
-        Hierarchy validation is already performed by CatalogsClient.
-        """
-        return await self.get_one_item(collection_id, item_id)
-
-    @retry_on_connection_error
     async def update_catalog(
         self,
         catalog_id: str,
-        catalog: Any,
-        request: Any,
-    ) -> Any:
-        """Update a catalog."""
-        try:
-            return await update_catalog_in_index_shared(
-                es_client=self.client,
-                catalog_id=catalog_id,
-                catalog=catalog,
-                refresh=self.async_settings.database_refresh,
-            )
-        except Exception as e:
-            logger.error(f"Error updating catalog {catalog_id}: {e}", exc_info=True)
-            raise
+        catalog: dict,
+        refresh: bool | str = False,
+        version: DocumentVersion | None = None,
+    ) -> DocumentVersion:
+        """Replace a catalog, keeping its stored parent_ids.
+
+        parent_ids is backend-owned: the write is conditional on the version
+        read and retried, so a concurrent link or unlink is not lost. With
+        `version` (If-Match), only that stored version is replaced: the write
+        is conditional on it and is not retried.
+
+        Returns:
+            DocumentVersion: The version of the stored document.
+
+        Raises:
+            NotFoundError: If the catalog does not exist.
+            ConflictError: If concurrent writes exhaust the retries.
+            HTTPException: 412 if `version` is no longer the stored version.
+        """
+        refresh = validate_refresh(refresh)
+        for _ in range(3):
+            try:
+                existing = await self.client.get(index=COLLECTIONS_INDEX, id=catalog_id)
+            except OSNotFoundError:
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            if existing["_source"].get("type") != "Catalog":
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            current = DocumentVersion.from_hit(existing)
+            if version is not None and current.etag != version.etag:
+                raise precondition_failed(f"Catalog {catalog_id}")
+
+            catalog.pop("parent_ids", None)
+            if "parent_ids" in existing["_source"]:
+                catalog["parent_ids"] = existing["_source"]["parent_ids"]
+            try:
+                response = await self.client.index(
+                    index=existing["_index"],
+                    id=catalog_id,
+                    body=catalog,
+                    refresh=refresh,
+                    **current.write_kwargs(),
+                )
+                return DocumentVersion.from_hit(response)
+            except OSConflictError:
+                if version is not None:
+                    raise precondition_failed(f"Catalog {catalog_id}")
+                continue
+
+        raise ConflictError(
+            f"Catalog {catalog_id} was modified concurrently; retry the update"
+        )
 
     @retry_on_connection_error
     async def get_catalog(

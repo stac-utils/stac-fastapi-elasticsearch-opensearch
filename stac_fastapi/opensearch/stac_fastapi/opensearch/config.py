@@ -10,6 +10,7 @@ from opensearchpy import AsyncOpenSearch, OpenSearch
 
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.sfeos_helpers.config import SfeosExtensionsSettings
 from stac_fastapi.sfeos_helpers.database import validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
@@ -76,7 +77,7 @@ def _es_config() -> dict[str, Any]:
 _forbidden_fields: set[str] = {"type"}
 
 
-class OpensearchSettings(ApiSettings, ApiBaseSettings):
+class OpensearchSettings(ApiSettings, SfeosExtensionsSettings, ApiBaseSettings):
     """
     API settings.
 
@@ -123,7 +124,7 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
         return OpenSearch(**_es_config())
 
 
-class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
+class AsyncOpensearchSettings(ApiSettings, SfeosExtensionsSettings, ApiBaseSettings):
     """
     API settings.
 

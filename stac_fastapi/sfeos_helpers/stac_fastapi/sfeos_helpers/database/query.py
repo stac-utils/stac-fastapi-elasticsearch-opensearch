@@ -3,14 +3,165 @@
 This module provides functions for building and manipulating Elasticsearch/OpenSearch queries.
 """
 
+import binascii
+import json
 import logging
 import os
-from typing import Any
+from base64 import urlsafe_b64decode
+from typing import Any, Iterable
+
+import orjson
+from fastapi import HTTPException
 
 from stac_fastapi.core.utilities import bbox2polygon
-from stac_fastapi.sfeos_helpers.mappings import Geometry
+from stac_fastapi.sfeos_helpers.database.mapping import get_excluded_from_queryables
+from stac_fastapi.sfeos_helpers.mappings import (
+    DEFAULT_SORT,
+    ES_COLLECTIONS_MAPPINGS,
+    ES_ITEMS_MAPPINGS,
+    ITEM_DATETIME_SORT,
+    ITEM_DATETIME_SORT_FIELDS,
+    Geometry,
+)
 
 ES_MAX_URL_LENGTH = int(os.getenv("ES_MAX_URL_LENGTH", "4096"))
+
+
+def _parse_sort_field_remaps(
+    env_var: str, file_env_var: str | None = None
+) -> dict[str, str]:
+    """Parse sort field remaps from env JSON or optional *_FILE JSON.
+
+    Precedence is env_var first, then file_env_var.
+    """
+    value = os.getenv(env_var)
+    source_name = env_var
+
+    if not value and file_env_var:
+        file_path = os.getenv(file_env_var)
+        if file_path:
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    value = f.read()
+                source_name = file_env_var
+            except OSError:
+                logging.warning("Could not read %s path: %s", file_env_var, file_path)
+                return {}
+
+    if not value:
+        return {}
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        logging.warning("Invalid JSON in %s; expected an object.", source_name)
+        return {}
+
+    if not isinstance(parsed, dict):
+        logging.warning("Invalid value in %s; expected an object.", source_name)
+        return {}
+
+    remaps: dict[str, str] = {}
+    for key, mapped in parsed.items():
+        if isinstance(key, str) and isinstance(mapped, str) and key and mapped:
+            remaps[key] = mapped
+
+    return remaps
+
+
+def _detect_keyword_sort_remaps_from_mapping(
+    mapping: dict[str, Any],
+) -> dict[str, str]:
+    """Detect sortable keyword subfields from explicit mappings.
+
+    For a text field with a keyword multi-field, this returns a remap like:
+    {"title": "title.keyword"}
+    """
+    remaps: dict[str, str] = {}
+
+    def walk(path: str, field_def: dict[str, Any]) -> None:
+        field_type = field_def.get("type")
+        multi_fields = field_def.get("fields", {})
+
+        if field_type == "text" and isinstance(multi_fields, dict):
+            for sub_name, sub_def in multi_fields.items():
+                if isinstance(sub_def, dict) and sub_def.get("type") == "keyword":
+                    remaps.setdefault(path, f"{path}.{sub_name}")
+                    break
+
+        nested = field_def.get("properties")
+        if isinstance(nested, dict):
+            for child_name, child_def in nested.items():
+                if isinstance(child_def, dict):
+                    child_path = f"{path}.{child_name}" if path else child_name
+                    walk(child_path, child_def)
+
+    properties = mapping.get("properties", {})
+    if isinstance(properties, dict):
+        for field_name, field_def in properties.items():
+            if isinstance(field_def, dict):
+                walk(field_name, field_def)
+
+    return remaps
+
+
+MANUAL_ITEMS_SORT_FIELD_REMAPS = _parse_sort_field_remaps(
+    "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS",
+    "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE",
+)
+MANUAL_COLLECTIONS_SORT_FIELD_REMAPS = _parse_sort_field_remaps(
+    "STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS",
+    "STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE",
+)
+
+AUTO_ITEMS_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(
+    ES_ITEMS_MAPPINGS
+)
+AUTO_COLLECTIONS_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(
+    ES_COLLECTIONS_MAPPINGS
+)
+
+
+def remap_sort_field_shared(field_name: str, is_collection: bool = False) -> str:
+    """Remap API sort field names to engine fields via optional env config.
+
+    Env vars (JSON objects):
+    - STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS (items endpoints)
+    - STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE (items endpoints)
+    - STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS (collection endpoints)
+    - STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE (collection endpoints)
+    """
+    if is_collection:
+        if field_name in MANUAL_COLLECTIONS_SORT_FIELD_REMAPS:
+            return MANUAL_COLLECTIONS_SORT_FIELD_REMAPS[field_name]
+        return AUTO_COLLECTIONS_SORT_FIELD_REMAPS.get(field_name, field_name)
+
+    if field_name in MANUAL_ITEMS_SORT_FIELD_REMAPS:
+        return MANUAL_ITEMS_SORT_FIELD_REMAPS[field_name]
+    return AUTO_ITEMS_SORT_FIELD_REMAPS.get(field_name, field_name)
+
+
+def format_collection_sort_shared(
+    sort: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Format collection `sortby` field/direction pairs for the engine.
+
+    Validates each field via `validate_sort_fields_shared`, remaps it via
+    `remap_sort_field_shared`, and appends an `id` tie-breaker so pages stay
+    aligned when earlier keys tie.
+    """
+    validate_sort_fields_shared(
+        item.get("field", "") for item in sort or [] if isinstance(item, dict)
+    )
+    formatted_sort = []
+    for item in sort or []:
+        field = remap_sort_field_shared(item.get("field", ""), is_collection=True)
+        direction = item.get("direction", "asc")
+        if field:
+            formatted_sort.append({field: {"order": direction}})
+    if not any("id" in item for item in formatted_sort):
+        formatted_sort.append({"id": {"order": "asc"}})
+    return formatted_sort
 
 
 def apply_free_text_filter_shared(
@@ -71,6 +222,7 @@ def apply_free_text_filter_shared(
             fields=fields,
             type="best_fields",
             fuzziness="AUTO",
+            lenient=True,
             operator="or",
         )
 
@@ -210,7 +362,7 @@ def apply_collections_datetime_filter_shared(
     Notes:
         - This function is specifically for filtering collections by their temporal extent
         - It queries the extent.temporal.interval field
-        - Open-ended ranges (..) are replaced with concrete dates (1800-01-01 for start, 2999-12-31 for end)
+        - An open end (..) adds no range on that side; "../.." only requires a temporal extent
     """
     if not datetime_str:
         return None
@@ -218,28 +370,21 @@ def apply_collections_datetime_filter_shared(
     # Parse the datetime string into start and end
     if "/" in datetime_str:
         start, end = datetime_str.split("/")
-        # Replace open-ended ranges with concrete dates
-        if start == "..":
-            # For open-ended start, use a very early date
-            start = "1800-01-01T00:00:00Z"
-        if end == "..":
-            # For open-ended end, use a far future date
-            end = "2999-12-31T23:59:59Z"
     else:
         # If it's just a single date, use it for both start and end
         start = end = datetime_str
 
+    must: list[dict[str, Any]] = []
+    if end != "..":
+        # Check if any date in the array is less than or equal to the query end date
+        # This will match if the collection's start date is before or equal to the query end date
+        must.append({"range": {"extent.temporal.interval": {"lte": end}}})
+    if start != "..":
+        # Check if any date in the array is greater than or equal to the query start date
+        # This will match if the collection's end date is after or equal to the query start date
+        must.append({"range": {"extent.temporal.interval": {"gte": start}}})
     return {
-        "bool": {
-            "must": [
-                # Check if any date in the array is less than or equal to the query end date
-                # This will match if the collection's start date is before or equal to the query end date
-                {"range": {"extent.temporal.interval": {"lte": end}}},
-                # Check if any date in the array is greater than or equal to the query start date
-                # This will match if the collection's end date is after or equal to the query start date
-                {"range": {"extent.temporal.interval": {"gte": start}}},
-            ]
-        }
+        "bool": {"must": must or [{"exists": {"field": "extent.temporal.interval"}}]}
     }
 
 
@@ -315,28 +460,120 @@ def apply_collections_bbox_filter_shared(
     }
 
 
-def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
+def validate_sort_fields_shared(field_names: Iterable[str]) -> None:
+    """Reject sortby fields excluded via EXCLUDED_FROM_QUERYABLES.
+
+    Sortables schemas with additionalProperties: false promise a 400 for
+    undeclared fields. Excluded fields are the only mapped, engine-sortable
+    fields the schemas omit, so reject them here to keep that contract.
+
+    Args:
+        field_names: field names from sortby entries, as document paths.
+
+    Raises:
+        HTTPException: 400 if any field matches an excluded prefix.
+    """
+    excluded = get_excluded_from_queryables()
+    if not excluded:
+        return
+    for field in field_names:
+        if any(
+            field == prefix or field.startswith(prefix + ".") for prefix in excluded
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Field '{field}' is not sortable: it is excluded "
+                    "via EXCLUDED_FROM_QUERYABLES."
+                ),
+            )
+
+
+def populate_sort_shared(
+    sortby: list,
+    is_collection: bool = False,
+    field_types: dict[str, str] | None = None,
+) -> dict[str, dict[str, str]] | None:
     """Create a sort configuration for Elasticsearch/OpenSearch queries.
 
     Args:
         sortby (List): A list of sort specifications, each containing a field and direction.
+        field_types (dict[str, str] | None): Optional map of sortable field names to
+            their engine field type, used for unmapped_type. Defaults to keyword.
 
     Returns:
         dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
-            configurations, or None if no sort was specified.
+            configurations, or an ascending 'id' sort if no sort was specified.
 
     Notes:
         This function transforms a list of sort specifications into the format required by
         Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
         directly used in search requests.
-        Always includes 'id' as secondary sort to ensure unique pagination tokens.
+        A non-empty sortby always gets 'id', and 'collection' for items, as
+        tie-breakers to ensure unique pagination tokens.
+        Documents missing the sort field sort last in either direction.
     """
     if sortby:
-        sort_config = {s.field: {"order": s.direction} for s in sortby}
+        validate_sort_fields_shared(s.field for s in sortby)
+        sort_config = {}
+        for s in sortby:
+            field_name = remap_sort_field_shared(s.field, is_collection=is_collection)
+            direction = s.direction
+            # Indices missing the field sort its documents as null rather than
+            # failing, so cross-collection sorts never silently drop hits. The
+            # unmapped type must match the field's mapped type — sorting a
+            # double field with unmapped_type keyword still fails with
+            # incompatible sort types across shards.
+            unmapped_type = "keyword"
+            if field_types:
+                unmapped_type = (
+                    field_types.get(s.field) or field_types.get(field_name) or "keyword"
+                )
+            sort_config[field_name] = {
+                "order": direction,
+                "unmapped_type": unmapped_type,
+                "missing": "_last",
+            }
+            if not is_collection and field_name in ITEM_DATETIME_SORT_FIELDS:
+                sort_config[field_name].update(ITEM_DATETIME_SORT)
+
         sort_config.setdefault("id", {"order": "asc"})
+        # Item ids are unique only within a collection.
+        if not is_collection:
+            sort_config.setdefault("collection", {"order": "asc"})
         return sort_config
     else:
         return {"id": {"order": "asc"}}
+
+
+def decode_search_after_token_shared(
+    token: str | None, sort: dict[str, dict[str, Any]] | None
+) -> list[Any] | None:
+    """Decode an item search pagination token into search_after values.
+
+    Args:
+        token (str | None): Base64-encoded JSON list issued as the next-page token.
+        sort (dict[str, dict[str, Any]] | None): The sort used for the search, or None for
+            the default sort.
+
+    Returns:
+        list[Any] | None: The search_after values, or None if no token was given.
+
+    Raises:
+        HTTPException: 400 if the token is not a base64-encoded JSON list with one value
+            per sort field.
+    """
+    if token is None:
+        return None
+    try:
+        search_after = orjson.loads(urlsafe_b64decode(token))
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        search_after = None
+    if not isinstance(search_after, list) or len(search_after) != len(
+        sort or DEFAULT_SORT
+    ):
+        raise HTTPException(status_code=400, detail="Invalid pagination token.")
+    return search_after
 
 
 def add_collections_to_body(

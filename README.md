@@ -11,19 +11,27 @@
   [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
    [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
-  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.2.1-blue.svg)](https://github.com/stac-utils/stac-fastapi)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-7.0.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
 ## Sponsors & Supporters
 
 The following organizations have contributed time and/or funding to support the development of this project:
 
-<a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
-<a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
-<a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
-<a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
+<p>
+<a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="70" hspace="15" vspace="10"></a>
+<a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="70" hspace="15" vspace="10"></a>
+<a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="70" hspace="15" vspace="10"></a>
+<a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="75" hspace="15" vspace="10"></a>
+<a href="https://github.com/StacLabs"><img src="assets/staclabs-icon-black.png" alt="StacLabs" height="70" hspace="15" vspace="10"></a>
+<a href="https://www.fao.org/home"><img src="assets/fao-logo-blue-3lines-en.svg" alt="UN FAO" height="65" hspace="15" vspace="10"></a>
+</p>
 
 ## Latest News
 
+- **10/23/2026:** 🔒 **v8.0.0 Released — Optimistic Locking & a Hardened API!** This major release adds `ETag` and `If-Match` support on items, collections, and catalogs for optimistic concurrency control, including atomic check-and-write in the database — set `REQUIRE_IF_MATCH=true` to enforce it. The catalog listing routes now accept CQL2 `filter`, `fields`, `sortby`, and `q` parameters, and `pygeofilter` has been replaced by the [cql2](https://github.com/developmentseed/cql2-rs) library for CQL2 text parsing. ⚠️ **Breaking changes** include stricter request validation (many malformed inputs that returned `500` or silently succeeded now return `400`/`404`/`409`), `PUT` on a nonexistent item returning `404` instead of creating it, correct `AND`/`OR` precedence in CQL2 text, uvicorn auto-reload now off unless `RELOAD=true`, and new abstract methods on `BaseDatabaseLogic` that out-of-tree backends must implement. This release also fixes duplicate writes under `ENABLE_DATETIME_INDEX_FILTERING`, concurrent-write races on catalog membership, and non-atomic collection creation. 🙏 Huge thanks to **UN FAO** for supporting much of this work, including the API hardening and the `ETag`/`If-Match` optimistic locking, and to **CloudFerro** for their sponsorship of the sortables endpoints, which also ship in v8.0.0! See [Optimistic Locking (ETag and If-Match)](#optimistic-locking-etag-and-if-match) and the [CHANGELOG](CHANGELOG.md#v800---2026-10-23) for details.
+- **10/12/2026:** 📑 **Sortables Endpoints!** SFEOS now implements the sortables part of the [STAC API Sort extension](https://github.com/stac-api-extensions/sort), exposing three new endpoints that advertise which fields are valid in `sortby` expressions: `GET /sortables` for item search, `GET /collections/{collection_id}/sortables` for a collection's items, and `GET /collections-sortables` for collection search. Schemas are generated live from index mappings — including alias fields, which are advertised under their target's type — and respect `EXCLUDED_FROM_QUERYABLES`. When `ROOT_QUERYABLES_UNION=true`, `GET /sortables` unions every collection's sortable fields, cached for `SORTABLES_CACHE_TTL` seconds (default 1800). Each endpoint is advertised via an `http://www.opengis.net/def/rel/ogc/1.0/sortables` link, and sorting on an undeclared field returns `400 Bad Request`. See [Sortables Endpoint](#sortables-endpoint) for details.
+- **06/21/2026:** 🔍 **Catalogs Search Extension!** Search items across entire catalog hierarchies with the new `/catalogs/{catalog_id}/search` endpoint. This powerful feature uses **BFS recursive DAG traversal** to automatically discover all descendant collections within a catalog's subtree (including nested sub-catalogs) and searches items across all of them. Enforces strict scope boundaries with 403 Forbidden for out-of-scope collection requests. Supports all standard STAC search parameters (spatial filtering, temporal filtering, free-text search, CQL2 filtering, sorting, and pagination). Perfect for scoped item discovery within organizational hierarchies! Implements the [STAC API - Multi-Tenant Catalogs Scoped Search](https://github.com/StacLabs/multi-tenant-catalogs#scoped-search-recursive-traversal) specification.
+- **06/14/2026:** 🛡️ **Native STAC & Topology Validation in v6.18.0!** SFEOS now features built-in, strict STAC schema validation via the Python `stac-validator` package (available via the new `[validator]` install extra). We've also introduced a blazing-fast, pure-Python spatial topology checker to protect your database from invalid coordinates and uncut antimeridian polygons. To support massive ingestion workloads, these powerful new firewalls include configurable chunking (`MAX_BATCH_SIZE`), fail-fast error thresholds, and Redis queue deference controls (`VALIDATE_BEFORE_QUEUE`). Finally, multi-tenant deployments gain a security boost with the new `HIDE_ALTERNATE_PARENTS` poly-hierarchy privacy toggle. 🙏 Huge thanks to **CloudFerro** for their continued sponsorship of these robust new features!
 - **03/19/2026: SKOS to STAC Ingestion Demo.** 📓 Check out the interactive [SKOS-catalogs-ingestion-demo.ipynb](https://github.com/StacLabs/sfeos-tools/blob/main/demo-notebooks/SKOS-catalogs-ingestion-demo.ipynb) notebook! This tutorial demonstrates automated semantic ingestion from SKOS/RDF-XML files into hierarchical STAC catalogs, showcasing poly-hierarchy, contextual breadcrumbs, and data safety features of the Multi-Tenant Catalogs extension. Thanks to support from CloudFerro! 
 - **01/11/2026: Hierarchical Catalog Support.** Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
 - **01/09/2026: Custom Index Mappings.** You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
@@ -31,13 +39,13 @@ The following organizations have contributed time and/or funding to support the 
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
-- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
-- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 
 <details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
 <summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
 
 -------------
+- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
+- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 - **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 - **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
@@ -93,6 +101,9 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Table of Contents](#table-of-contents)
   - [Collection Search Extensions](#collection-search-extensions)
   - [Catalogs Route](#catalogs-route)
+  - [Injecting Custom Extensions](#injecting-custom-extensions-out-of-tree)
+  - [Custom Pydantic Settings](#custom-pydantic-settings)
+  - [Catalogs Search Extension](#catalogs-search-extension)
   - [Documentation & Resources](#documentation--resources)
   - [SFEOS STAC Viewer](#sfeos-stac-viewer)
   - [Package Structure](#package-structure)
@@ -106,11 +117,13 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [STAC Validation](#stac-validation)
   - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
   - [Queryables Endpoint](#queryables-endpoint)
     - [Root Queryables Configuration](#root-queryables-configuration)
     - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
     - [Queryables Validation](#queryables-validation)
+  - [Sortables Endpoint](#sortables-endpoint)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
     - [When to Use](#when-to-use)
@@ -123,6 +136,8 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Interacting with the API](#interacting-with-the-api)
   - [Configure the API](#configure-the-api)
   - [Collection Pagination](#collection-pagination)
+  - [Dates before 1970 or after 2262](#dates-before-1970-or-after-2262)
+  - [Sorting and Time-Range Items (`datetime: null`)](#sorting-and-time-range-items-datetime-null)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
   - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
@@ -135,6 +150,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Rate Limiting](#rate-limiting)
   - [Prometheus metrics](#prometheus-metrics)
   - [Hidden Items Filtering](#hidden-items-filtering)
+  - [Optimistic Locking (ETag and If-Match)](#optimistic-locking-etag-and-if-match)
   - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
 ## Documentation & Resources
@@ -234,9 +250,13 @@ These extensions make it easier to build user interfaces that display and naviga
 > - `extent.temporal.interval` (date field)
 > - `temporal` (alias to extent.temporal.interval)
 >
-> Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
+> For collections, the default mapping also includes an explicit `title` field mapped as `text` with a `title.keyword` subfield, so title sorting works out of the box without extra custom mapping.
+>
+> Text fields like `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
 >
 > **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
+
+> **Tip**: If you add a keyword subfield for sorting (for example `title.keyword`) through custom mappings, SFEOS can remap sort fields automatically at startup based on the generated mappings. You can also override this behavior explicitly with `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` / `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` / `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`. See [Sorting Text Fields with Keyword Subfields](#sorting-text-fields-with-keyword-subfields) for the full example.
 
 
 ## Catalogs Route
@@ -278,7 +298,7 @@ This ensures you have the `stac-fastapi-catalogs-extension` dependency required 
 
 ### DAG Specification & Dynamic Link Generation
 
-SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
 
 #### Link Relations
 
@@ -371,6 +391,8 @@ The catalogs extension implements a **safety-first design** that protects collec
 
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
+
+**Filtering listings:** when the filter extension is enabled, the `GET` listing routes above (`/catalogs`, `/catalogs/{catalog_id}/catalogs`, `/catalogs/{catalog_id}/children`, `/catalogs/{catalog_id}/collections` and `/catalogs/{catalog_id}/collections/{collection_id}/items`) accept `filter`, `filter-lang` and `filter-crs` like `/collections` and `/collections/{collection_id}/items`, for example `/catalogs/earth-observation/collections?filter=id LIKE 'sentinel%'&filter-lang=cql2-text`.
 
 ### Usage Examples
 
@@ -516,11 +538,11 @@ This feature enables building user interfaces that provide organized, hierarchic
 
 This extension supports **Poly-Hierarchy**, meaning a single Catalog or Collection can belong to multiple parents simultaneously. This allows you to create "Virtual" views or "Playlists" of data without duplicating content.
 
-To link an **existing** Catalog or Collection to a new parent, simply `POST` it to the new parent's endpoint using its existing `id`. The API implements an **Upsert** (Update or Insert) logic:
+To link an **existing** Catalog or Collection to a new parent, `POST` a minimal `{"id": "..."}` payload to the new parent's endpoint. The API implements a **Link-or-Create** logic (a `POST` never updates an existing resource — use `PUT` for that):
 
 1. **Check:** Does a resource with this `id` already exist?
-2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
-3. **If NO (Create):** The API creates a new resource.
+2. **If YES (Link):** A `{"id": "..."}` (ObjectUri) payload adds the new parent to the resource's `parent_ids` list and returns `200 OK`. No data is duplicated. A **full** Catalog/Collection body for an existing `id` is rejected with `409 Conflict` — the spec only defines linking via the minimal `{"id"}` payload, so the posted body is not applied and no link is created.
+3. **If NO (Create):** A full Catalog/Collection body creates a new resource and returns `201 Created`. A `{"id"}` payload for a nonexistent `id` returns `404 Not Found`.
 
 #### Important: Flat Catalog URL Structure
 
@@ -574,7 +596,254 @@ You can discover it as a child of forestry via:
 
 Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry parent without needing to re-link individual items.
 
-> **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
+> **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**. The catalog write routes (creating, updating, deleting and linking catalogs and collections under `/catalogs`) also require `ENABLE_TRANSACTIONS_EXTENSIONS=true`, which is the default.
+
+## Injecting Custom Extensions (Out-of-Tree)
+
+If you need to add deployment-specific routes such as custom analytics, billing, or map tiles, SFEOS lets you inject custom extensions without forking or modifying the core repository.
+
+By leveraging the `extra_map` parameter during application instantiation, your custom endpoints are mounted alongside the built-in STAC API routes and included in the OpenAPI schema.
+
+For a practical real-world example of wiring routes, models, and dependencies in a standalone extension, see the [Catalogs Endpoint extension](https://github.com/StacLabs/stac-fastapi-catalogs-extension).
+
+### 1. Define Your Custom Extension
+
+Create a class that inherits from `ApiExtension` and bind your FastAPI routes inside `register()`.
+
+This example shows a lightweight Vector Tile extension using the native Elasticsearch/OpenSearch `_mvt` API pattern:
+
+```python
+from fastapi import APIRouter
+from stac_fastapi.types.extension import ApiExtension
+
+
+class MVTExtension(ApiExtension):
+    """Example extension serving Vector Tiles directly from the search engine."""
+
+    def register(self, app):
+        router = APIRouter()
+
+        @router.get("/api/map/{z}/{x}/{y}.mvt")
+        async def get_mvt(z: int, x: int, y: int):
+            # Your custom Elasticsearch/OpenSearch _mvt generation logic here
+            return {"tile": "data"}
+
+        app.include_router(router)
+```
+
+### 2. Inject It Into the Application Factory
+
+Once your extension is defined, instantiate the `Extensions` manager, pass your custom class into `extra_map`, and hand that manager to `instantiate_api()`.
+
+```python
+from stac_fastapi.elasticsearch.app import instantiate_api
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
+from stac_fastapi.core.session import Session
+from stac_fastapi.sfeos_helpers.models.extensions import Extensions
+from your_project.extensions import MVTExtension
+
+
+settings = ElasticsearchSettings()
+database_logic = DatabaseLogic()
+session = Session.create_from_settings(settings)
+
+custom_extensions = Extensions(
+    settings=settings,
+    database_logic=database_logic,
+    session=session,
+    extra_map={
+        "mvt": MVTExtension(),
+    },
+)
+
+api = instantiate_api(
+    settings=settings,
+    database_logic=database_logic,
+    extensions_manager=custom_extensions,
+)
+app = api.app
+```
+
+The key idea is simple: build the extension class, add it to `extra_map`, and pass the resulting manager into the backend factory.
+
+## Custom Pydantic Settings
+
+If you want to override backend defaults programmatically, pass a custom settings object into `instantiate_api()` as well. This is useful when you want to set feature flags or connection defaults in code instead of relying only on environment variables.
+
+The backend factories accept concrete settings classes such as `ElasticsearchSettings` and `OpensearchSettings`, so you can subclass them or instantiate them directly before building the app.
+
+Tip: You can also override these directly during instantiation, for example `settings = ElasticsearchSettings(enable_catalogs_route=True)`.
+
+```python
+from stac_fastapi.elasticsearch.app import instantiate_api
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+
+
+class CustomElasticsearchSettings(ElasticsearchSettings):
+    enable_catalogs_route: bool = True
+    enable_collections_search_route: bool = True
+
+
+settings = CustomElasticsearchSettings()
+api = instantiate_api(settings=settings)
+app = api.app
+```
+
+For most deployments, the same pattern applies if you are using the OpenSearch backend: import the OpenSearch settings class, customize the values you need, and pass the resulting instance into `instantiate_api()`.
+
+## Catalogs Search Extension
+
+The **Catalogs Search Extension** enables searching for items across an entire catalog's subtree, including all sub-catalogs and their collections. This is similar to the global items search, but scoped to a specific catalog hierarchy.
+
+This implementation follows the [STAC API - Multi-Tenant Catalogs Scoped Search (Recursive Traversal)](https://github.com/StacLabs/multi-tenant-catalogs#scoped-search-recursive-traversal) specification, which defines how to safely search items within catalog hierarchies while enforcing scope boundaries.
+
+### Overview
+
+The catalogs search extension provides a powerful way to discover items within organizational hierarchies without needing to know which specific collections contain them. It automatically traverses the catalog DAG (Directed Acyclic Graph) to find all descendant collections and searches items across all of them.
+
+### Key Features
+
+- **Subtree Search**: Search items across a catalog and all its sub-catalogs
+- **Rich Query Support**: All standard STAC search parameters are supported
+- **Spatial Filtering**: Filter items by bounding box
+- **Temporal Filtering**: Filter items by datetime range
+- **Free-Text Search**: Search item properties with the `q` parameter
+- **CQL2 Filtering**: Advanced structured filtering with CQL2 expressions
+- **Sorting**: Sort results by any indexed field
+- **Pagination**: Navigate large result sets with limit and token parameters
+- **DAG Traversal**: Automatic breadth-first search through catalog hierarchies
+- **Scope Enforcement**: Requests are automatically restricted to the catalog's descendant collections
+
+### Endpoints
+
+**Search Endpoints:**
+
+- **GET `/catalogs/{catalog_id}/search`**: Search items using query parameters
+- **POST `/catalogs/{catalog_id}/search`**: Search items using a JSON request body (supports large payloads)
+
+### Supported Parameters
+
+The catalogs search endpoints support all standard STAC search parameters:
+
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `collections` | array | Limit search to specific collections within the catalog | `?collections=sentinel-2,landsat-9` |
+| `ids` | array | Search for specific item IDs | `?ids=item-1,item-2` |
+| `bbox` | array | Bounding box filter `[minx,miny,maxx,maxy]` | `?bbox=-10,35,40,70` |
+| `intersects` | string | GeoJSON geometry filter | `?intersects={"type":"Point","coordinates":[0,0]}` |
+| `datetime` | string | Datetime range filter | `?datetime=2020-01-01T00:00:00Z/2020-12-31T23:59:59Z` |
+| `q` | string | Free-text search across item properties | `?q=landsat` |
+| `filter` | string | CQL2 filter expression (JSON or text) | `?filter={"op":"=","args":[{"property":"eo:bands"},1]}` |
+| `filter-lang` | string | CQL2 format: `cql2-json` or `cql2-text` | `?filter-lang=cql2-json` |
+| `sortby` | string | Sort results by field | `?sortby=-datetime` |
+| `fields` | string | Select specific fields to return | `?fields=id,properties.datetime` |
+| `limit` | integer | Maximum results per page (default: 10) | `?limit=50` |
+| `token` | string | Pagination token for next page | `?token=<pagination-token>` |
+
+### How It Works
+
+The catalogs search extension uses a **breadth-first search (BFS) DAG traversal** to discover all descendant collections:
+
+1. **Catalog Validation**: Verifies the requested catalog exists
+2. **DAG Traversal**: Performs BFS through the catalog hierarchy using the `parent_ids` field
+   - Starts from the requested catalog
+   - Finds all direct children (both sub-catalogs and collections)
+   - Recursively traverses sub-catalogs to find their children
+   - Collects all descendant collections
+3. **Scope Enforcement**: Restricts search to only the descendant collections
+4. **Query Delegation**: Passes the scoped search to the core search engine
+5. **Result Return**: Returns items matching the search criteria
+
+### Usage Examples
+
+```bash
+# Search all items in a catalog
+curl "http://localhost:8081/catalogs/earth-observation/search?q=landsat"
+
+# Search with spatial and temporal filters
+curl "http://localhost:8081/catalogs/earth-observation/search?bbox=-180,-90,180,90&datetime=2020-01-01T00:00:00Z/2020-12-31T23:59:59Z"
+
+# Search specific collections within a catalog
+curl "http://localhost:8081/catalogs/earth-observation/search?collections=sentinel-2,landsat-9&limit=50"
+
+# Advanced CQL2 filtering
+curl "http://localhost:8081/catalogs/earth-observation/search?filter=eo:cloud_cover%3C20&filter-lang=cql2-text"
+
+# Free-text search with sorting
+curl "http://localhost:8081/catalogs/earth-observation/search?q=forest&sortby=-datetime"
+
+# POST request with complex search (supports large payloads)
+curl -X POST "http://localhost:8081/catalogs/earth-observation/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bbox": [-180, -90, 180, 90],
+    "datetime": "2020-01-01T00:00:00Z/2020-12-31T23:59:59Z",
+    "filter": {
+      "op": "and",
+      "args": [
+        {"op": "<", "args": [{"property": "eo:cloud_cover"}, 20]},
+        {"op": "=", "args": [{"property": "platform"}, "sentinel-2"]}
+      ]
+    },
+    "limit": 100
+  }'
+
+# Pagination example
+curl "http://localhost:8081/catalogs/earth-observation/search?limit=10"
+# Use the returned 'next' link token for the next page
+curl "http://localhost:8081/catalogs/earth-observation/search?limit=10&token=<token-from-previous-response>"
+```
+
+### Scope Enforcement
+
+The catalogs search extension enforces strict scope boundaries as required by the [STAC API - Multi-Tenant Catalogs specification](https://github.com/StacLabs/multi-tenant-catalogs#scoped-search-recursive-traversal):
+
+- **Allowed**: Search any collections within the catalog's subtree
+- **Allowed**: Specify a subset of descendant collections to search
+- **Blocked**: Request collections outside the catalog's scope (returns 403 Forbidden)
+- **Empty Catalog**: Returns empty results if the catalog has no descendant collections
+
+**Scope Enforcement Rules:**
+- The API computes the intersection of user-requested collections and the catalog's allowed descendant collections
+- Any requested collections outside the descendant tree are rejected with a 403 Forbidden error
+- Users cannot escape the catalog boundary through collection parameters
+- All items returned are guaranteed to be within the catalog's hierarchy
+
+Example of scope enforcement:
+
+```bash
+# This works - sentinel-2 is in earth-observation's subtree
+curl "http://localhost:8081/catalogs/earth-observation/search?collections=sentinel-2"
+
+# This fails - landsat-archive is not in earth-observation's subtree
+curl "http://localhost:8081/catalogs/earth-observation/search?collections=landsat-archive"
+# Response: 403 Forbidden - "Requested collections are outside the scope of this catalog."
+```
+
+### Performance Considerations
+
+- **DAG Traversal**: The BFS traversal is optimized with a 10,000 result limit per query level. Large hierarchies with more than 10,000 direct children at any level will log a warning.
+- **Caching**: For frequently accessed catalogs, consider caching the descendant collection list at the application level
+- **Index Size**: Searching large catalogs with millions of items may require tuning Elasticsearch/OpenSearch settings
+- **Pagination**: Use pagination tokens for efficient navigation through large result sets
+
+### Conformance Classes
+
+When the catalogs search extension is enabled, SFEOS advertises the following conformance class:
+
+- **`https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search`** - Indicates support for scoped search endpoints with recursive traversal through catalog hierarchies
+
+This conformance class is automatically advertised in the API's `/conformance` endpoint when `ENABLE_CATALOGS_ROUTE=true`.
+
+### Configuration
+
+The catalogs search extension is automatically enabled when the catalogs route is enabled:
+
+```bash
+# Enable catalogs route (which includes search)
+export ENABLE_CATALOGS_ROUTE=true
+```
 
 ## Package Structure
 
@@ -711,12 +980,33 @@ docker compose up elasticsearch app-elasticsearch
 # For OpenSearch backend
 docker compose up opensearch app-opensearch
 ```
+
 - **Configuration**: By default, Docker Compose uses Elasticsearch 9.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
   ELASTICSEARCH_VERSION=9.3.2
   OPENSEARCH_VERSION=3.5.0
   ENABLE_DIRECT_RESPONSE=false
   ```
+
+**Setting up your development environment with `uv`:**
+
+This project uses [`uv`](https://docs.astral.sh/uv/) for fast, reproducible dependency management. To set up your local development environment:
+
+```shell
+# Install uv (if not already installed)
+pip install uv
+
+# Sync dependencies using the locked uv.lock file
+uv sync --all-extras
+
+# Run tests
+uv run pytest -svvv
+
+# Run pre-commit checks
+uv run pre-commit run --all-files
+```
+
+The `uv.lock` file ensures that all developers, CI/CD pipelines, and Docker containers use the exact same dependency versions for consistency and reproducibility.
 
 
 ## Configuration Reference
@@ -732,7 +1022,7 @@ You can customize additional settings in your `.env` file:
 | `APP_PORT` | Server port. | `8000` | Optional |
 | `ENVIRONMENT` | Runtime environment. | `local` | Optional |
 | `WEB_CONCURRENCY` | Number of worker processes. | `10` | Optional |
-| `RELOAD` | Enable auto-reload for development. | `true` | Optional |
+| `RELOAD` | Enable auto-reload for development. | `false` | Optional |
 
 ### 2. Backend Connection (Elasticsearch / OpenSearch)
 
@@ -769,8 +1059,14 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_DIRECT_RESPONSE` | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false` | Optional |
 | `ENABLE_COLLECTIONS_SEARCH` | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true` | Optional |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
-| `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
+| `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. It also controls the catalog transaction routes under `/catalogs` and their `multi-tenant-catalogs/transaction` conformance class. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
+| `HIDE_ALTERNATE_PARENTS` | When `true`, suppresses `rel="related"` and `rel="duplicate"` links for alternate parents in poly-hierarchy. Only the contextual `rel="parent"` link is advertised. Useful for multi-tenant deployments to prevent information leakage about other tenants. Requires `ENABLE_CATALOGS_ROUTE=true`. | `false` | Optional |
+| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
+| `REQUIRE_IF_MATCH` | When `true`, `PUT`, `PATCH` and `DELETE` on a single item or collection, and `PUT` and `DELETE` on a single catalog, return `428 Precondition Required` without an `If-Match` header, and so does a bulk upsert, which cannot carry one. Creates, bulk inserts, and linking or unlinking catalogs and collections are not affected. See [Optimistic Locking](#optimistic-locking-etag-and-if-match). | `false` | Optional |
+| `VALIDATE_BEFORE_QUEUE` | When using Redis queue (`ENABLE_REDIS_QUEUE=true`), controls whether validation happens on the API thread before queuing (true) or deferred to the background worker (false). When queue is disabled, validation always happens on the API thread. Set to `true` for strict data quality, `false` for maximum API throughput. See [Validation Timing with Redis Queue](#validation-timing-with-redis-queue) for details. | `true` | Optional |
+| `ENABLE_TOPOLOGY_VALIDATION` | Enable lightweight pure-Python validation to enforce WGS84 coordinate bounds (±180° lon, ±90° lat) and detect improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides CPU-efficient spatial validation without external dependencies. See [Topology Validation](#topology-validation) for details. | `false` | Optional |
+| `MAX_TOPOLOGY_VERTICES` | Maximum number of vertices allowed in a single Polygon or MultiPolygon ring when topology validation is enabled. This prevents DoS attacks with pathologically complex geometries. Only applies when `ENABLE_TOPOLOGY_VALIDATION=true`. | `5000` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -783,16 +1079,18 @@ You can customize additional settings in your `.env` file:
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
 | `COUNT_TIMEOUT` | Configures the timeout for the count task with search queries. If the count query takes longer than timeout, the search results are returned without the total count. Set to 0 to disable the timeout.. | `0.5` | Optional |
+| `MAX_BATCH_SIZE` | When set to a value > 0, enables chunked validation with fail-fast thresholds. Items are validated in chunks of this size. Set to 0 to disable chunked validation (uses standard atomic validation). See [Chunked Validation with Fail-Fast](#chunked-validation-with-fail-fast) for details. | `0` | Optional |
+| `MAX_BATCH_ERROR_SIZE` | Maximum number of validation errors allowed before halting the validation loop and rejecting the entire batch. Only applies when `MAX_BATCH_SIZE` > 0. This is a CPU optimization gate to prevent wasting resources validating hopelessly broken payloads. | `0` | Optional |
 
 
 ### 6. Database Indexing & Behavior
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `RAISE_ON_BULK_ERROR` | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag. | `false` | Optional |
+| `RAISE_ON_BULK_ERROR` | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. Malformed `bulk_items` entries (not a JSON object, or without a non-empty string `id`) follow this flag: rejected with `400` when `true`, reported per item in `errors` when `false`. The same applies to `bulk_items` entries whose `collection` differs from the path collection (an absent, `null` or `""` `collection` is filled from the path regardless of this flag) and to `bulk_items` items that fail STAC validation when `ENABLE_STAC_VALIDATOR=true`. **Note:** single Item `POST`/`PUT` validation errors always raise regardless of this flag. ItemCollection validation failures follow this flag when at least one item is written; an ItemCollection with no writable items returns `400` (with `ENABLE_REDIS_QUEUE=true`, `202` and zero items queued), and the `MAX_BATCH_ERROR_SIZE` threshold rejection is unconditional (see [Chunked Validation with Fail-Fast](#chunked-validation-with-fail-fast)). | `false` | Optional |
 | `DATABASE_REFRESH` | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
 | `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
-| `USE_DATETIME_NANOS` | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`. | `true` | Optional |
+| `USE_DATETIME_NANOS` | Sets the precision and storable range of item `datetime`, `start_datetime` and `end_datetime`. When `true`, they are mapped `date_nanos`: nanosecond precision, and only dates from 1970-01-01 to 2262-04-11 can be stored. When `false`, they are mapped `date`: millisecond precision, and any RFC 3339 date can be stored. The mapping applies to item indexes created after the change; see [Dates before 1970 or after 2262](#dates-before-1970-or-after-2262). | `true` | Optional |
 | `PROPERTIES_DATETIME_FIELD` | Specifies the field used for single datetime of the items in the backend database. | `properties.datetime` | Optional |
 | `PROPERTIES_START_DATETIME_FIELD` | Specifies the field used for the lower value of a datetime range for the items in the backend database. | `properties.start_datetime` | Optional |
 | `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
@@ -806,6 +1104,10 @@ You can customize additional settings in your `.env` file:
 | `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 | `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` | JSON object mapping API sort fields to backend fields for item endpoints only. Example: `{"properties.platform_name":"properties.platform_name.keyword"}`. | `{}` | Optional |
+| `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` | Path to a JSON file containing sort field remaps for item endpoints only. Uses the same object format as `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS`. | `None` | Optional |
+| `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` | JSON object mapping API sort fields to backend fields for collection endpoints only. Example: `{"title":"title.keyword"}`. | `{}` | Optional |
+| `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE` | Path to a JSON file containing sort field remaps for collection endpoints only. Uses the same object format as `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`. | `None` | Optional |
 | `STAC_FASTAPI_ES_COERCE_GLOBAL` | Sets the index-level coerce setting. When true (default), coercion is allowed (e.g., "10" → 10, 5.0 → 5). When false, coercion is disabled, documents with type mismatches are rejected unless overridden at the field level. | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
@@ -814,6 +1116,7 @@ You can customize additional settings in your `.env` file:
 |----------|-------------|---------|----------|
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
+| `SORTABLES_CACHE_TTL` | Time-to-live (in seconds) for the cached union of collection sortable fields on `GET /sortables`. Used when `ROOT_QUERYABLES_UNION` is enabled. | `1800` | Optional |
 | `ROOT_QUERYABLES_UNION` | If set to `true`, the root `/queryables` endpoint dynamically unions queryables from all available collections. | `false` | Optional |
 | `STAC_QUERYABLES_CONFIG` | Path to a static JSON file serving as an override for the root `/queryables` endpoint. Overrides `ROOT_QUERYABLES_UNION` if provided. | `None` | Optional |
 | `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
@@ -823,6 +1126,182 @@ You can customize additional settings in your `.env` file:
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## STAC Validation
+
+STAC FastAPI provides a flexible, 2-tier validation architecture for STAC items and collections on ingestion. This ensures data quality and compliance with the STAC specification while allowing you to balance strict schema enforcement with high-throughput ingestion performance.
+
+### 1. Native Pydantic Validation (Always Enabled)
+
+By default, all STAC items and collections are validated using **Pydantic** (via `stac-pydantic`) at the API routing layer. This validation:
+
+- Enforces required STAC fields and correct data types.
+- Validates spatial and temporal properties.
+- Provides extremely fast, built-in validation without external dependencies.
+
+This validation is always enabled and happens automatically before data reaches the database or the Redis queue.
+
+### 2. Python STAC Validator
+
+If you require strict validation beyond Pydantic's type checking, you can enable the Python-based `stac-validator` package.
+
+#### Enabling STAC Validator
+
+1. **Install the validator**:
+   ```bash
+   pip install stac-fastapi-core[validator]
+   # or
+   pip install stac-fastapi-elasticsearch[validator]
+   # or
+   pip install stac-fastapi-opensearch[validator]
+   ```
+
+2. **Enable validation via environment variable**:
+   ```bash
+   export ENABLE_STAC_VALIDATOR=true
+   ```
+
+When enabled, the STAC validator will:
+- Validate items and collections against the official STAC JSON schemas
+- Check compliance with STAC extensions (e.g., EO, SAR, Projection)
+- Catch schema violations that Pydantic doesn't enforce
+- Provide detailed error messages with schema paths and validation details
+
+#### Example: Validation in Action
+
+```bash
+# Enable STAC validator
+export ENABLE_STAC_VALIDATOR=true
+
+# Now POST/PUT requests will validate against STAC schemas
+curl -X POST http://localhost:8000/collections \
+  -H "Content-Type: application/json" \
+  -d @collection.json
+```
+
+If validation fails, you'll receive a detailed error response:
+```json
+{
+  "detail": "STAC validation failed: 'eo:bands' does not match any of the regexes: '^(?!eo:)'. Error is in assets -> SR_B2"
+}
+```
+
+#### Performance Considerations
+
+- **Pydantic validation** Very fast and always enabled
+- **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Uses multi-processing for feature-collections
+
+#### Validation Timing with Redis Queue
+
+When using the Redis queue (`ENABLE_REDIS_QUEUE=true`), you can control when validation occurs:
+
+- **`VALIDATE_BEFORE_QUEUE=true` (default)**: Validates items on the API thread before queuing. This ensures data quality upfront but may impact API response times for large batches.
+  - Use this for strict data quality requirements
+  - Recommended for most production deployments
+  
+- **`VALIDATE_BEFORE_QUEUE=false`**: Skips validation on the API thread and lets the background worker validate items. This maximizes API throughput but delays error detection.
+  - Use this for high-throughput scenarios where you can tolerate delayed validation
+  - The worker will still validate and move invalid items to the Dead Letter Queue (DLQ)
+
+**Example: Enable high-throughput mode with deferred validation**
+```bash
+export ENABLE_REDIS_QUEUE=true
+export ENABLE_STAC_VALIDATOR=true
+export VALIDATE_BEFORE_QUEUE=false
+```
+
+> **Note**: When `ENABLE_REDIS_QUEUE=false` (direct database mode), validation always happens on the API thread regardless of the `VALIDATE_BEFORE_QUEUE` setting.
+
+#### Chunked Validation with Fail-Fast
+
+For high-volume ingestion scenarios, you can enable **chunked validation with fail-fast thresholds** to optimize CPU usage and prevent wasting resources on hopelessly broken payloads.
+
+**How it works:**
+
+1. **Chunking**: Items are validated in chunks of `MAX_BATCH_SIZE` items
+2. **Error Tracking**: Validation errors are accumulated across chunks
+3. **Fail-Fast**: If total errors exceed `MAX_BATCH_ERROR_SIZE`, validation stops immediately and the entire batch is rejected
+4. **Atomic Rejection**: With `RAISE_ON_BULK_ERROR=true` the entire batch is rejected if any errors are found (no partial inserts); otherwise invalid items are reported and the valid ones are written
+
+**Example: Enable chunked validation with fail-fast**
+```bash
+export ENABLE_STAC_VALIDATOR=true
+export MAX_BATCH_SIZE=100          # Validate in chunks of 100 items
+export MAX_BATCH_ERROR_SIZE=5      # Stop after 5 errors found
+```
+
+**Behavior:**
+- If a batch of 1000 items has 6 validation errors distributed across chunks, validation stops after finding the 6th error
+- The API returns a 400 error with details about where validation stopped and how many items were checked
+- This prevents the validator from wasting CPU cycles on the remaining 994 items
+
+**When to use:**
+- High-volume ingestion (thousands of items per request)
+- Unreliable data sources where large batches may contain many errors
+- When you want to fail fast rather than validate everything
+
+**When NOT to use:**
+- Small batches (< 100 items) - overhead of chunking not worth it
+- When you need a complete error report for all items - fail-fast stops early
+- Set `MAX_BATCH_SIZE=0` (default) to disable and use standard atomic validation
+
+> **Note**: Chunked validation only applies when `VALIDATE_BEFORE_QUEUE=true` (API thread validation). When using deferred validation (`VALIDATE_BEFORE_QUEUE=false`), the worker will validate the entire batch.
+
+### 3. Topology Validation (Antimeridian & WGS84 Bounds Protection)
+
+For geospatial data ingestion, you can enable **lightweight topology validation** to enforce WGS84 coordinate bounds and detect improper antimeridian crossing without external dependencies.
+
+**How it works:**
+
+1. **WGS84 Bounds Enforcement**: Validates all coordinates fall within standard global bounds (±180° longitude, ±90° latitude)
+2. **Antimeridian Detection**: Detects improper antimeridian crossing in Polygon and MultiPolygon geometries (longitude jumps > 180°)
+3. **Vertex Limit Enforcement**: Prevents DoS attacks by rejecting geometries with excessive vertices (default 5000 per ring)
+4. **Recursive Validation**: Checks every coordinate pair in the geometry, not just the first
+5. **Zero Dependencies**: Pure Python implementation with no external service calls
+
+**Example: Enable topology validation**
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+```
+
+**Configuring the vertex limit:**
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+export MAX_TOPOLOGY_VERTICES=10000  # Allow up to 10,000 vertices per ring
+```
+
+**Behavior:**
+
+- Items with coordinates outside WGS84 bounds are rejected with HTTP 400
+- Items with geometries crossing the antimeridian without proper truncation are rejected
+- Validation runs after STAC schema validation, so it catches spatial errors that Pydantic doesn't enforce
+- Works with both single-item and bulk FeatureCollection ingestion
+
+**Example error response:**
+```json
+{
+  "detail": "Invalid item geometry: Coordinates out of global WGS84 bounds: [200.5, 45.0]"
+}
+```
+
+**When to use:**
+
+- Ingesting data from unreliable sources with potential coordinate errors
+- Enforcing strict spatial data quality standards
+- Detecting antimeridian-crossing geometries that should be split or wrapped
+- When you want lightweight validation without external service dependencies
+
+**Integration with Chunked Validation:**
+
+Topology validation integrates seamlessly with chunked validation and fail-fast thresholds. If topology errors exceed `MAX_BATCH_ERROR_SIZE`, the circuit breaker will halt validation early:
+
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+export MAX_BATCH_SIZE=100
+export MAX_BATCH_ERROR_SIZE=5
+```
+
+In this configuration, if 6 items have topology errors across the batch, validation stops after the chunk that causes the cumulative error count to exceed `MAX_BATCH_ERROR_SIZE`, preventing additional chunks from being processed. With `MAX_BATCH_SIZE=100`, this does not necessarily stop exactly when the 6th error is encountered; use smaller chunk sizes if you need earlier cutoff.
 
 ## Free-Text Search (`q` parameter)
 
@@ -916,8 +1395,9 @@ If your metadata uses custom fields (e.g., `properties.example_name`), follow th
 * **Be Selective**: Only add fields to `FREE_TEXT_FIELDS` that users genuinely need to search.
 * **Avoid Wildcards**: Do not use `properties.*` in `FREE_TEXT_FIELDS` for catalogs with millions of items. Searching every property simultaneously significantly increases query latency and creates "noisy" results.
 
-## Redis for Navigation environment variables:
-These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
+## Redis for Navigation Configuration
+
+These Redis configuration variables enable proper navigation functionality in STAC FastAPI.
 
 | Variable | Description| Default| Required|
 |----------|------------|--------|---------|
@@ -931,6 +1411,8 @@ These Redis configuration variables to enable proper navigation functionality in
 | `REDIS_PORT` | Redis server port for Redis configuration. | `6379`                   | Conditional (required for standalone Redis)                                                 |
 | **Both** |                                                                                              |                          |                                                                                             |
 | `REDIS_DB` | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
+| `REDIS_USERNAME` | If your redis instance uses ACLs for authentication you may provide a username here. | `""` | Optional |
+| `REDIS_PASSWORD` | Password for authentication enabled redis instances. | `""` | Optional |
 | `REDIS_MAX_CONNECTIONS` | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
 | `REDIS_RETRY_TIMEOUT` | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
 | `REDIS_DECODE_RESPONSES`      | Automatically decode Redis responses to strings.                                             | `true`                   | Optional                                                                                    |
@@ -1032,6 +1514,20 @@ QUERYABLES_CACHE_TTL=1800  # Optional, defaults to 1800 seconds (30 minutes)
 
 This feature helps prevent queries on non-queryable fields which could lead to unnecessary load on the database.
 
+## Sortables Endpoint
+
+The sortables endpoints provide a JSON Schema detailing which fields can be used in `sortby` expressions. SFEOS exposes three sortables endpoints through the sort extension:
+
+- `GET /sortables` — sortable fields for item search. Returns the core STAC sort fields (`id`, `collection`, `properties.datetime`, `properties.created`, `properties.updated`). When `ROOT_QUERYABLES_UNION=true`, the response also unions the sortable fields of every collection; the union is cached for `SORTABLES_CACHE_TTL` seconds (default 1800) since it walks every collection's index mapping.
+- `GET /collections/{collection_id}/sortables` — sortable fields for the collection's items, generated from the collection's item index mapping.
+- `GET /collections-sortables` — sortable fields for collection search, generated from the collections index mapping.
+
+Only fields the backend can actually sort on are advertised: keyword, numeric, boolean, date, IP and wildcard fields, and `text` fields that have a `keyword` sub-field. A `text` field with a keyword sub-field is advertised under its public name — `sortby=-title` is internally mapped to `title.keyword`. Geo fields, nested objects and unindexed fields are not advertised, and fields listed in `EXCLUDED_FROM_QUERYABLES` (and their children) are excluded here as well.
+
+Each sortables endpoint is advertised on the resource it describes with a link of relation `http://www.opengis.net/def/rel/ogc/1.0/sortables`: on the landing page for `/sortables`, on each collection for its per-collection sortables, and on the `GET /collections` response for `/collections-sortables`.
+
+The per-collection and collection-search schemas set `additionalProperties: false`, so sorting on a field they do not declare returns `400 Bad Request`; `sortby` fields on `GET /collections/{collection_id}/items` are checked against that collection's schema. `GET /sortables` sets `additionalProperties: true` when only the non-exhaustive core fields are listed — any name is then valid in `sortby`, and items missing the property sort it as null — and `false` when `ROOT_QUERYABLES_UNION=true`, in which case `sortby` fields are validated against the union schema. Sort clauses set `unmapped_type` so item indexes that do not map a field contribute their documents as null rather than failing. Fields listed in `EXCLUDED_FROM_QUERYABLES` return `400` under every schema even though the engine could sort on them, keeping the `false` contract. See the [STAC API Sort extension](https://github.com/stac-api-extensions/sort) for the full specification.
+
 ## Datetime-Based Index Management
 
 ### Overview
@@ -1080,6 +1576,7 @@ ENABLE_DATETIME_INDEX_FILTERING=true
 | `ENABLE_DATETIME_INDEX_FILTERING` | Enables time-based index partitioning | `false` | `true` |
 | `DATETIME_INDEX_MAX_SIZE_GB` | Maximum size limit for datetime indexes (GB) - note: add +20% to target size due to ES/OS compression | `25` | `50` |
 | `STAC_ITEMS_INDEX_PREFIX` | Prefix for item indexes | `items_` | `stac_items_` |
+| `STAC_ITEMS_ALIAS_PREFIX` | Prefix for item aliases | `STAC_ITEMS_INDEX_PREFIX` | `stac-items-` |
 | `ENABLE_REDIS_QUEUE` | Enables Redis queue for async item processing | `false` | `true` |
 | `QUEUE_BATCH_SIZE` | Number of items to process in a single batch | `50` | `100` |
 | `QUEUE_FLUSH_INTERVAL` | Maximum seconds to wait before flushing queue (even if batch not full) | `30` | `60` |
@@ -1115,9 +1612,9 @@ The system uses a precise naming convention:
 **Aliases:**
 
 ```
-{ITEMS_INDEX_PREFIX}{collection-id}                                  # Main collection alias
-{ITEMS_INDEX_PREFIX}{collection-id}_{start-datetime}                 # Temporal alias
-{ITEMS_INDEX_PREFIX}{collection-id}_{start-datetime}_{end-datetime}  # Closed index alias
+{ITEMS_ALIAS_PREFIX}{collection-id}                                  # Main collection alias
+{ITEMS_ALIAS_PREFIX}{collection-id}_{start-datetime}                 # Temporal alias
+{ITEMS_ALIAS_PREFIX}{collection-id}_{start-datetime}_{end-datetime}  # Closed index alias
 ```
 
 **Example:**
@@ -1217,6 +1714,39 @@ The system uses a precise naming convention:
   ```shell
   curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
   ```
+
+## Dates before 1970 or after 2262
+
+Item `datetime`, `start_datetime` and `end_datetime` are mapped `date_nanos` by default, and Elasticsearch and OpenSearch can store that type only from 1970-01-01 to 2262-04-11T23:47:16.854775807Z. Set `USE_DATETIME_NANOS=false` to store and search historical or far-future items, such as climate series that start in 1950. The three fields are then mapped `date`, which covers any RFC 3339 date at millisecond precision.
+
+With the default `true`, an item `datetime` filter is limited to the range, so an interval entirely outside it, such as `../1960-01-01T00:00:00Z`, returns no items.
+
+The flag sets the mapping of item indexes created after the change. A `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` entry for these fields still takes precedence.
+
+**Existing deployments** must reindex their item indexes into new indexes that get the `date` mapping (see [Reindexing](#reindexing)). Do this in a maintenance window:
+
+1. Stop ingestion and wait until queued and in-flight writes finish. Keep writes paused until step 5 is done; an item written between the copy and the cutover is lost.
+2. Restart every API instance, and the item queue worker if `ENABLE_REDIS_QUEUE=true`, with `USE_DATETIME_NANOS=false`. Each process reads the item mapping at startup and gives it to the item indexes it creates. The API also rewrites the item index template at startup, which step 3 relies on.
+3. Reindex each item index into a new index whose name starts with the item index prefix (`STAC_ITEMS_INDEX_PREFIX`, `items_` by default), so that the template applies to it.
+4. Move every alias of the old index to the new one with the same alias attributes. That includes the collection alias (`items_<collection>`) and, with `ENABLE_DATETIME_INDEX_FILTERING=true`, the datetime aliases.
+5. Close or delete the old index. Searches across all collections read `items_*`, so an old index left open returns every item twice.
+
+Until an old index is reindexed, it keeps the `date_nanos` mapping: it rejects items dated outside 1970–2262, and it can't answer an open-ended interval (`../2000`, `2000/..`) or one with a bound outside that range. A search that reaches only old indexes returns `400`. A search that also reaches new indexes returns `200` without any of the old indexes' items, in range or not, because the engine leaves out the results of the shards that fail. On OpenSearch, paging with `next` links across old and reindexed indexes can occasionally skip an item, so finish the reindex before relying on sorted pagination.
+
+Switching back to `USE_DATETIME_NANOS=true` also needs a reindex, and items dated outside 1970–2262 can't be copied into the `date_nanos` indexes.
+
+## Sorting and Time-Range Items (`datetime: null`)
+
+Due to a combination of the STAC specification's rules for time-range items and underlying OpenSearch/Elasticsearch pagination constraints, this API implements specific fallback behaviors for sorting.
+
+In STAC, items representing a time range (e.g., a multi-day composite) set their `datetime` field to `null` and provide a `start_datetime` and `end_datetime`. Items missing the sort field sort last, in either sort direction. Sorts on `datetime`, `start_datetime` and `end_datetime` compare values in milliseconds, so items less than a millisecond apart are ordered by the next sort field.
+
+**What this means for your search results:**
+
+* **Default Sort (Newest First):** The API evaluates `datetime` first. All single-snapshot items (which have a `datetime`) will appear chronologically at the top of your search results. All time-range items (which have `datetime: null`) will be grouped together and appear chronologically at the absolute bottom of the search results.
+* **Sorting by `start_datetime`:** If you want to prioritize time-range items, you can explicitly query `?sortby=-properties.start_datetime`. This reverses the behavior: time-range items will sort chronologically at the top of your results, and single-snapshot items (which are missing a start date) will be pushed to the bottom.
+
+**Best Practice:** If your workflow relies on interleaving both single-snapshot and time-range items perfectly by date, we recommend filtering by specific datetime intervals in your query rather than relying strictly on the global sort order.
 
 ## SFEOS Tools CLI
 
@@ -1390,9 +1920,9 @@ The merge follows these rules:
 **Example - Overriding a value (replaced):**
 
 ```json
-// Default has: {"properties": {"datetime": {"type": "date_nanos"}}}
-// Custom has:  {"properties": {"datetime": {"type": "date"}}}
-// Result:      {"properties": {"datetime": {"type": "date"}}}
+// Default has: {"properties": {"properties": {"properties": {"datetime": {"type": "date_nanos"}}}}}
+// Custom has:  {"properties": {"properties": {"properties": {"datetime": {"type": "date"}}}}}
+// Result:      {"properties": {"properties": {"properties": {"datetime": {"type": "date"}}}}}
 ```
 
 #### JSON Structure
@@ -1433,6 +1963,86 @@ export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
   }
 }'
 ```
+
+### Sorting Text Fields with Keyword Subfields
+
+If you need to sort on text fields such as `title`, create a keyword subfield via custom mappings and then use sort field remaps (or rely on startup auto-detection).
+
+**Example - Collection title as text + keyword:**
+
+```bash
+export STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS='{
+  "properties": {
+    "title": {
+      "type": "text",
+      "fields": {
+        "keyword": {"type": "keyword"}
+      }
+    }
+  }
+}'
+```
+
+Optional explicit remap override:
+
+```bash
+export STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS='{"title":"title.keyword"}'
+```
+
+Or use file-based configuration:
+
+```bash
+export STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE=/app/collections-sort-remaps.json
+```
+
+Remap resolution order is:
+
+1. `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`
+2. `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`
+3. Auto-detection from generated mappings at startup
+4. Original sort field name
+
+In practice, this is an ordered fallback with **OR** semantics between `VAR` and `FILE`:
+- If `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` is set and non-empty, it is used.
+- `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE` is only read when `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` is unset or empty.
+
+**Example - Item property under `properties.*` with file-based remap:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "platform_name": {
+          "type": "text",
+          "fields": {
+            "keyword": {"type": "keyword"}
+          }
+        }
+      }
+    }
+  }
+}'
+
+cat > /app/items-sort-remaps.json <<EOF
+{
+  "properties.platform_name": "properties.platform_name.keyword"
+}
+EOF
+
+export STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE=/app/items-sort-remaps.json
+```
+
+For items, remap resolution order is:
+
+1. `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS`
+2. `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE`
+3. Auto-detection from generated mappings at startup
+4. Original sort field name
+
+In practice, this is an ordered fallback with **OR** semantics between `VAR` and `FILE`:
+- If `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` is set and non-empty, it is used.
+- `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` is only read when `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` is unset or empty.
 
 **Example - Adding Cube Extension Fields:**
 
@@ -1811,7 +2421,9 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
 
 ## Hidden Items Filtering
 
-SFEOS supports filtering out hidden items using the `HIDE_ITEM_PATH` environment variable. This feature is useful for temporarily removing items from search results without deleting them. To configure it, set `HIDE_ITEM_PATH` to the path of a boolean field in STAC items. Items where this field is `true` will be excluded from all results and counts.
+SFEOS supports filtering out hidden items using the `HIDE_ITEM_PATH` environment variable. This feature is useful for temporarily removing items from search results without deleting them. To configure it, set `HIDE_ITEM_PATH` to the path of a boolean field in STAC items. Items where this field is `true` will be excluded from all results and counts. The setting controls read visibility, not write authorization: PUT and PATCH can update a hidden item, and a write that clears the flag makes it visible again.
+
+Write target checks use the searchable index, except with `ENABLE_DATETIME_INDEX_FILTERING=true`, where they use a real-time `mget` over the collection alias's indexes. With `DATABASE_REFRESH=false`, a newly created item may remain unavailable to a subsequent PUT until the index refreshes; use `DATABASE_REFRESH=true` or `wait_for` when an immediate follow-up write is required. Items still pending in the Redis queue likewise return `404` until indexed.
 
 To use this feature, set the environment variable:
   ```
@@ -1829,6 +2441,32 @@ The following item will be excluded from returned results:
     }
   }
   ```
+
+## Optimistic Locking (ETag and If-Match)
+
+A single item, collection or catalog carries an `ETag` header on `GET`, and on the `POST`, `PUT` and `PATCH` responses that return it. The reads under a catalog, `/catalogs/{catalog_id}/collections/{collection_id}` and its items, carry the same tag as the direct routes. The tag names the stored version of the document: the primary term and sequence number that Elasticsearch and OpenSearch give every write, and a hash of the name of the index that holds the document (`"1-4-5a2b9c0d"`), since sequence numbers count per index: an item created again with another datetime lands in another index, and a collection deleted and created again gets an index with a new name. It changes with every write of the document. A compressed response gets the content coding appended (`"1-4-5a2b9c0d-gzip"`), because representations that differ in content coding need different strong tags; both tags name the same version. Lists and searches carry no `ETag`.
+
+The tag covers the stored document only. Links that a response generates from other documents, such as a catalog's child links and their titles, are not part of it. So the tag is for `If-Match`; the server does not evaluate `If-None-Match` or `If-Range`, and a cache must not use the tag to revalidate a catalog.
+
+`PUT`, `PATCH` and `DELETE` on `/collections/{collection_id}` and `/collections/{collection_id}/items/{item_id}`, `PUT` and `DELETE` on `/catalogs/{catalog_id}`, and `PUT /catalogs/{catalog_id}/collections/{collection_id}`, accept `If-Match` as described in [RFC 9110, section 13.1.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.1) and in the "Optimistic Locking with ETags" requirements class of [OGC API - Features - Part 4](https://docs.ogc.org/DRAFTS/20-002r2.html):
+
+- The write happens only if `If-Match` names the current `ETag`. `*` matches any existing resource, a list matches if one of its tags does, and a weak tag (`W/"..."`) never matches.
+- Otherwise the response is `412 Precondition Failed` and nothing is written. The check and the write are one step: the write is sent with `if_seq_no` and `if_primary_term`, so a write that lands in between also returns `412`.
+- Without `If-Match`, writes work as before. With `REQUIRE_IF_MATCH=true` they return `428 Precondition Required` ([RFC 6585](https://www.rfc-editor.org/rfc/rfc6585#section-3)).
+- A resource that does not exist returns `404` before `If-Match` or `REQUIRE_IF_MATCH` is evaluated ([RFC 9110, section 13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)), so `If-Match: *` cannot test whether a resource exists. `PUT` does not create a resource; creates go through `POST`.
+- A conditional `PUT` is written directly even with `ENABLE_REDIS_QUEUE=true`, because a queued write cannot be checked atomically.
+- A conditional write or `DELETE` of a catalog or collection first checks that the index its `ETag` names is still behind the `collections` alias, and answers `412` if an alias migration moved it. A migration that runs concurrently with writes is not safe beyond that check, as on earlier versions.
+- A conditional `DELETE /catalogs/{catalog_id}` deletes the catalog before it unlinks the catalog's children, so a `412` leaves the children linked. If the unlinking fails after the catalog is gone, a retry of the `DELETE`, with or without the original `If-Match`, unlinks the children and answers `404`. Linking and unlinking (`POST /catalogs/{catalog_id}/catalogs` or `/collections` with `{"id": ...}`, and the unlink `DELETE` routes) do not take `If-Match`: they change the child, not the catalog in the URL.
+- `POST /collections/{collection_id}/bulk_items` with `"method": "upsert"` overwrites items and cannot carry `If-Match`, so with `REQUIRE_IF_MATCH=true` it returns `428`; `"method": "insert"` still works. With `REQUIRE_IF_MATCH=true` and `ENABLE_REDIS_QUEUE=true`, a `POST` of an item or ItemCollection is written directly instead of queued, because the queue writes with upsert semantics; an existing id gets `409`.
+- Items are found through search, but the version comes from a real-time read of the document, so the `ETag` of an existing item is current even before the next refresh. An item created a moment ago can still be missing from a read until the index refreshes; use `DATABASE_REFRESH=true` or `wait_for` if clients chain a create and a conditional write.
+- The OpenAPI document at `/api` lists the `ETag` response header, the `If-Match` parameter, and the `412` and `428` responses on these routes.
+- The default CORS settings come from stac-fastapi and allow only `GET` and `POST` with a `Content-Type` header. A browser client that writes needs its own CORS settings, with `If-Match` among the allowed request headers and `ETag` among the exposed response headers.
+
+```shell
+curl -i "http://localhost:8080/collections/my_collection"   # ETag: "1-4-5a2b9c0d"
+curl -X PUT "http://localhost:8080/collections/my_collection" \
+     -H 'Content-Type: application/json' -H 'If-Match: "1-4-5a2b9c0d"' -d @collection.json
+```
 
 ## Error Monitoring with Sentry
 

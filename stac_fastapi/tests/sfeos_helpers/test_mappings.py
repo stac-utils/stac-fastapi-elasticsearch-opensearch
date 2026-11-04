@@ -299,6 +299,35 @@ class TestGetItemsMappings:
             "type": "date"
         }
 
+    @pytest.mark.parametrize(
+        "use_datetime_nanos,expected_type",
+        [("true", "date_nanos"), ("false", "date")],
+    )
+    def test_datetime_fields_follow_use_datetime_nanos(
+        self, monkeypatch, use_datetime_nanos, expected_type
+    ):
+        """USE_DATETIME_NANOS selects date_nanos or date for the item datetime fields."""
+        monkeypatch.setenv("USE_DATETIME_NANOS", use_datetime_nanos)
+        props = get_mappings()["properties"]["properties"]["properties"]
+        for field in ("datetime", "start_datetime", "end_datetime"):
+            assert props[field] == {"type": expected_type}
+
+    def test_custom_mapping_overrides_use_datetime_nanos(self, monkeypatch):
+        """A custom mapping for a datetime field wins over USE_DATETIME_NANOS."""
+        monkeypatch.setenv("USE_DATETIME_NANOS", "false")
+        custom = json.dumps(
+            {
+                "properties": {
+                    "properties": {"properties": {"datetime": {"type": "date_nanos"}}}
+                }
+            }
+        )
+        props = get_mappings(custom_mappings=custom)["properties"]["properties"][
+            "properties"
+        ]
+        assert props["datetime"] == {"type": "date_nanos"}
+        assert props["start_datetime"] == {"type": "date"}
+
     def test_returns_independent_copies(self):
         """Test that each call returns a new independent copy of mappings."""
         mappings1 = get_mappings()

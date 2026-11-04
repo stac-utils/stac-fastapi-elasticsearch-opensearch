@@ -103,6 +103,24 @@ async def test_update_collection_already_exists(ctx, app_client, load_test_data)
 
 
 @pytest.mark.asyncio
+async def test_collection_put_of_a_read_does_not_repeat_generated_links(
+    ctx, app_client
+):
+    """A collection read and written back with PUT keeps one copy of each link."""
+    path = f"/collections/{ctx.collection['id']}"
+    body = (await app_client.get(path)).json()
+    body["links"].append({"rel": "license", "href": "https://example.com/license"})
+
+    for _ in range(3):  # write back, then read again
+        assert (await app_client.put(path, json=body)).status_code == 200
+        body = (await app_client.get(path)).json()
+
+    links = [(link["rel"], link["href"]) for link in body["links"]]
+    assert len(links) == len(set(links)), links
+    assert ("license", "https://example.com/license") in links
+
+
+@pytest.mark.asyncio
 async def test_update_new_collection(app_client, load_test_data):
     """Test updating a collection which does not exist (same as creation)"""
     test_collection = load_test_data("test_collection.json")
@@ -112,6 +130,58 @@ async def test_update_new_collection(app_client, load_test_data):
         f"/collections/{test_collection['id']}", json=test_collection
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator_enabled", ["true", "false"])
+@pytest.mark.parametrize("target_exists", [True, False])
+async def test_collection_put_rejects_id_mismatch_without_changes(
+    app_client, ctx, monkeypatch, validator_enabled, target_exists
+):
+    """Reject mismatched ids before changing collections or item membership."""
+    collection_id = ctx.collection["id"]
+    item_url = f"/collections/{collection_id}/items/{ctx.item['id']}"
+    collection_before = await app_client.get(f"/collections/{collection_id}")
+    item_before = await app_client.get(item_url)
+    assert collection_before.status_code == item_before.status_code == 200
+
+    new_id = f"renamed-{uuid.uuid4()}"
+    uri_id = collection_id if target_exists else f"missing-{uuid.uuid4()}"
+    body = ctx.collection | {"id": new_id, "description": "Must not be saved"}
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator_enabled)
+
+    response = await app_client.put(f"/collections/{uri_id}", json=body)
+
+    assert response.status_code == 400
+    assert (await app_client.get(f"/collections/{new_id}")).status_code == 404
+    assert (
+        await app_client.get(f"/collections/{collection_id}")
+    ).json() == collection_before.json()
+    assert (await app_client.get(item_url)).json() == item_before.json()
+    if not target_exists:
+        assert (await app_client.get(f"/collections/{uri_id}")).status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator_enabled", ["true", "false"])
+async def test_collection_put_matching_id_preserves_item_membership(
+    app_client, ctx, monkeypatch, validator_enabled
+):
+    """Matching ids continue to update metadata without moving existing items."""
+    collection_id = ctx.collection["id"]
+    item_url = f"/collections/{collection_id}/items/{ctx.item['id']}"
+    item_before = await app_client.get(item_url)
+    assert item_before.status_code == 200
+    body = ctx.collection | {"description": "Updated description"}
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator_enabled)
+
+    response = await app_client.put(f"/collections/{collection_id}", json=body)
+
+    assert response.status_code == 200
+    stored = await app_client.get(f"/collections/{collection_id}")
+    assert stored.json()["id"] == collection_id
+    assert stored.json()["description"] == "Updated description"
+    assert (await app_client.get(item_url)).json() == item_before.json()
 
 
 @pytest.mark.asyncio
@@ -166,6 +236,27 @@ async def test_collection_extensions_put(ctx, app_client):
 
     assert resp.status_code == 200
     assert resp.json().get("item_assets", {}).get("test") == test_asset
+
+
+@pytest.mark.asyncio
+async def test_collection_provider_keeps_extension_fields(test_collection, app_client):
+    """Provider fields from extensions, such as processing:lineage, are stored"""
+    lineage = "Mosaicked from Landsat 8 Collection 2 Level-2 scenes"
+    test_collection["id"] = "test-provider-extension-fields"
+    test_collection["providers"][0]["processing:lineage"] = lineage
+    path = f"/collections/{test_collection['id']}"
+
+    try:
+        resp = await app_client.post("/collections", json=test_collection)
+        assert resp.status_code == 201
+        stored = (await app_client.get(path)).json()
+        assert stored["providers"][0]["processing:lineage"] == lineage
+
+        assert (await app_client.put(path, json=stored)).status_code == 200
+        stored = (await app_client.get(path)).json()
+        assert stored["providers"][0]["processing:lineage"] == lineage
+    finally:
+        await app_client.delete(path)
 
 
 @pytest.mark.skip(reason="stac pydantic in stac fastapi 3 doesn't allow this.")

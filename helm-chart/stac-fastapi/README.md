@@ -142,7 +142,7 @@ app:
   
   env:
     STAC_FASTAPI_TITLE: "STAC API"
-    STAC_FASTAPI_DESCRIPTION: "A STAC FastAPI implementation"
+    STAC_FASTAPI_DESCRIPTION: "SFEOS: A STAC FastAPI with a configurable backend"
     ENVIRONMENT: "production"
     WEB_CONCURRENCY: "10"
     ENABLE_DIRECT_RESPONSE: "false"

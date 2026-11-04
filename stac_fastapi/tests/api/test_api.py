@@ -10,6 +10,8 @@ import pytest
 
 from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
 
+from ..conftest import get_flattened_routes
+
 try:
     from opensearchpy import exceptions
 except ImportError:
@@ -63,6 +65,9 @@ ROUTES = {
     "POST /collections/{collection_id}/aggregate",
     "GET /collections-search",
     "POST /collections-search",
+    "GET /sortables",
+    "GET /collections/{collection_id}/sortables",
+    "GET /collections-sortables",
     "GET /catalogs",
     "POST /catalogs",
     "GET /catalogs/{catalog_id}",
@@ -72,15 +77,21 @@ ROUTES = {
     "DELETE /catalogs/{catalog_id}",
     "GET /catalogs/{catalog_id}/catalogs",
     "POST /catalogs/{catalog_id}/catalogs",
+    "GET /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
+    "PUT /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
     "DELETE /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
     "GET /catalogs/{catalog_id}/children",
+    "GET /catalogs/{catalog_id}/conformance",
+    "GET /catalogs/{catalog_id}/queryables",
     "GET /catalogs/{catalog_id}/collections",
     "POST /catalogs/{catalog_id}/collections",
     "GET /catalogs/{catalog_id}/collections/{collection_id}",
+    "PUT /catalogs/{catalog_id}/collections/{collection_id}",
     "DELETE /catalogs/{catalog_id}/collections/{collection_id}",
     "GET /catalogs/{catalog_id}/collections/{collection_id}/items",
     "GET /catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
-    "",
+    "GET /catalogs/{catalog_id}/search",
+    "POST /catalogs/{catalog_id}/search",
 }
 
 
@@ -108,7 +119,7 @@ async def test_api_headers(app_client):
 
 @pytest.mark.asyncio
 async def test_router(app):
-    api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
+    api_routes = get_flattened_routes(app)
     print(api_routes)
     assert len(api_routes - ROUTES) == 0
 
@@ -178,6 +189,22 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
     assert resp.status_code == 200
     resp_json = resp.json()
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
+
+
+@pytest.mark.asyncio
+async def test_app_fields_extension_matching_nothing_returns_id_and_collection(
+    app_client, ctx
+):
+    params = {"collections": ["test-collection"], "fields": "doesnotexist"}
+    body = {"collections": ["test-collection"], "fields": {"include": ["doesnotexist"]}}
+    for resp in (
+        await app_client.get("/search", params=params),
+        await app_client.post("/search", json=body),
+    ):
+        assert resp.status_code == 200
+        assert resp.json()["features"] == [
+            {"id": ctx.item["id"], "collection": "test-collection"}
+        ]
 
 
 @pytest.mark.asyncio
@@ -743,7 +770,7 @@ async def test_bbox_3d(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_patch_json_collection(app_client, ctx):
+async def test_patch_json_collection(app_client, ctx, stac_validator_off):
     data = {
         "summaries": {"hello": "world", "gsd": [50], "instruments": None},
     }
@@ -765,7 +792,7 @@ async def test_patch_json_collection(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_patch_operations_collection(app_client, ctx):
+async def test_patch_operations_collection(app_client, ctx, stac_validator_off):
     operations = [
         {"op": "add", "path": "/summaries/hello", "value": "world"},
         {"op": "replace", "path": "/summaries/gsd", "value": [50]},
@@ -894,58 +921,67 @@ async def test_search_line_string_intersects(app_client, ctx):
 async def test_big_int_eo_search(
     app_client, txn_client, test_item, test_collection, value, expected
 ):
-    random_str = "".join(random.choice("abcdef") for _ in range(5))
-    collection_id = f"test-collection-eo-{random_str}"
-
-    test_collection["id"] = collection_id
-    test_collection["stac_extensions"] = [
-        "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
-    ]
-
-    test_item["collection"] = collection_id
-    test_item["stac_extensions"] = test_collection["stac_extensions"]
-
-    # Remove "eo:bands" to simplify the test
-    del test_item["properties"]["eo:bands"]
-
-    # Attribute to test
-    attr = "eo:full_width_half_max"
+    # Disable STAC validator for this test as test data may have schema violations
+    original_validator_setting = os.getenv("ENABLE_STAC_VALIDATOR")
+    os.environ.pop("ENABLE_STAC_VALIDATOR", None)
 
     try:
-        await create_collection(txn_client, test_collection)
-    except ConflictError:
-        pass
+        random_str = "".join(random.choice("abcdef") for _ in range(5))
+        collection_id = f"test-collection-eo-{random_str}"
 
-    # Create items with deterministic offsets
-    for val in [value, value + 100, value - 100]:
-        item = deepcopy(test_item)
-        item["id"] = str(uuid.uuid4())
-        item["properties"][attr] = val
-        await create_item(txn_client, item)
+        test_collection["id"] = collection_id
+        test_collection["stac_extensions"] = [
+            "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
+        ]
 
-    # Search for the exact value
-    params = {
-        "collections": [collection_id],
-        "filter": {
-            "args": [
-                {
-                    "args": [
-                        {"property": f"properties.{attr}"},
-                        value,
-                    ],
-                    "op": "=",
-                }
-            ],
-            "op": "and",
-        },
-    }
-    resp = await app_client.post("/search", json=params)
-    resp_json = resp.json()
+        test_item["collection"] = collection_id
+        test_item["stac_extensions"] = test_collection["stac_extensions"]
 
-    # Validate results
-    results = {x["properties"][attr] for x in resp_json["features"]}
-    assert len(results) == expected
-    assert results == {value}
+        # Remove "eo:bands" to simplify the test
+        del test_item["properties"]["eo:bands"]
+
+        # Attribute to test
+        attr = "eo:full_width_half_max"
+
+        try:
+            await create_collection(txn_client, test_collection)
+        except ConflictError:
+            pass
+
+        # Create items with deterministic offsets
+        for val in [value, value + 100, value - 100]:
+            item = deepcopy(test_item)
+            item["id"] = str(uuid.uuid4())
+            item["properties"][attr] = val
+            await create_item(txn_client, item)
+
+        # Search for the exact value
+        params = {
+            "collections": [collection_id],
+            "filter": {
+                "args": [
+                    {
+                        "args": [
+                            {"property": f"properties.{attr}"},
+                            value,
+                        ],
+                        "op": "=",
+                    }
+                ],
+                "op": "and",
+            },
+        }
+        resp = await app_client.post("/search", json=params)
+        resp_json = resp.json()
+
+        # Validate results
+        results = {x["properties"][attr] for x in resp_json["features"]}
+        assert len(results) == expected
+        assert results == {value}
+    finally:
+        # Restore original STAC validator setting
+        if original_validator_setting:
+            os.environ["ENABLE_STAC_VALIDATOR"] = original_validator_setting
 
 
 @pytest.mark.asyncio
@@ -1048,7 +1084,9 @@ async def test_no_global_collection_max_limit_set(
 
 
 @pytest.mark.asyncio
-async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeypatch):
+async def test_use_datetime_true(
+    app_client, load_test_data, txn_client, monkeypatch, stac_validator_off
+):
     monkeypatch.setenv("USE_DATETIME", "true")
 
     test_collection = load_test_data("test_collection.json")
@@ -1090,6 +1128,7 @@ async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeyp
 @pytest.mark.asyncio
 async def test_use_datetime_false(app_client, load_test_data, txn_client, monkeypatch):
     monkeypatch.setenv("USE_DATETIME", "false")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "test-collection-datetime-false"
@@ -1201,32 +1240,34 @@ async def test_search_count_timeout(
     test_item_id = "test-item-count-timeout"
     test_item["id"] = test_item_id
     test_item["collection"] = test_collection_id
-    await create_item(txn_client, test_item)
 
     async def slow_count(*args, **kwargs):
         await asyncio.sleep(0.01)
         return {"count": 1}
 
-    backend = os.getenv("BACKEND")
+    try:
+        await create_item(txn_client, test_item)
 
-    if backend == "opensearch":
-        from opensearchpy import AsyncOpenSearch
+        backend = os.getenv("BACKEND")
 
-        monkeypatch.setattr(AsyncOpenSearch, "count", slow_count)
+        if backend == "opensearch":
+            from opensearchpy import AsyncOpenSearch
 
-    elif backend == "elasticsearch":
-        from elasticsearch import AsyncElasticsearch
+            monkeypatch.setattr(AsyncOpenSearch, "count", slow_count)
 
-        monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
+        elif backend == "elasticsearch":
+            from elasticsearch import AsyncElasticsearch
 
-    resp = await app_client.get(f"/search?collections={test_collection_id}")
+            monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
 
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert len(resp_json["features"]) == 1
-    assert resp_json["numberReturned"] == 1
+        resp = await app_client.get(f"/search?collections={test_collection_id}")
 
-    monkeypatch.delenv("COUNT_TIMEOUT")
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert len(resp_json["features"]) == 1
+        assert resp_json["numberReturned"] == 1
+    finally:
+        await app_client.delete(f"/collections/{test_collection_id}")
 
 
 @pytest.mark.asyncio
@@ -1342,3 +1383,93 @@ async def test_connection_error_max_retries():
 
     assert mock_search_func.call_count == 5
     assert "attempt 5" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sortby", [None, "%2Bproperties.datetime", "-properties.datetime"]
+)
+async def test_pagination_across_null_datetime_items(
+    app_client, txn_client, load_test_data, sortby
+):
+    """search_after tokens taken from null-datetime hits page on (#967)."""
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"null-dt-{uuid.uuid4().hex[:8]}"
+    await create_collection(txn_client, collection)
+    url = f"/search?collections={collection['id']}&limit=1"
+    if sortby:
+        url += f"&sortby={sortby}"
+    ids = []
+    try:
+        item = load_test_data("test_item.json")
+        item["collection"] = collection["id"]
+        await create_item(txn_client, {**item, "id": "with-datetime"})
+        for item_id in ("null-a", "null-b"):
+            null_item = deepcopy(item)
+            null_item["id"] = item_id
+            null_item["properties"]["datetime"] = None
+            await create_item(txn_client, null_item)
+
+        while url:
+            resp = await app_client.get(url)
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            ids += [f["id"] for f in body["features"]]
+            url = next(
+                (li["href"] for li in body["links"] if li["rel"] == "next"), None
+            )
+    finally:
+        await txn_client.delete_collection(collection["id"])
+
+    assert ids[0] == "with-datetime"
+    assert sorted(ids[1:]) == ["null-a", "null-b"]
+
+
+@pytest.mark.asyncio
+async def test_sortby_pagination_keeps_same_id_items_from_two_collections(
+    app_client, txn_client, load_test_data
+):
+    """Equal sort values and ids in two collections still page to both items."""
+    suffix = uuid.uuid4().hex[:8]
+    collection_ids = [f"tie-a-{suffix}", f"tie-b-{suffix}"]
+    item = load_test_data("test_item.json")
+    item["id"] = "same-id"
+    # Within one millisecond, so the datetime sort values tie.
+    datetimes = ["2000-01-01T00:00:00.000100Z", "2000-01-01T00:00:00.000200Z"]
+    url = (
+        f"/search?collections={','.join(collection_ids)}&limit=1"
+        "&sortby=%2Bproperties.datetime"
+    )
+    seen = []
+    created = []
+    try:
+        for collection_id, dt in zip(collection_ids, datetimes):
+            collection = load_test_data("test_collection.json")
+            collection["id"] = collection_id
+            await create_collection(txn_client, collection)
+            created.append(collection_id)
+            await create_item(
+                txn_client,
+                {
+                    **item,
+                    "collection": collection_id,
+                    "properties": {**item["properties"], "datetime": dt},
+                },
+            )
+
+        while url:
+            resp = await app_client.get(url)
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            seen += [f["collection"] for f in body["features"]]
+            url = next(
+                (li["href"] for li in body["links"] if li["rel"] == "next"), None
+            )
+    finally:
+        for collection_id in created:
+            await txn_client.delete_collection(collection_id)
+
+    assert sorted(seen) == collection_ids

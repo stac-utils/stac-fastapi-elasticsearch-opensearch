@@ -4,13 +4,14 @@ This module provides utility functions for working with database operations
 in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
+import asyncio
 import logging
 import os
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
-from stac_fastapi.extensions.core.transaction.request import (
+from stac_fastapi.extensions.transaction.request import (
     PatchAddReplaceTest,
     PatchOperation,
     PatchRemove,
@@ -126,50 +127,192 @@ class BulkIndexError(Exception):
         super().__init__(message)
 
 
-async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
-    """Check if an item exists across all indexes for an alias.
+async def _alias_index_names(client: Any, alias: str) -> list[str]:
+    """Return the concrete index names behind an alias.
 
     Args:
         client: The async Elasticsearch/OpenSearch client.
-        alias: The index alias to search against.
+        alias: The index alias to resolve.
+
+    Returns:
+        list[str]: The concrete index names carrying the alias.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+    """
+    resp = await client.indices.get_alias(name=alias)
+    return list(resp.keys())
+
+
+def _alias_index_names_sync(client: Any, alias: str) -> list[str]:
+    """Return the concrete index names behind an alias (sync).
+
+    Args:
+        client: The sync Elasticsearch/OpenSearch client.
+        alias: The index alias to resolve.
+
+    Returns:
+        list[str]: The concrete index names carrying the alias.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+    """
+    resp = client.indices.get_alias(name=alias)
+    return list(resp.keys())
+
+
+async def find_item_in_alias(
+    client: Any, alias: str, doc_id: str
+) -> dict[str, Any] | None:
+    """Real-time lookup of a document across all indexes under an alias.
+
+    Uses ``mget`` over the alias's concrete indexes, which is real-time and
+    therefore sees documents that have not been refreshed yet. This matters
+    for duplicate checks and update validation when ``DATABASE_REFRESH`` is
+    false.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to look the document up under.
+        doc_id: The document ID to look up.
+
+    Returns:
+        dict | None: The matching ``mget`` hit (carrying ``_index``, ``_id``,
+            ``_source``, ...) if found, None otherwise.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+
+    Note:
+        This is a check-then-act: a concurrent write can insert the same
+        ``_id`` into another index after this returns but before the caller's
+        write lands. The search engine cannot enforce uniqueness across
+        indexes, so closing that window entirely would require external
+        locking.
+    """
+    resp = await client.mget(
+        body={
+            "docs": [
+                {"_index": index, "_id": doc_id}
+                for index in await _alias_index_names(client, alias)
+            ]
+        }
+    )
+    for doc in resp.get("docs", []):
+        if doc.get("found") and doc.get("_source") is not None:
+            return doc
+    return None
+
+
+async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias.
+
+    Uses ``mget`` over the alias's concrete indexes so the check is real-time
+    and sees documents that have not been refreshed yet.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to check against.
         doc_id: The document ID to check for existence.
 
     Returns:
         bool: True if the item exists in any index under the alias, False otherwise.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
     """
-    resp = await client.search(
-        index=alias,
+    resp = await client.mget(
         body={
-            "query": {"ids": {"values": [doc_id]}},
-            "_source": False,
-        },
-        size=0,
-        terminate_after=1,
+            "docs": [
+                {"_index": index, "_id": doc_id, "_source": False}
+                for index in await _alias_index_names(client, alias)
+            ]
+        }
     )
-    return bool(resp["hits"]["total"]["value"])
+    return any(doc.get("found") for doc in resp.get("docs", []))
 
 
 def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
     """Check if an item exists across all indexes for an alias (sync).
 
+    Uses ``mget`` over the alias's concrete indexes so the check is real-time
+    and sees documents that have not been refreshed yet.
+
     Args:
         client: The sync Elasticsearch/OpenSearch client.
-        alias: The index alias to search against.
+        alias: The index alias to check against.
         doc_id: The document ID to check for existence.
 
     Returns:
         bool: True if the item exists in any index under the alias, False otherwise.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
     """
-    resp = client.search(
-        index=alias,
+    resp = client.mget(
         body={
-            "query": {"ids": {"values": [doc_id]}},
-            "_source": False,
-        },
-        size=0,
-        terminate_after=1,
+            "docs": [
+                {"_index": index, "_id": doc_id, "_source": False}
+                for index in _alias_index_names_sync(client, alias)
+            ]
+        }
     )
-    return bool(resp["hits"]["total"]["value"])
+    return any(doc.get("found") for doc in resp.get("docs", []))
+
+
+async def find_existing_item_ids(
+    client: Any, alias: str, doc_ids: list[str]
+) -> set[str]:
+    """Return the subset of document IDs that exist in any index under an alias.
+
+    Used to detect duplicates across all physical indexes of a collection
+    (e.g., datetime-sharded indexes), where ``_id`` uniqueness enforced by the
+    search engine only applies within a single index.
+
+    Uses per-index ``mget`` calls, which are real-time (seeing unrefreshed
+    documents) and not subject to ``max_result_window``, so arbitrarily large
+    batches are safe. The per-index lookups run concurrently.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to look the documents up under.
+        doc_ids: The document IDs to look up.
+
+    Returns:
+        set[str]: The document IDs found under the alias.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+
+    Note:
+        This is a check-then-act: a concurrent write can insert the same
+        ``_id`` into another index after this returns but before the caller's
+        write lands. The search engine cannot enforce uniqueness across
+        indexes, so closing that window entirely would require external
+        locking.
+    """
+    if not doc_ids:
+        return set()
+    doc_ids = list(dict.fromkeys(doc_ids))
+    indices = await _alias_index_names(client, alias)
+
+    async def _find_in_index(index: str) -> set[str]:
+        resp = await client.mget(
+            body={
+                "docs": [
+                    {"_index": index, "_id": doc_id, "_source": False}
+                    for doc_id in doc_ids
+                ]
+            }
+        )
+        return {doc["_id"] for doc in resp.get("docs", []) if doc.get("found")}
+
+    existing: set[str] = set()
+    for found_ids in await asyncio.gather(
+        *(_find_in_index(index) for index in indices)
+    ):
+        existing.update(found_ids)
+    return existing
 
 
 def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:
@@ -303,7 +446,7 @@ def validate_datetime_operations(
     """
     for operation in operations:
         if operation.op == "remove":
-            validator(operation.path)
+            validator(operation.path.strip("/"))
         elif operation.op in ["add", "replace"]:
             path_parts = operation.path.strip("/").split("/")
             existing_value = existing_source
@@ -314,7 +457,30 @@ def validate_datetime_operations(
                     existing_value = None
                     break
             if existing_value != operation.value:
-                validator(operation.path)
+                validator(operation.path.strip("/"))
+
+
+def protect_datetime_script(script: dict, use_datetime: bool) -> None:
+    """Reject changed index dates atomically against the actual script effects."""
+    key = "__stac_datetime"
+    while key in script["source"] or key in script["params"]:
+        key += "_"
+    script["params"][key] = (
+        ["datetime"] if use_datetime else ["start_datetime", "end_datetime"]
+    )
+    properties = "ctx._source.properties instanceof Map ? ctx._source.properties : [:]"
+    script["source"] = (
+        f"def {key} = [:]; def {key}Props = {properties};"
+        f"for (def {key}Field : params.{key}) {{"
+        f"{key}[{key}Field] = [{key}Props.containsKey({key}Field),"
+        f"{key}Props.get({key}Field)];}}"
+        + script["source"]
+        + f"{key}Props = {properties};"
+        f"for (def {key}Field : params.{key}) {{"
+        f"if (!{key}[{key}Field].equals([{key}Props.containsKey({key}Field),"
+        f"{key}Props.get({key}Field)])) {{throw new IllegalArgumentException("
+        "'Updating datetime fields is not yet supported for datetime-based indexing');}}"
+    )
 
 
 def merge_to_operations(data: dict) -> list:
@@ -329,11 +495,12 @@ def merge_to_operations(data: dict) -> list:
     operations = []
 
     for key, value in data.copy().items():
+        key = key.replace("~", "~0").replace("/", "~1")
 
         if value is None:
             operations.append(PatchRemove(op="remove", path=key))
 
-        elif isinstance(value, dict):
+        elif isinstance(value, dict) and value:
             nested_operations = merge_to_operations(value)
 
             for nested_operation in nested_operations:
@@ -424,6 +591,17 @@ def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
     )
 
 
+def _allocate_script_param(params: dict, value: Any) -> str:
+    """Add a value to the script params under the next available local key."""
+    index = 0
+    while f"p{index}" in params:
+        index += 1
+
+    key = f"p{index}"
+    params[key] = value
+    return key
+
+
 def add_commands(
     commands: ESCommandSet,
     operation: PatchOperation,
@@ -448,7 +626,7 @@ def add_commands(
 
     else:
         value = f"params['{path.param_key}']"
-        params[path.param_key] = operation.value
+        params[path.param_key] = _allocate_script_param(params, operation.value)
 
     if isinstance(path.key, int):
         if path.parts[0] == "assets" and path.parts[-1] == "alternate":
@@ -480,7 +658,7 @@ def test_commands(
         path (ElasticPath): path for value to be tested
     """
     value = f"params['{path.param_key}']"
-    params[path.param_key] = operation.value
+    params[path.param_key] = _allocate_script_param(params, operation.value)
 
     if isinstance(path.key, int):
         commands.add(
@@ -507,6 +685,48 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
     Returns:
         dict: elasticsearch update script.
     """
+    if create_nest:
+        # Merge members are literal string keys, never array indexes or script text.
+        return {
+            "source": """
+                for (def operation : params.operations) {
+                    def target = ctx._source;
+                    def parts = operation.path;
+                    for (int i = 0; i < parts.size() - 1; i++) {
+                        def key = parts[i];
+                        if (!(target[key] instanceof Map)) {
+                            target[key] = [:];
+                        }
+                        target = target[key];
+                    }
+                    def key = parts[parts.size() - 1];
+                    if (operation.op == 'remove') {
+                        target.remove(key);
+                    } else if (operation.value instanceof Map && operation.value.isEmpty()) {
+                        if (!(target[key] instanceof Map)) {
+                            target[key] = [:];
+                        }
+                    } else {
+                        target[key] = operation.value;
+                    }
+                }
+            """,
+            "lang": "painless",
+            "params": {
+                "operations": [
+                    {
+                        "op": operation.op,
+                        "path": [
+                            part.replace("~1", "/").replace("~0", "~")
+                            for part in operation.path.split("/")
+                        ],
+                        "value": getattr(operation, "value", None),
+                    }
+                    for operation in operations
+                ]
+            },
+        }
+
     commands: ESCommandSet = ESCommandSet()
     params: dict = {}
 
@@ -677,3 +897,34 @@ def add_hidden_filter(
         return {"bool": {"must": [query, hidden_filter]}}
     else:
         return hidden_filter
+
+
+def _values(node: Any, parts: list[str]) -> Iterator[Any]:
+    """Yield every leaf value the engine indexes at a dotted path.
+
+    Arrays are flattened at any depth, and every spelling of the path counts:
+    nested objects, flat dotted keys, and mixes of the two.
+    """
+    if isinstance(node, list):
+        for element in node:
+            yield from _values(element, parts)
+    elif not parts:
+        yield node
+    elif isinstance(node, dict):
+        for i in range(1, len(parts) + 1):
+            key = ".".join(parts[:i])
+            if key in node:
+                yield from _values(node[key], parts[i:])
+
+
+def is_hidden(source: dict[str, Any], hide_item_path: str | None) -> bool:
+    """Tell whether a stored document is hidden, as `add_hidden_filter` decides it.
+
+    Visible when the field has no value, or when any of its values is false
+    (`false`, `"false"` or `""`, which a boolean mapping coerces to false; a
+    term query matches any indexed value). Hidden otherwise.
+    """
+    if not hide_item_path:
+        return False
+    values = [v for v in _values(source, hide_item_path.split(".")) if v is not None]
+    return bool(values) and not any(v is False or v in ("false", "") for v in values)

@@ -73,8 +73,8 @@ async def setup_database_indexes():
             },
             [],
             [
-                ([], "../{'timestamp': '2024-01-10T00:00:000000Z'}"),
-                ([], "{'timestamp': '2024-01-20T00:00:000000Z'}/.."),
+                ([], "../2024-01-10T00:00:000000Z"),
+                ([], "2024-01-20T00:00:000000Z/.."),
             ],
             id="not-between-datetime",
         ),
@@ -130,11 +130,11 @@ async def setup_database_indexes():
             [
                 (
                     ["collection-1"],
-                    "{'timestamp': '2024-01-05T00:00:000000Z'}/{'timestamp': '2024-01-10T00:00:000000Z'}",
+                    "2024-01-05T00:00:000000Z/2024-01-10T00:00:000000Z",
                 ),
                 (
                     ["collection-2"],
-                    "{'timestamp': '2024-02-01T00:00:000000Z'}/{'timestamp': '2024-02-03T00:00:000000Z'}",
+                    "2024-02-01T00:00:000000Z/2024-02-03T00:00:000000Z",
                 ),
             ],
             id="or-nested-overlapping-datetime-ranges",

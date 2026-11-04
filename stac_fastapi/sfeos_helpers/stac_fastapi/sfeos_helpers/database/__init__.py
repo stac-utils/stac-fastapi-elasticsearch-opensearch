@@ -31,11 +31,12 @@ Function Naming Conventions:
 
 # Re-export all functions for backward compatibility
 from .catalogs import (
+    PARENT_ID_SCRIPT,
     search_children_with_pagination_shared,
     search_collections_by_parent_id_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
-    update_catalog_in_index_shared,
+    unlink_catalog_children_shared,
 )
 from .datetime import (
     extract_date,
@@ -51,6 +52,7 @@ from .index import (
     filter_indexes_by_datetime,
     filter_indexes_by_datetime_range,
     index_alias_by_collection_id,
+    index_behind_alias,
     index_by_collection_id,
     indices,
 )
@@ -61,7 +63,9 @@ from .query import (
     apply_collections_free_text_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
+    decode_search_after_token_shared,
     populate_sort_shared,
+    validate_sort_fields_shared,
 )
 from .utils import (
     BulkIndexError,
@@ -69,6 +73,8 @@ from .utils import (
     add_bbox_shape_to_collection,
     check_item_exists_in_alias,
     check_item_exists_in_alias_sync,
+    find_existing_item_ids,
+    find_item_in_alias,
     get_bool_env,
     retry_on_connection_error,
     retry_on_datetime_not_found,
@@ -78,14 +84,16 @@ from .utils import (
 
 __all__ = [
     # Catalog operations
+    "PARENT_ID_SCRIPT",
+    "unlink_catalog_children_shared",
     "search_collections_by_parent_id_shared",
     "search_collections_by_parent_id_with_pagination_shared",
     "search_sub_catalogs_with_pagination_shared",
-    "update_catalog_in_index_shared",
     "search_children_with_pagination_shared",
     # Index operations
     "create_index_templates_shared",
     "delete_item_index_shared",
+    "index_behind_alias",
     "index_alias_by_collection_id",
     "index_by_collection_id",
     "filter_indexes_by_datetime",
@@ -97,7 +105,9 @@ __all__ = [
     "apply_collections_bbox_filter_shared",
     "apply_collections_datetime_filter_shared",
     "apply_collections_free_text_filter_shared",
+    "decode_search_after_token_shared",
     "populate_sort_shared",
+    "validate_sort_fields_shared",
     # Mapping operations
     "get_queryables_mapping_shared",
     # Document operations
@@ -111,6 +121,8 @@ __all__ = [
     "retry_on_connection_error",
     "check_item_exists_in_alias",
     "check_item_exists_in_alias_sync",
+    "find_existing_item_ids",
+    "find_item_in_alias",
     # Errors
     "BulkIndexError",
     "ItemAlreadyExistsError",
