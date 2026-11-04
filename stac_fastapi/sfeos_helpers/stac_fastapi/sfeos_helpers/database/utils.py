@@ -625,8 +625,8 @@ def add_commands(
         )
 
     else:
-        value = f"params['{path.param_key}']"
-        params[path.param_key] = _allocate_script_param(params, operation.value)
+        param_key = _allocate_script_param(params, operation.value)
+        value = f"params['{param_key}']"
 
     if isinstance(path.key, int):
         if path.parts[0] == "assets" and path.parts[-1] == "alternate":
@@ -657,8 +657,8 @@ def test_commands(
         operation (PatchOperation): operation to run
         path (ElasticPath): path for value to be tested
     """
-    value = f"params['{path.param_key}']"
-    params[path.param_key] = _allocate_script_param(params, operation.value)
+    param_key = _allocate_script_param(params, operation.value)
+    value = f"params['{param_key}']"
 
     if isinstance(path.key, int):
         commands.add(
