@@ -900,3 +900,48 @@ async def test_root_aggregate_is_not_limited_by_the_named_collections(
         assert "not supported by collection counts-only" in scoped.json()["detail"]
     finally:
         await app_client.delete("/collections/counts-only")
+
+
+@pytest.mark.asyncio
+async def test_root_aggregate_accepts_a_collection_s_own_aggregation(
+    app, app_client, ctx, load_test_data, monkeypatch
+):
+    """A deployment can add an aggregation to ``database.aggregation_mapping`` and
+    advertise it on a collection. The root ``/aggregate`` with that collection
+    named accepts it, although the shared list does not know the name."""
+    from stac_fastapi.sfeos_helpers.mappings import AGGREGATION_MAPPING
+
+    monkeypatch.setattr(
+        app.state.database_logic,
+        "aggregation_mapping",
+        {
+            **AGGREGATION_MAPPING,
+            "instrument_frequency": {
+                "terms": {"field": "properties.instruments", "size": 100}
+            },
+        },
+    )
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "with-instruments"
+    test_collection["aggregations"] = [
+        {
+            "name": "instrument_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        }
+    ]
+    resp = await app_client.post("/collections", json=test_collection)
+    assert resp.status_code == 201
+
+    try:
+        resp = await app_client.post(
+            "/aggregate",
+            json={
+                "collections": ["with-instruments"],
+                "aggregations": ["instrument_frequency"],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["aggregations"][0]["name"] == "instrument_frequency"
+    finally:
+        await app_client.delete("/collections/with-instruments")

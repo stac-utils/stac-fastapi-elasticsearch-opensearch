@@ -433,6 +433,15 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     supported_aggregations = (
                         aggregation_info["aggregations"] + self.DEFAULT_AGGREGATIONS
                     )
+                else:
+                    # a named collection may advertise an aggregation added to
+                    # ``database.aggregation_mapping`` that the shared list lacks
+                    known = {x["name"] for x in supported_aggregations}
+                    supported_aggregations = supported_aggregations + [
+                        x
+                        for x in aggregation_info["aggregations"]
+                        if x["name"] not in known
+                    ]
         supported_names = {x["name"] for x in supported_aggregations}
         for agg_name in aggregate_request.aggregations:
             if agg_name not in supported_names:
