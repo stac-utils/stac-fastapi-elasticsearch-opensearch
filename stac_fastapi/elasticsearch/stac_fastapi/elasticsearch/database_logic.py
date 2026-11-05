@@ -11,7 +11,7 @@ import attr
 import elasticsearch.helpers as helpers
 import orjson
 from elasticsearch.dsl import Q, Search
-from elasticsearch.exceptions import BadRequestError
+from elasticsearch.exceptions import AuthorizationException, BadRequestError
 from elasticsearch.exceptions import ConflictError as ESConflictError
 from elasticsearch.exceptions import ConnectionError as ESConnectionError
 from elasticsearch.exceptions import ConnectionTimeout as ESConnectionTimeout
@@ -105,6 +105,25 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
+
+
+def _is_licence_error(e: Exception) -> bool:
+    """Tell whether an Elasticsearch 403 refused a licensed feature.
+
+    A basic licence answers ``403 security_exception`` with a
+    ``license.expired.feature`` key on the root cause (for example
+    ``geo-hex-agg`` or ``geohash_grid aggregation on geo_shape fields``).
+    Any other 403 is a server-side permission problem, not a licence error.
+    """
+    info = getattr(e, "info", None)
+    error = info.get("error") if isinstance(info, dict) else None
+    if not isinstance(error, dict):
+        return False
+    causes = error.get("root_cause")
+    return any(
+        isinstance(cause, dict) and cause.get("license.expired.feature")
+        for cause in (causes if isinstance(causes, list) else [error])
+    )
 
 
 def _search_error_reason(e: Exception) -> str:
@@ -1200,6 +1219,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise HTTPException(
                 status_code=400,
                 detail=f"Search request error: {_search_error_reason(e)}",
+            )
+        except AuthorizationException as e:
+            # geohex_grid, and grid aggregations on geo_shape, need a licence above
+            # basic. Answer 400 with the engine's reason instead of 500; any other
+            # 403 is a server-side permission problem and stays an error.
+            if not _is_licence_error(e):
+                raise
+            raise HTTPException(
+                status_code=400,
+                detail=f"Aggregation not available on this Elasticsearch licence: "
+                f"{_search_error_reason(e)}",
             )
 
         return db_response
