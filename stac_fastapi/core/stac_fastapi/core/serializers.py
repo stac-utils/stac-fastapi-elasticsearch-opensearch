@@ -229,6 +229,8 @@ class ItemSerializer(Serializer):
 
         stac_data["links"] = item_links
 
+        logger.info("STAC DATA: %s", stac_data)
+
         if get_bool_env("STAC_ALTERNATE_ASSETS"):
             for asset_key, asset in stac_data["assets"].items():
                 if alternate_assets := asset.get("alternate"):
