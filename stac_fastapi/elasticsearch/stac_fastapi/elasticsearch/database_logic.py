@@ -28,7 +28,9 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config import (
+    AsyncElasticsearchSettings,
+)
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
@@ -1432,8 +1434,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                             "properties/end_datetime"
                         )
 
-        # Prepare the item for insertion
-        item = await self.async_prep_create_item(item=item, base_url=base_url)
+        # Item is already prepped in core
+        # item = await self.async_prep_create_item(item=item, base_url=base_url)
 
         # A conditional write replaces the stored document where it is; an
         # unconditional update must overwrite the document where it already
