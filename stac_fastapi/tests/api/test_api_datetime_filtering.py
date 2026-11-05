@@ -18,6 +18,8 @@ from stac_fastapi.sfeos_helpers.database import (  # noqa: E402
 )
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX  # noqa: E402
 
+from ..conftest import delete_collections_and_items  # noqa: E402
+
 
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
@@ -1970,3 +1972,73 @@ async def test_size_split_of_pre_epoch_collection_has_no_inverted_alias(
         )
         assert resp.status_code == 200, resp.text
         assert [f["id"] for f in resp.json()["features"]] == [item_id]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method, datetime_value, expected_count",
+    [
+        ("GET", "2020-02-10T00:00:00Z/2020-02-12T00:00:00Z", 1),
+        ("POST", None, 1),
+        ("POST", "2020-02-10T00:00:00Z/2020-02-12T00:00:00Z", 1),
+        ("POST", "2021-01-01T00:00:00Z/2021-12-31T00:00:00Z", 0),
+        ("GET", "2020-02-10T00:00:00Z/..", 1),
+        ("POST", "2020-02-10T00:00:00Z/..", 1),
+        ("POST", "../2020-02-12T00:00:00Z", 1),
+        ("POST", "2020-02-10T00:00:00Z", 1),
+    ],
+)
+async def test_aggregate_total_count_with_start_end_datetime_index(
+    mock_datetime_env, app_client, ctx, method, datetime_value, expected_count
+):
+    params = {"collections": [ctx.item["collection"]], "aggregations": ["total_count"]}
+    if datetime_value:
+        params["datetime"] = datetime_value
+
+    if method == "GET":
+        response = await app_client.get(
+            "/aggregate",
+            params={**params, "collections": ",".join(params["collections"])},
+        )
+    else:
+        response = await app_client.post("/aggregate", json=params)
+
+    assert response.status_code == 200
+    assert response.json()["aggregations"][0]["value"] == expected_count
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_items_of_collection_without_item_indexes_return_empty_for_datetime_index(
+    datetime_filtering_env, app, app_client, load_test_data, txn_client, monkeypatch
+):
+    await delete_collections_and_items(txn_client)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"empty-{uuid.uuid4()}"
+    response = await app_client.post("/collections", json=collection)
+    assert response.status_code == 201
+
+    engine_calls = []
+    db_client = app.state.database_logic.client
+    for name in ("search", "count"):
+
+        async def spy(*args, _name=name, _original=getattr(db_client, name), **kwargs):
+            engine_calls.append((_name, kwargs.get("index")))
+            return await _original(*args, **kwargs)
+
+        monkeypatch.setattr(db_client, name, spy)
+
+    try:
+        for url in (
+            f"/collections/{collection['id']}/items",
+            f"/search?collections={collection['id']}",
+        ):
+            response = await app_client.get(url)
+            assert response.status_code == 200, response.text
+            result = response.json()
+            assert result["features"] == []
+            assert result["numberMatched"] == 0
+        assert engine_calls == []
+    finally:
+        await delete_collections_and_items(txn_client)

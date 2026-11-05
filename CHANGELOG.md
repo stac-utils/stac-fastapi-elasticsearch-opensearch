@@ -7,12 +7,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- With `ENABLE_DATETIME_INDEX_FILTERING=true`, listing items of a collection and searching it now return an empty result when no item index matches the collections and datetime, instead of searching every index and failing on the default sort. Collections whose items are still in simple (non-datetime) indexes now return empty results under datetime filtering and must be reindexed into datetime indexes. [#883](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/883)
+
+## [v8.1.1] - 2026-10-30
+
+### Fixed
+
+- Collection provider extension fields, such as `processing:lineage`, are preserved on `POST /collections` and `PUT /collections/{collection_id}`. Earlier stac-pydantic versions dropped these fields during request parsing, causing metadata loss or schema validation errors. [stac-utils/stac-pydantic#241](https://github.com/stac-utils/stac-pydantic/issues/241)
+
+### Updated
+
+- Require `stac-pydantic>=3.7.1,<3.8` and update the lockfile to 3.7.1.
+
+## [v8.1.0] - 2026-10-30
+
 ### Changed
 
 - The root `GET`/`POST /aggregate` accepts any aggregation the server can run, as the [Aggregation extension](https://github.com/stac-api-extensions/aggregation#aggregations) says for the root endpoint, with or without `collections`; before, it answered `400` for any name outside `DEFAULT_AGGREGATIONS`, such as `platform_frequency` or `centroid_geohex_grid_frequency`, unless every named collection advertised it. `/collections/{collection_id}/aggregate` still accepts only what that collection advertises. The root `/aggregations` now advertises every available aggregation (the sixteen the documentation lists) instead of the seven defaults; a collection's `/aggregations` is unchanged. With `collections` named, the root also accepts an aggregation those collections advertise, as before. The root list is the same on every licence. On a basic Elasticsearch licence, `centroid_geohex_grid_frequency` and the `geometry_*` grids are refused by the engine; `/aggregate` now answers `400` with the engine's reason (`current license is non-compliant for [geo-hex-agg]`) where it answered `500` before, for the two `geometry_*` defaults too.
 
 - `USE_DATETIME_NANOS=false` now also maps item `datetime`, `start_datetime` and `end_datetime` as `date` instead of `date_nanos`, so items dated before 1970 or after 2262 can be stored and searched. The mapping applies to item indexes created after the change; existing deployments reindex their item indexes, as the README describes. A custom mapping for these fields still takes precedence. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 - Items with `datetime: null` now sort last in the default sort, as they already did with a `sortby` on `properties.datetime`. The default sort used to place them at 1970-01-01, which put them among real dates once dates before 1970 can be stored. Sorts on item `datetime`, `start_datetime` and `end_datetime` now compare values in milliseconds (`numeric_type: date`), so `date` and `date_nanos` indexes sort together and items less than a millisecond apart are ordered by the next sort field. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
+- Creating or replacing a single item (`POST`, `PUT`, and `PATCH` with `ENABLE_STAC_VALIDATOR=true`) that Elasticsearch or OpenSearch rejects now returns `400` with the engine's reason in `detail`, instead of `500`. Rejections include a `datetime`, `start_datetime` or `end_datetime` before 1970 or after 2262 with the default `USE_DATETIME_NANOS=true`, a value that doesn't match the field mapping, and invalid geometry. Writes that `ENABLE_REDIS_QUEUE=true` sends to the queue, `POST` of a FeatureCollection and `bulk_items` report errors as before. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 
 ### Breaking Changes
 
@@ -33,6 +50,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Collection search with an open-ended `datetime` replaced the open end with 1800-01-01 or 2999-12-31, so `../1700-01-01T00:00:00Z` missed a collection whose temporal extent is 1600–1650. An open end no longer adds a limit on that side. [#967](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/967)
 - Quote `STAC_FASTAPI_DESCRIPTION` in affected compose files — the unquoted `SFEOS:` prefix made `docker compose` read each environment list item as a map, so those compose files failed to load. [#963](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/963)
 - Items stored without a `bbox`, or with a `null` one (such as items with a `null` geometry), are served without the key instead of with `"bbox": []` or `"bbox": null`, which STAC prohibits for null geometry. [#965](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/965)
+- With `USE_DATETIME=false` and `ENABLE_DATETIME_INDEX_FILTERING=true`, `/aggregate` requests, and catalog collection item listings without a `datetime`, no longer return `500`. [#981](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/981)
+- A `datetime` bound that can't be represented in UTC, such as `0001-01-01T00:00:00+01:00` or `9999-12-31T23:59:59-01:00`, returns `400` on `GET /search`, `GET /collections` and `GET /aggregate` instead of `500`. [#980](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/980)
 
 ## [v8.0.0] - 2026-10-23
 
@@ -1135,7 +1154,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.1...main
+[v8.1.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.0...v8.1.1
+[v8.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0...v8.1.0
 [v8.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...v8.0.0
 [v7.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...v7.2.0
 [v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0

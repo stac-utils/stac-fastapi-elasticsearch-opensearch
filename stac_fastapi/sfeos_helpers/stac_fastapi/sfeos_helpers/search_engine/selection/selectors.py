@@ -1,7 +1,7 @@
 """Async index selectors with datetime-based filtering."""
 
 import logging
-from typing import Any, cast
+from typing import Any
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
@@ -83,7 +83,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
     async def select_indexes(
         self,
         collection_ids: list[str] | None,
-        datetime_search: str,
+        datetime_search: str | dict | None,
         for_insertion: bool = False,
     ) -> str:
         """Select indexes filtered by collection IDs and datetime criteria.
@@ -169,7 +169,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         return bool(datetime_search)
 
     def parse_datetime_filters(
-        self, datetime: str | dict, for_insertion: bool
+        self, datetime: str | dict | None, for_insertion: bool
     ) -> dict[str, dict[str, Any]]:
         """Parse datetime string into structured filter criteria.
 
@@ -196,7 +196,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 "end_datetime": {"gte": None, "lte": None},
             }
 
-        dt_dict = cast(dict, datetime)
+        dt_dict = datetime if isinstance(datetime, dict) else parsed_datetime
         return {
             "datetime": {
                 "gte": parsed_datetime.get("gte") if self.use_datetime else None,
@@ -231,7 +231,7 @@ class UnfilteredIndexSelector(BaseIndexSelector):
     async def select_indexes(
         self,
         collection_ids: list[str] | None,
-        datetime_search: str,
+        datetime_search: str | dict | None,
         for_insertion: bool = False,
     ) -> str:
         """Select all indices for given collections without datetime filtering.
