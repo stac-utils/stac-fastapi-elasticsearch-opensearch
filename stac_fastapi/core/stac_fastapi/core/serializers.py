@@ -232,11 +232,16 @@ class ItemSerializer(Serializer):
         logger.info("STAC DATA: %s", stac_data)
 
         if get_bool_env("STAC_ALTERNATE_ASSETS"):
-            for asset in stac_data["assets"]:
+            for asset in stac_data["assets"].values():
                 if alternate_assets := asset.get("alternate"):
                     asset["alternate"] = [
                         {"alternate_key": k, **v} for k, v in alternate_assets.items()
                     ]
+
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            stac_data["assets"] = [
+                {"es_key": k, **v} for k, v in stac_data.get("assets", {}).items()
+            ]
 
         now = now_to_rfc3339_str()
         if "properties" not in stac_data:
