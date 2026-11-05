@@ -228,6 +228,7 @@ class ItemSerializer(Serializer):
                 item_links.append(collection_link)
 
         stac_data["links"] = item_links
+
         if get_bool_env("STAC_ALTERNATE_ASSETS"):
             for asset_key, asset in stac_data["assets"].items():
                 if alternate_assets := asset.get("alternate"):
