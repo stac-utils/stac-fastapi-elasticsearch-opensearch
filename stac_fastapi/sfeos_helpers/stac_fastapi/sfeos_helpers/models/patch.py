@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, model_validator
 
 regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
-replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": ""})
+replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": "", "-": "_"})
 
 
 class ESCommandSet:
@@ -84,6 +84,11 @@ class ElasticPath(BaseModel):
     variable_name: str | None = None
     param_key: str | None = None
 
+    asset_key: str | None = None
+    alternate_key: str | None = None
+
+    value: Any | None = None
+
     model_config = ConfigDict(frozen=True)
 
     @model_validator(mode="before")
@@ -98,7 +103,18 @@ class ElasticPath(BaseModel):
 
         data["key"] = data["parts"].pop(-1)
         data["nest"] = "/".join(data["parts"])
-        data["path"] = data["nest"] + "/" + data["key"]
+
+        if data["nest"].strip("/") == "assets":
+            data["value"]["es_key"] = data["key"]
+            data["key"] = "-"
+
+        if (
+            data["parts"]
+            and data["parts"][0] == "assets"
+            and data["parts"][-1] == "alternate"
+        ):
+            data["value"]["alternate_key"] = data["key"]
+            data["key"] = "-"
 
         data["es_key"] = data["key"]
         data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
@@ -113,9 +129,11 @@ class ElasticPath(BaseModel):
             )
             data["es_path"] = data["es_nest"] + f"[{data['es_key']}]"
 
-        data[
-            "variable_name"
-        ] = f"{data['nest'].replace('/','_').replace(':','_')}_{str(data['key']).replace(':','_')}"
+        data["variable_name"] = (
+            f"{data['nest'].replace('/','_').replace(':','_')}"
+            f"_{str(data['key']).replace(':','_')}"
+        )
+        data["path"] = data["nest"] + "/" + "end" if data["key"] == -1 else data["key"]
         data["param_key"] = data["path"].translate(replacements)
 
         return data

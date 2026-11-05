@@ -1,6 +1,6 @@
 """Client implementation for the STAC API Aggregation Extension."""
 
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -8,7 +8,6 @@ import orjson
 from fastapi import HTTPException, Path, Request
 from pydantic import ValidationError
 from stac_pydantic.shared import BBox
-from typing_extensions import Annotated
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings

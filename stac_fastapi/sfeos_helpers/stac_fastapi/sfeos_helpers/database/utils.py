@@ -531,27 +531,28 @@ def check_commands(
     """
     if path.nest:
         part_nest = ""
-        for index, path_part in enumerate(path.parts):
+        if "alternate" not in path.parts:
+            for index, path_part in enumerate(path.parts):
 
-            # Create nested dictionaries if not present for merge operations
-            if create_nest and not from_path:
-                value = "[:]"
-                for sub_part in reversed(path.parts[index + 1 :]):
-                    value = f"['{sub_part}': {value}]"
+                # Create nested dictionaries if not present for merge operations
+                if create_nest and not from_path:
+                    value = "[:]"
+                    for sub_part in reversed(path.parts[index + 1 :]):
+                        value = f"['{sub_part}': {value}]"
 
-                commands.add(
-                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
-                    f"{{ctx._source{part_nest}['{path_part}'] = {value};}}"
-                    f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
-                )
+                    commands.add(
+                        f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                        f"{{ctx._source{part_nest}['{path_part}'] = {value};}}"
+                        f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
+                    )
 
-            else:
-                commands.add(
-                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
-                    f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
-                )
+                else:
+                    commands.add(
+                        f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                        f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
+                    )
 
-            part_nest += f"['{path_part}']"
+                part_nest += f"['{path_part}']"
 
     if from_path or op in ["remove", "replace", "test"]:
 
@@ -625,14 +626,22 @@ def add_commands(
 
     else:
         param_key = _allocate_script_param(params, operation.value)
-        value = f"params.{param_key}"
+        value = f"params['{param_key}']"
 
     if isinstance(path.key, int):
-        commands.add(
-            f"if (ctx._source{path.es_nest} instanceof ArrayList)"
-            f"{{ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'copy', 'move'] else 'set'}({path.es_key}, {value});}}"
-            f" else ctx._source{path.es_nest}['{path.es_key}'] = {value};"
-        )
+        if path.parts[0] == "assets" and path.parts[-1] == "alternate":
+            commands.add(
+                f"for (a in ctx._source.assets) {{ if (a.es_key == '{path.parts[-2]}') {{"  # noqa: E201
+                "if (!a.containsKey('alternate') || a.alternate == null) {a.alternate = [];}"
+                f"a.alternate.add({value}); break;}} }}"  # noqa: E202
+            )
+        else:
+            commands.add(
+                f"if (ctx._source{path.es_nest} instanceof ArrayList){{"
+                f"int insertPos = ctx._source{path.es_nest}.size() > 0 ? ctx._source{path.es_nest}.size() - 1 : 0;"
+                f"ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});}}"
+                f" else ctx._source{path.es_path} = {value};"
+            )
 
     else:
         commands.add(f"ctx._source{path.es_path} = {value};")
@@ -649,7 +658,7 @@ def test_commands(
         path (ElasticPath): path for value to be tested
     """
     param_key = _allocate_script_param(params, operation.value)
-    value = f"params.{param_key}"
+    value = f"params['{param_key}']"
 
     if isinstance(path.key, int):
         commands.add(
@@ -722,9 +731,14 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
     params: dict = {}
 
     for operation in operations:
-        path = ElasticPath(path=operation.path)
-        from_path = (
-            ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None
+        path = ElasticPath(path=operation.path, value=operation.value)
+
+        if path.value:
+            operation.value = path.value
+
+        from_path, _ = (
+            ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None,
+            None,
         )
 
         check_commands(

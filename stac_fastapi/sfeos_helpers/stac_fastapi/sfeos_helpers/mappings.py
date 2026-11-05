@@ -386,6 +386,29 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_template(
     "STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES", "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE"
 )
 
+_DATE_MAPPING_TYPE = "date_nanos" if get_bool_env("USE_DATETIME_NANOS") else "date"
+
+_ALTERNATE_ASSET_RUNTIME_MAPPINGS = {
+    "all_alternate_names": {
+        "type": "keyword",
+        "script": {
+            "source": """
+                    if (doc.containsKey('assets.alternate:name') && !doc['assets.alternate:name'].empty) {
+                        for (def v : doc['assets.alternate:name']) {
+                            emit(v);
+                        }
+                    }
+                    if (doc.containsKey('assets.alternate.alternate:name') && !doc['assets.alternate.alternate:name'].empty) {
+                        for (def v : doc['assets.alternate.alternate:name']) {
+                            emit(v);
+                        }
+                    }
+                """,
+            "lang": "painless",
+        },
+    }
+}
+
 # Base items mappings without dynamic configuration applied
 _BASE_ITEMS_MAPPINGS = {
     "numeric_detection": False,
@@ -400,9 +423,9 @@ _BASE_ITEMS_MAPPINGS = {
             "type": "object",
             "properties": {
                 # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-                "datetime": {"type": "date_nanos"},
-                "start_datetime": {"type": "date_nanos"},
-                "end_datetime": {"type": "date_nanos"},
+                "datetime": {"type": _DATE_MAPPING_TYPE},
+                "start_datetime": {"type": _DATE_MAPPING_TYPE},
+                "end_datetime": {"type": _DATE_MAPPING_TYPE},
                 "created": {"type": "date"},
                 "updated": {"type": "date"},
                 # Satellite Extension https://github.com/stac-extensions/sat
@@ -412,6 +435,9 @@ _BASE_ITEMS_MAPPINGS = {
         },
     },
 }
+
+if get_bool_env("STAC_ALTERNATE_ASSETS"):
+    _BASE_ITEMS_MAPPINGS["runtime"] = _ALTERNATE_ASSET_RUNTIME_MAPPINGS
 
 # ES_ITEMS_MAPPINGS with environment-based configuration applied at module load time
 ES_ITEMS_MAPPINGS = get_mappings(is_items=True)
@@ -441,6 +467,27 @@ _BASE_ES_COLLECTIONS_MAPPINGS = {
 
 # ES_COLLECTIONS_MAPPINGS with environment-based configuration applied at module load time
 ES_COLLECTIONS_MAPPINGS = get_mappings(is_items=False)
+
+ALTERNATE_ASSETS_AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
+    "primary_alternate_name_frequency": {
+        "terms": {
+            "field": "assets.alternate:name",
+            "size": 10000,
+        }
+    },
+    "alternate_alternate_name_frequency": {
+        "terms": {
+            "field": "assets.alternate.alternate:name",
+            "size": 10000,
+        }
+    },
+    "alternate_name_frequency": {
+        "terms": {
+            "field": "all_alternate_names",
+            "size": 10000,
+        }
+    },
+}
 
 # Shared aggregation mapping for both Elasticsearch and OpenSearch
 AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
@@ -513,6 +560,13 @@ AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
         }
     },
 }
+
+AGGREGATION_MAPPING = (
+    AGGREGATION_MAPPING | ALTERNATE_ASSETS_AGGREGATION_MAPPING
+    if get_bool_env("STAC_ALTERNATE_ASSETS")
+    else AGGREGATION_MAPPING
+)
+
 
 ES_MAPPING_TYPE_TO_JSON: dict[
     str, Literal["string", "number", "boolean", "object", "array", "null", "integer"]
