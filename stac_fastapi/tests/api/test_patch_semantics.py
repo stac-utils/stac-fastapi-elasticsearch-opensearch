@@ -169,7 +169,7 @@ async def test_merge_patch_preserves_literal_member_names(
 @pytest.mark.parametrize("validator", ["false", "true"])
 @pytest.mark.parametrize("resource", ["item", "collection"])
 @pytest.mark.parametrize("operation", ["remove", "replace"])
-@pytest.mark.parametrize("member", ["absent", "scalar/0"])
+@pytest.mark.parametrize("member", ["absent", "scalar/0", "list/1"])
 async def test_invalid_json_patch_is_400_without_mutation(
     app_client, ctx, txn_client, monkeypatch, validator, resource, operation, member
 ):
@@ -178,6 +178,7 @@ async def test_invalid_json_patch_is_400_without_mutation(
     seed = deepcopy(getattr(ctx, resource))
     container = seed["properties"] if resource == "item" else seed
     container["scalar"] = "existing"
+    container["list"] = ["only"]
     assert (await app_client.put(url, json=seed)).status_code == 200
     before = await txn_client.database.client.get(**document)
     prefix = "/properties" if resource == "item" else ""

@@ -583,9 +583,11 @@ def check_commands(
     if from_path or op in ["remove", "replace", "test"]:
 
         if isinstance(path.key, int):
+            # A negative key counts from the end, so -1 needs one element.
+            bound = f"<= {path.key}" if path.key >= 0 else f"< {-path.key}"
             commands.append(
                 f"if ((ctx._source{path.es_nest} instanceof ArrayList"
-                f" && ctx._source{path.es_nest}.size() < {abs(path.key)})"
+                f" && ctx._source{path.es_nest}.size() {bound})"
                 f" || (!(ctx._source{path.es_nest} instanceof ArrayList)"
                 f" && !ctx._source{path.es_nest}.containsKey('{path.key}')))"
                 f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713

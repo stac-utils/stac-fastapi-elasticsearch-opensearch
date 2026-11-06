@@ -275,3 +275,11 @@ def test_numeric_member_of_object_is_read_by_string_key():
 
     assert "ctx._source['properties']['n']['1']" in copy_source
     assert "ctx._source['properties']['n']['1'] != params.p0" in test_source
+
+
+def test_index_past_the_end_of_a_list_is_explained_as_missing():
+    remove = PatchRemove.model_validate({"op": "remove", "path": "/properties/l/1"})
+
+    source = operations_to_script([remove])["source"]
+
+    assert "ctx._source['properties']['l'].size() <= 1)" in source
