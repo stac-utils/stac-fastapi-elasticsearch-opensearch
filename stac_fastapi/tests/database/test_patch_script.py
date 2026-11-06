@@ -5,11 +5,15 @@ from stac_fastapi.extensions.transaction.request import (
     PatchMoveCopy,
     PatchRemove,
 )
-from stac_fastapi.sfeos_helpers.database.utils import add_commands, operations_to_script
+from stac_fastapi.sfeos_helpers.database.utils import (
+    add_commands,
+    operations_to_script,
+    protect_datetime_script,
+)
 from stac_fastapi.sfeos_helpers.database.utils import (
     test_commands as build_test_commands,
 )
-from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.sfeos_helpers.models.patch import ElasticPath
 
 
 def test_operations_to_script_allocates_each_value_occurrence():
@@ -109,7 +113,7 @@ def test_value_helpers_skip_prepopulated_parameter_keys():
         {"op": "add", "path": "/properties/value", "value": "value"}
     )
     path = ElasticPath(path=operation.path)
-    commands = ESCommandSet()
+    commands: list[str] = []
     params = {"p0": "occupied", "p2": "also occupied"}
 
     add_commands(commands, operation, path, None, params)
@@ -154,7 +158,7 @@ def test_operations_to_script_keeps_non_value_operation_handling():
     assert "ctx._source['properties']['source'] = params.p0;" in script["source"]
     assert "ctx._source['properties']['source'] = params.p1;" in script["source"]
     assert (
-        "ctx._source['properties']['copied'] = ctx._source['properties']['source'];"
+        "ctx._source['properties']['copied'] = deepCopy(ctx._source['properties']['source']);"
         in script["source"]
     )
     assert ElasticPath(path="/properties/proj:epsg").param_key == "propertiesprojepsg"
@@ -175,3 +179,107 @@ def test_repeated_same_operation_keeps_every_binding():
             assert script["params"] == dict(zip(("p0", "p1"), values))
             assert "params.p0" in script["source"]
             assert "params.p1" in script["source"]
+
+
+def test_repeated_non_value_operations_keep_every_statement():
+    for operation in (
+        {"op": "copy", "path": "/properties/a/1", "from": "/properties/a/0"},
+        {"op": "move", "path": "/properties/a/1", "from": "/properties/a/0"},
+        {"op": "remove", "path": "/properties/a/0"},
+    ):
+        model = PatchRemove if operation["op"] == "remove" else PatchMoveCopy
+        once = operations_to_script([model.model_validate(operation)])["source"]
+        twice = operations_to_script([model.model_validate(operation)] * 2)["source"]
+
+        for statement in ("['a'].add(", "['a'].remove("):
+            assert twice.count(statement) == 2 * once.count(statement)
+        assert len(twice) > len(once)
+
+
+def test_repeated_remove_declares_distinct_variables():
+    remove = PatchRemove.model_validate({"op": "remove", "path": "/properties/x"})
+
+    source = operations_to_script([remove, remove])["source"]
+
+    assert "def properties_x_0;" in source
+    assert "def properties_x_1;" in source
+
+
+def test_remove_then_replace_keeps_both_existence_checks():
+    operations = [
+        PatchRemove.model_validate({"op": "remove", "path": "/properties/x"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/x", "value": 2}
+        ),
+    ]
+
+    source = operations_to_script(operations)["source"]
+
+    assert source.count("containsKey('x')") == 2
+    assert source.index("remove('x')") < source.rindex("containsKey('x')")
+
+
+def test_deep_copy_function_only_with_copy():
+    copy = PatchMoveCopy.model_validate(
+        {"op": "copy", "path": "/properties/c", "from": "/properties/b"}
+    )
+    move = PatchMoveCopy.model_validate(
+        {"op": "move", "path": "/properties/c", "from": "/properties/b"}
+    )
+
+    copy_source = operations_to_script([copy])["source"]
+    move_source = operations_to_script([move])["source"]
+
+    assert copy_source.startswith("def deepCopy(")
+    assert "= deepCopy(ctx._source['properties']['b']);" in copy_source
+    assert "deepCopy" not in move_source
+
+
+def test_datetime_guards_follow_deep_copy_function():
+    copy = PatchMoveCopy.model_validate(
+        {"op": "copy", "path": "/properties/c", "from": "/properties/b"}
+    )
+    script = operations_to_script([copy])
+
+    protect_datetime_script(script, True)
+
+    source = script["source"]
+    assert source.startswith("def deepCopy(")
+    assert source.count("def deepCopy(") == 1
+    assert source.index("def __stac_datetime") < source.index("= deepCopy(ctx._source")
+    assert source.rindex("__stac_datetime") > source.index("= deepCopy(ctx._source")
+
+
+def test_array_element_in_path_is_indexed_not_keyed():
+    replace = PatchAddReplaceTest.model_validate(
+        {"op": "replace", "path": "/properties/l/0/k", "value": 2}
+    )
+
+    source = operations_to_script([replace])["source"]
+
+    assert ElasticPath(path="/l/0/k").es_nest == "['l'][0]"
+    assert "containsKey('0')" not in source
+    assert "ctx._source['properties']['l'][0]['k'] = params.p0;" in source
+
+
+def test_numeric_member_of_object_is_read_by_string_key():
+    copy = PatchMoveCopy.model_validate(
+        {"op": "copy", "path": "/properties/q", "from": "/properties/n/1"}
+    )
+    test = PatchAddReplaceTest.model_validate(
+        {"op": "test", "path": "/properties/n/1", "value": "v"}
+    )
+
+    copy_source = operations_to_script([copy])["source"]
+    test_source = operations_to_script([test])["source"]
+
+    assert "ctx._source['properties']['n']['1']" in copy_source
+    assert "ctx._source['properties']['n']['1'] != params.p0" in test_source
+
+
+def test_index_past_the_end_of_a_list_is_explained_as_missing():
+    remove = PatchRemove.model_validate({"op": "remove", "path": "/properties/l/1"})
+
+    source = operations_to_script([remove])["source"]
+
+    assert "ctx._source['properties']['l'].size() <= 1)" in source
