@@ -1,5 +1,9 @@
 """Tests for JSON Patch script parameter isolation."""
 
+import re
+
+import pytest
+
 from stac_fastapi.extensions.transaction.request import (
     PatchAddReplaceTest,
     PatchMoveCopy,
@@ -179,6 +183,96 @@ def test_repeated_same_operation_keeps_every_binding():
             assert script["params"] == dict(zip(("p0", "p1"), values))
             assert "params.p0" in script["source"]
             assert "params.p1" in script["source"]
+
+
+def test_append_index_addresses_the_position_after_the_last_element():
+    path = ElasticPath(path="/links/-")
+
+    assert path.key == -1
+    assert path.raw_key == "-"
+    assert path.es_key == "ctx._source['links'].size()"
+
+
+def test_explicit_negative_index_still_counts_from_the_end():
+    path = ElasticPath(path="/links/-2")
+
+    assert path.raw_key == "-2"
+    assert path.es_key == "ctx._source['links'].size() - 2"
+
+
+def test_positive_index_and_member_names_are_unchanged():
+    assert ElasticPath(path="/links/0").es_key == "0"
+    assert ElasticPath(path="/assets/x-y.nc/title").es_key == "title"
+
+
+def test_add_append_script_keeps_the_map_fallback_compilable():
+    commands: list[str] = []
+    operation = PatchAddReplaceTest.model_validate(
+        {"op": "add", "path": "/links/-", "value": {"rel": "cite-as"}}
+    )
+
+    add_commands(commands, operation, ElasticPath(path=operation.path), None, {})
+
+    (command,) = commands
+    assert "['links'].add(ctx._source['links'].size(), params.p0)" in command
+    # The else branch assigns into a map, so its key must be the plain member
+    # name and not the Painless expression used for the list branch.
+    assert "ctx._source['links']['-'] = params.p0;" in command
+    assert "['ctx._source" not in command
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/links/-",
+        "/links/-2",
+        "/assets/x-y.nc/title",
+        "/1abc/x",
+        "/properties/eo:bands",
+    ],
+)
+def test_variable_name_is_a_painless_identifier(path):
+    assert re.fullmatch(r"[A-Za-z_]\w*", ElasticPath(path=path).variable_name)
+
+
+def _script(operation):
+    return operations_to_script([operation])["source"]
+
+
+def test_numeric_member_of_object_uses_the_literal_key():
+    replace = _script(
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/01", "value": 1}
+        )
+    )
+    assert "containsKey('01')" in replace
+    assert "containsKey('1')" not in replace
+    assert "['properties']['01'] = params.p0" in replace
+
+    remove = _script(PatchRemove.model_validate({"op": "remove", "path": "/p/01"}))
+    assert "containsKey('01')" in remove
+    assert ".remove('01')" in remove
+    assert ".remove('1')" not in remove
+
+    copy = _script(
+        PatchMoveCopy.model_validate({"op": "copy", "from": "/p/01", "path": "/q"})
+    )
+    assert ": ctx._source['p']['01'])" in copy
+
+    test = _script(
+        PatchAddReplaceTest.model_validate({"op": "test", "path": "/p/01", "value": 1})
+    )
+    assert "if (ctx._source['p']['01'] != params.p0)" in test
+
+
+def test_dash_member_of_object_is_checked_as_dash():
+    replace = _script(
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/-", "value": 1}
+        )
+    )
+    assert "containsKey('-')" in replace
+    assert "containsKey('-1')" not in replace
 
 
 def test_repeated_non_value_operations_keep_every_statement():
