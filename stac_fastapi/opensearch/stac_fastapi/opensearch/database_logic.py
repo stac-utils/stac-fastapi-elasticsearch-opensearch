@@ -1127,7 +1127,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if es_response["hits"]["total"]["relation"] == "eq"
             else None
         )
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
