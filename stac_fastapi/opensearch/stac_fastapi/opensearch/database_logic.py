@@ -1047,6 +1047,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
             )
+            # No matching item index; an empty index would search all indexes (#883).
+            if not index_param:
+                return [], 0, None
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
