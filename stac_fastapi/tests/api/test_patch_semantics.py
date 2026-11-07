@@ -232,6 +232,8 @@ async def test_json_patch_add_dash_appends_to_array(
     appended = [link for link in stored if link["rel"] in (first["rel"], second["rel"])]
     assert appended == [first, second]
     assert len(stored) == len(before) + 2
+    if validator == "false":
+        assert stored == before + [first, second]
 
 
 async def test_json_patch_add_dash_appends_to_properties_array(
@@ -251,3 +253,131 @@ async def test_json_patch_add_dash_appends_to_properties_array(
     assert response.status_code == 200, response.text
     stored = (await txn_client.database.client.get(**document))["_source"]
     assert stored["properties"]["tags"] == ["a", "b", "c"]
+
+
+async def _seed_numeric_members(app_client, ctx, txn_client, monkeypatch):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    url, document = _target(ctx, "item")
+    seed = deepcopy(ctx.item)
+    seed["properties"]["01"] = "zero-one"
+    seed["properties"]["-"] = "dash"
+    assert (await app_client.put(url, json=seed)).status_code == 200
+    return url, document
+
+
+async def _patch(app_client, url, operations):
+    return await app_client.patch(
+        url, json=operations, headers={"Content-Type": "application/json-patch+json"}
+    )
+
+
+@pytest.mark.parametrize("member", ["01", "-"])
+async def test_json_patch_replace_numeric_member_of_object(
+    app_client, ctx, txn_client, monkeypatch, member
+):
+    url, document = await _seed_numeric_members(
+        app_client, ctx, txn_client, monkeypatch
+    )
+
+    response = await _patch(
+        app_client,
+        url,
+        [{"op": "replace", "path": f"/properties/{member}", "value": "new"}],
+    )
+
+    assert response.status_code == 200, response.text
+    properties = (await txn_client.database.client.get(**document))["_source"][
+        "properties"
+    ]
+    assert properties[member] == "new"
+    assert "1" not in properties and "-1" not in properties
+
+
+@pytest.mark.parametrize("member", ["02", "-"])
+async def test_json_patch_replace_missing_numeric_member_of_object_fails(
+    app_client, ctx, txn_client, monkeypatch, member
+):
+    url, document = _target(ctx, "item")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    before = (await txn_client.database.client.get(**document))["_source"]
+
+    response = await _patch(
+        app_client,
+        url,
+        [{"op": "replace", "path": f"/properties/{member}", "value": "new"}],
+    )
+
+    assert response.status_code == 400, response.text
+    after = (await txn_client.database.client.get(**document))["_source"]
+    assert after == before
+
+
+async def test_json_patch_remove_numeric_member_of_object(
+    app_client, ctx, txn_client, monkeypatch
+):
+    url, document = await _seed_numeric_members(
+        app_client, ctx, txn_client, monkeypatch
+    )
+
+    response = await _patch(
+        app_client, url, [{"op": "remove", "path": "/properties/01"}]
+    )
+
+    assert response.status_code == 200, response.text
+    properties = (await txn_client.database.client.get(**document))["_source"][
+        "properties"
+    ]
+    assert "01" not in properties
+
+
+@pytest.mark.parametrize("op", ["copy", "move"])
+async def test_json_patch_copy_and_move_from_numeric_member_of_object(
+    app_client, ctx, txn_client, monkeypatch, op
+):
+    url, document = await _seed_numeric_members(
+        app_client, ctx, txn_client, monkeypatch
+    )
+
+    response = await _patch(
+        app_client,
+        url,
+        [{"op": op, "from": "/properties/01", "path": "/properties/target"}],
+    )
+
+    assert response.status_code == 200, response.text
+    properties = (await txn_client.database.client.get(**document))["_source"][
+        "properties"
+    ]
+    assert properties["target"] == "zero-one"
+    assert ("01" in properties) == (op == "copy")
+
+
+@pytest.mark.parametrize("value,status", [("zero-one", 200), ("other", 400)])
+async def test_json_patch_test_numeric_member_of_object(
+    app_client, ctx, txn_client, monkeypatch, value, status
+):
+    url, _ = await _seed_numeric_members(app_client, ctx, txn_client, monkeypatch)
+
+    response = await _patch(
+        app_client, url, [{"op": "test", "path": "/properties/01", "value": value}]
+    )
+
+    assert response.status_code == status, response.text
+
+
+async def test_json_patch_remove_member_with_dash_in_path(
+    app_client, ctx, txn_client, monkeypatch
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    url, document = _target(ctx, "item")
+    seed = deepcopy(ctx.item)
+    seed["assets"]["x-y.nc"] = {"href": "https://example.com/x-y.nc", "title": "t"}
+    assert (await app_client.put(url, json=seed)).status_code == 200
+
+    response = await _patch(
+        app_client, url, [{"op": "remove", "path": "/assets/x-y.nc/title"}]
+    )
+
+    assert response.status_code == 200, response.text
+    assets = (await txn_client.database.client.get(**document))["_source"]["assets"]
+    assert assets["x-y.nc"] == {"href": "https://example.com/x-y.nc"}

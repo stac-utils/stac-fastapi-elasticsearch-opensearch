@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - JSON Patch `add` with the append index `-` (for example `/links/-`) appends after the last element, as RFC 6902 requires. It used to fail with `400 script_exception: compile error`, and the index computed for it pointed at the last element instead of the position after it. [#976](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/976)
+- JSON Patch on an object member whose name looks like an array index (for example `/properties/01` or `/properties/-`) uses the literal member name in every operation. `replace` checked a different key than it wrote, `remove` returned 200 without removing anything, and `copy` or `move` from such a member wrote `null`. [#988](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/988)
+- JSON Patch `remove` and `move` on paths containing `-` or other non-word characters (for example `/assets/x-y.nc/title`) no longer fail with a Painless compile error. [#988](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/988)
 
 ## [v8.1.1] - 2026-10-30
 

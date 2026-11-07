@@ -560,8 +560,8 @@ def check_commands(
                 f"if ((ctx._source{path.es_nest} instanceof ArrayList"
                 f" && ctx._source{path.es_nest}.size() < {abs(path.key)})"
                 f" || (!(ctx._source{path.es_nest} instanceof ArrayList)"
-                f" && !ctx._source{path.es_nest}.containsKey('{path.key}')))"
-                f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
+                f" && !ctx._source{path.es_nest}.containsKey('{path.raw_key}')))"
+                f"{{Debug.explain('{path.raw_key} does not exist in {path.nest}');}}"  # noqa: E713
             )
         else:
             commands.add(
@@ -586,7 +586,7 @@ def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
         )
 
     commands.add(
-        f"{path.variable_name} = ctx._source{path.es_nest}.remove('{path.key}');"
+        f"{path.variable_name} = ctx._source{path.es_nest}.remove('{path.raw_key}');"
     )
 
 
@@ -617,11 +617,17 @@ def add_commands(
 
     """
     if from_path is not None:
-        value = (
-            from_path.variable_name
-            if operation.op == "move"
-            else f"ctx._source{from_path.es_path}"
-        )
+        if operation.op == "move":
+            value = from_path.variable_name
+        elif isinstance(from_path.key, int):
+            # A numeric segment is an index on a list but a member name on a map.
+            value = (
+                f"(ctx._source{from_path.es_nest} instanceof ArrayList"
+                f" ? ctx._source{from_path.es_path}"
+                f" : ctx._source{from_path.es_nest}['{from_path.raw_key}'])"
+            )
+        else:
+            value = f"ctx._source{from_path.es_path}"
 
     else:
         param_key = _allocate_script_param(params, operation.value)
@@ -659,11 +665,15 @@ def test_commands(
             f" != ' + ctx._source{path.es_path});}}"
             f"}} else "
         )
+        # On a map a numeric segment is a member name, not an index.
+        map_path = f"{path.es_nest}['{path.raw_key}']"
+    else:
+        map_path = path.es_path
 
     commands.add(
-        f"if (ctx._source{path.es_path} != {value})"
+        f"if (ctx._source{map_path} != {value})"
         f"{{Debug.explain('Test failed `{path.path}`"
-        f" != ' + ctx._source{path.es_path});}}"
+        f" != ' + ctx._source{map_path});}}"
     )
 
 
