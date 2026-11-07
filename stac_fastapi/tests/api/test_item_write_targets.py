@@ -503,10 +503,8 @@ async def test_json_patch_datetime_effects(
         txn_client.database.async_index_inserter, DatetimeIndexInserter
     )
     removed = case in ("remove", "move-source", "remove-properties")
-    if case in ("later-copy", "reset-copy", "alias-copy"):
+    if case in ("later-copy", "reset-copy", "alias-copy", "repeat-copy"):
         same = True
-    if case == "repeat-copy":
-        same = validator == "true"
     rejected = malformed or (
         not same and (immutable or (removed and validator == "true"))
     )

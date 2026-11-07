@@ -9,44 +9,6 @@ regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
 replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": ""})
 
 
-class ESCommandSet:
-    """Uses dictionary keys to behaviour of ordered set.
-
-    Yields:
-        str: Elasticsearch commands
-    """
-
-    dict_: dict[str, Any] | None = {}
-
-    def __init__(self):
-        """Initialise ESCommandSet instance."""
-        self.dict_ = {}
-
-    def add(self, value: str):
-        """Add command.
-
-        Args:
-            value (str): value to be added
-        """
-        self.dict_[value] = None
-
-    def remove(self, value: str):
-        """Remove command.
-
-        Args:
-            value (str): value to be removed
-        """
-        del self.dict_[value]
-
-    def __iter__(self):
-        """Iterate Elasticsearch commands.
-
-        Yields:
-            str: Elasticsearch command
-        """
-        yield from self.dict_.keys()
-
-
 def to_es(string: str):
     """Convert patch operation key to Elasticsearch key.
 
@@ -103,7 +65,10 @@ class ElasticPath(BaseModel):
         data["path"] = data["nest"] + "/" + data["key"]
 
         data["es_key"] = data["key"]
-        data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
+        data["es_nest"] = "".join(
+            f"[{part}]" if part.isascii() and part.isdigit() else f"['{part}']"
+            for part in data["parts"]
+        )
         data["es_path"] = data["es_nest"] + f"['{data['es_key']}']"
 
         if data["key"].lstrip("-").isdigit() or data["key"] == "-":
@@ -117,11 +82,13 @@ class ElasticPath(BaseModel):
                 data["es_key"] = str(data["key"])
             data["es_path"] = data["es_nest"] + f"[{data['es_key']}]"
 
-        # Painless identifiers may only contain word characters, so "-" in
-        # "/links/-" or "/assets/x-y.nc/title" must not reach the declaration.
-        data["variable_name"] = "var_" + re.sub(
-            r"\W", "_", f"{data['nest']}_{data['key']}"
-        )
+        # Painless identifiers may only contain word characters and must not
+        # start with a digit, so "-" in "/links/-" or "/assets/x-y.nc/title"
+        # must not reach the declaration.
+        variable_name = re.sub(r"\W", "_", f"{data['nest']}_{data['key']}")
+        if variable_name[0].isdigit():
+            variable_name = "_" + variable_name
+        data["variable_name"] = variable_name
         data["param_key"] = data["path"].translate(replacements)
 
         return data

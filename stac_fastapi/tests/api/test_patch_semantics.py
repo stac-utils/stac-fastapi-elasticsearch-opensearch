@@ -3,6 +3,7 @@
 from copy import deepcopy
 from unittest.mock import AsyncMock
 
+import jsonpatch
 import pytest
 
 from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id, mk_item_id
@@ -168,7 +169,7 @@ async def test_merge_patch_preserves_literal_member_names(
 @pytest.mark.parametrize("validator", ["false", "true"])
 @pytest.mark.parametrize("resource", ["item", "collection"])
 @pytest.mark.parametrize("operation", ["remove", "replace"])
-@pytest.mark.parametrize("member", ["absent", "scalar/0"])
+@pytest.mark.parametrize("member", ["absent", "scalar/0", "list/1"])
 async def test_invalid_json_patch_is_400_without_mutation(
     app_client, ctx, txn_client, monkeypatch, validator, resource, operation, member
 ):
@@ -177,6 +178,7 @@ async def test_invalid_json_patch_is_400_without_mutation(
     seed = deepcopy(getattr(ctx, resource))
     container = seed["properties"] if resource == "item" else seed
     container["scalar"] = "existing"
+    container["list"] = ["only"]
     assert (await app_client.put(url, json=seed)).status_code == 200
     before = await txn_client.database.client.get(**document)
     prefix = "/properties" if resource == "item" else ""
@@ -192,6 +194,93 @@ async def test_invalid_json_patch_is_400_without_mutation(
     after = await txn_client.database.client.get(**document)
     assert after["_source"] == before["_source"]
     assert after["_version"] == before["_version"]
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize("resource", ["item", "collection"])
+@pytest.mark.parametrize(
+    "ops",
+    [
+        [{"op": "copy", "from": "/a/0", "path": "/a/1"}] * 2,
+        [{"op": "move", "from": "/a/0", "path": "/a/1"}] * 2,
+        [{"op": "remove", "path": "/a/0"}] * 2,
+        [
+            {"op": "copy", "from": "/b", "path": "/c"},
+            {"op": "add", "path": "/c/0", "value": "new"},
+        ],
+        [
+            {"op": "copy", "from": "/o", "path": "/p"},
+            {"op": "replace", "path": "/p/k", "value": 2},
+        ],
+        [
+            {"op": "remove", "path": "/x"},
+            {"op": "replace", "path": "/x", "value": 2},
+        ],
+        [{"op": "replace", "path": "/l/0/k", "value": 2}],
+        [{"op": "add", "path": "/l/0/m", "value": 3}],
+        [{"op": "remove", "path": "/l/0/k"}],
+        [{"op": "copy", "from": "/n/1", "path": "/q"}],
+        [
+            {"op": "test", "path": "/n/1", "value": "v"},
+            {"op": "add", "path": "/q", "value": 1},
+        ],
+    ],
+    ids=[
+        "copy-twice",
+        "move-twice",
+        "remove-twice",
+        "copy-add",
+        "copy-replace",
+        "remove-replace",
+        "replace-in-array-element",
+        "add-in-array-element",
+        "remove-in-array-element",
+        "copy-numeric-member",
+        "test-numeric-member",
+    ],
+)
+async def test_json_patch_applies_operations_in_order_on_copies(
+    app_client, ctx, txn_client, monkeypatch, validator, resource, ops
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    url, document = _target(ctx, resource)
+    seed = deepcopy(getattr(ctx, resource))
+    fields = {
+        "a": ["x", "y", "z"],
+        "b": ["x"],
+        "o": {"k": 1},
+        "x": 1,
+        "l": [{"k": 1}],
+        "n": {"1": "v"},
+    }
+    (seed["properties"] if resource == "item" else seed).update(deepcopy(fields))
+    assert (await app_client.put(url, json=seed)).status_code == 200
+    before = await txn_client.database.client.get(**document)
+    prefix = "/properties" if resource == "item" else ""
+    patch = [
+        {**op, **{key: prefix + op[key] for key in ("path", "from") if key in op}}
+        for op in ops
+    ]
+    try:
+        expected = jsonpatch.apply_patch(fields, ops)
+    except jsonpatch.JsonPatchConflict:
+        expected = None
+
+    response = await app_client.patch(
+        url, json=patch, headers={"Content-Type": "application/json-patch+json"}
+    )
+
+    after = await txn_client.database.client.get(**document)
+    if expected is None:
+        assert response.status_code == 400, response.text
+        assert after["_source"] == before["_source"]
+        return
+    assert response.status_code == 200, response.text
+    for result in (response.json(), after["_source"]):
+        container = result["properties"] if resource == "item" else result
+        assert {key: container.get(key) for key in "abcopxlnq"} == {
+            key: expected.get(key) for key in "abcopxlnq"
+        }
 
 
 async def test_validation_typeerror_is_not_reclassified(txn_client, ctx, monkeypatch):
