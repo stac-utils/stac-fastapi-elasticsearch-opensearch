@@ -1226,10 +1226,12 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "POST"])
 async def test_search_count_timeout(
-    app_client, txn_client, load_test_data, monkeypatch
+    app_client, txn_client, load_test_data, monkeypatch, method
 ):
-    monkeypatch.setenv("COUNT_TIMEOUT", "0.011")
+    monkeypatch.setenv("COUNT_TIMEOUT", "0.001")
+    cancelled = asyncio.Event()
 
     test_collection = load_test_data("test_collection.json")
     test_collection_id = "test-collection-count-timeout"
@@ -1242,8 +1244,10 @@ async def test_search_count_timeout(
     test_item["collection"] = test_collection_id
 
     async def slow_count(*args, **kwargs):
-        await asyncio.sleep(0.01)
-        return {"count": 1}
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
 
     try:
         await create_item(txn_client, test_item)
@@ -1260,12 +1264,19 @@ async def test_search_count_timeout(
 
             monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
 
-        resp = await app_client.get(f"/search?collections={test_collection_id}")
+        resp = (
+            await app_client.get(f"/search?collections={test_collection_id}")
+            if method == "GET"
+            else await app_client.post(
+                "/search", json={"collections": [test_collection_id]}
+            )
+        )
 
         assert resp.status_code == 200
         resp_json = resp.json()
         assert len(resp_json["features"]) == 1
         assert resp_json["numberReturned"] == 1
+        assert cancelled.is_set()
     finally:
         await app_client.delete(f"/collections/{test_collection_id}")
 
