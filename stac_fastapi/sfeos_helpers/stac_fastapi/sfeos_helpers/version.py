@@ -1,2 +1,2 @@
 """library version."""
-__version__ = "8.1.1"
+__version__ = "8.1.2"
