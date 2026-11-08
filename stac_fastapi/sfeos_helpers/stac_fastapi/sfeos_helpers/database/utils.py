@@ -589,8 +589,8 @@ def check_commands(
                 f"if ((ctx._source{path.es_nest} instanceof ArrayList"
                 f" && ctx._source{path.es_nest}.size() {bound})"
                 f" || (!(ctx._source{path.es_nest} instanceof ArrayList)"
-                f" && !ctx._source{path.es_nest}.containsKey('{path.key}')))"
-                f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
+                f" && !ctx._source{path.es_nest}.containsKey('{path.raw_key}')))"
+                f"{{Debug.explain('{path.raw_key} does not exist in {path.nest}');}}"  # noqa: E713
             )
         else:
             commands.append(
@@ -616,7 +616,7 @@ def remove_commands(commands: list[str], path: ElasticPath, index: int) -> None:
             f"{{{variable} = ctx._source{path.es_nest}.remove({path.es_key});}} else "
         )
 
-    commands.append(f"{variable} = ctx._source{path.es_nest}.remove('{path.key}');")
+    commands.append(f"{variable} = ctx._source{path.es_nest}.remove('{path.raw_key}');")
 
 
 def _allocate_script_param(params: dict, value: Any) -> str:
@@ -654,7 +654,7 @@ def add_commands(
         source = f"ctx._source{from_path.es_nest}"
         value = (
             f"deepCopy({source} instanceof ArrayList"
-            f" ? {source}[{from_path.es_key}] : {source}['{from_path.key}'])"
+            f" ? {source}[{from_path.es_key}] : {source}['{from_path.raw_key}'])"
         )
 
     elif from_path is not None:
@@ -668,7 +668,7 @@ def add_commands(
         commands.append(
             f"if (ctx._source{path.es_nest} instanceof ArrayList)"
             f"{{ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'copy', 'move'] else 'set'}({path.es_key}, {value});}}"
-            f" else ctx._source{path.es_nest}['{path.es_key}'] = {value};"
+            f" else ctx._source{path.es_nest}['{path.raw_key}'] = {value};"
         )
 
     else:
@@ -697,7 +697,7 @@ def test_commands(
             f" != ' + ctx._source{path.es_path});}}"
             f"}} else "
         )
-        target = f"ctx._source{path.es_nest}['{path.key}']"
+        target = f"ctx._source{path.es_nest}['{path.raw_key}']"
 
     commands.append(
         f"if ({target} != {value})"
