@@ -377,3 +377,65 @@ def test_index_past_the_end_of_a_list_is_explained_as_missing():
     source = operations_to_script([remove])["source"]
 
     assert "ctx._source['properties']['l'].size() <= 1)" in source
+
+
+_DASH_ON_LIST = (
+    "if (ctx._source['links'] instanceof ArrayList"
+    " || !ctx._source['links'].containsKey('-'))"
+    "{Debug.explain('- does not exist in links');}"
+)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/links/-", "value": 1}
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/links/-", "value": 1}
+        ),
+        PatchRemove.model_validate({"op": "remove", "path": "/links/-"}),
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "from": "/links/-", "path": "/properties/c"}
+        ),
+        PatchMoveCopy.model_validate(
+            {"op": "move", "from": "/links/-", "path": "/properties/m"}
+        ),
+    ],
+    ids=lambda operation: operation.op,
+)
+def test_dash_index_is_missing_for_every_operation_but_add(operation):
+    assert _DASH_ON_LIST in _script(operation)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/links/-", "value": 1}
+        ),
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "from": "/properties/a", "path": "/links/-"}
+        ),
+        PatchMoveCopy.model_validate(
+            {"op": "move", "from": "/properties/a", "path": "/links/-"}
+        ),
+    ],
+    ids=lambda operation: operation.op,
+)
+def test_dash_index_as_add_target_is_not_rejected(operation):
+    assert "Debug.explain('- does not exist" not in _script(operation)
+
+
+def test_dash_index_inside_a_path_is_missing_on_a_list():
+    source = _script(
+        PatchRemove.model_validate({"op": "remove", "path": "/links/-/href"})
+    )
+
+    assert (
+        "if (ctx._source['links'] instanceof ArrayList"
+        " || !ctx._source['links'].containsKey('-'))"
+        "{Debug.explain('- in links/-/href does not exist');}"
+    ) in source
+    assert "if (!ctx._source['links'].containsKey('-'))" not in source

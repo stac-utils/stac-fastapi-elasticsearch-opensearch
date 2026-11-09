@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch that uses the append index `-` on a non-empty list with any operation except `add`, or as a `from` path (for example `remove /links/-`), now fails with `- does not exist in links` instead of an out-of-bounds runtime error. `-` in the middle of a path through a list (for example `/links/-/href`) now fails with `- in links/-/href does not exist` for every operation instead of `dynamic method [java.util.ArrayList, containsKey/1] not found`. The status code stays `400`, and on an object `-` is still a member name. [#999](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/999)
+
 ## [v8.1.2] - 2026-11-08
 
 ### Fixed

@@ -401,27 +401,29 @@ async def test_json_patch_replace_missing_numeric_member_of_object_fails(
     assert after == before
 
 
+@pytest.mark.parametrize("member", ["01", "-"])
 async def test_json_patch_remove_numeric_member_of_object(
-    app_client, ctx, txn_client, monkeypatch
+    app_client, ctx, txn_client, monkeypatch, member
 ):
     url, document = await _seed_numeric_members(
         app_client, ctx, txn_client, monkeypatch
     )
 
     response = await _patch(
-        app_client, url, [{"op": "remove", "path": "/properties/01"}]
+        app_client, url, [{"op": "remove", "path": f"/properties/{member}"}]
     )
 
     assert response.status_code == 200, response.text
     properties = (await txn_client.database.client.get(**document))["_source"][
         "properties"
     ]
-    assert "01" not in properties
+    assert member not in properties
 
 
+@pytest.mark.parametrize("member,value", [("01", "zero-one"), ("-", "dash")])
 @pytest.mark.parametrize("op", ["copy", "move"])
 async def test_json_patch_copy_and_move_from_numeric_member_of_object(
-    app_client, ctx, txn_client, monkeypatch, op
+    app_client, ctx, txn_client, monkeypatch, op, member, value
 ):
     url, document = await _seed_numeric_members(
         app_client, ctx, txn_client, monkeypatch
@@ -430,25 +432,35 @@ async def test_json_patch_copy_and_move_from_numeric_member_of_object(
     response = await _patch(
         app_client,
         url,
-        [{"op": op, "from": "/properties/01", "path": "/properties/target"}],
+        [{"op": op, "from": f"/properties/{member}", "path": "/properties/target"}],
     )
 
     assert response.status_code == 200, response.text
     properties = (await txn_client.database.client.get(**document))["_source"][
         "properties"
     ]
-    assert properties["target"] == "zero-one"
-    assert ("01" in properties) == (op == "copy")
+    assert properties["target"] == value
+    assert (member in properties) == (op == "copy")
 
 
-@pytest.mark.parametrize("value,status", [("zero-one", 200), ("other", 400)])
+@pytest.mark.parametrize(
+    "member,value,status",
+    [
+        ("01", "zero-one", 200),
+        ("01", "other", 400),
+        ("-", "dash", 200),
+        ("-", "other", 400),
+    ],
+)
 async def test_json_patch_test_numeric_member_of_object(
-    app_client, ctx, txn_client, monkeypatch, value, status
+    app_client, ctx, txn_client, monkeypatch, member, value, status
 ):
     url, _ = await _seed_numeric_members(app_client, ctx, txn_client, monkeypatch)
 
     response = await _patch(
-        app_client, url, [{"op": "test", "path": "/properties/01", "value": value}]
+        app_client,
+        url,
+        [{"op": "test", "path": f"/properties/{member}", "value": value}],
     )
 
     assert response.status_code == status, response.text
@@ -470,3 +482,100 @@ async def test_json_patch_remove_member_with_dash_in_path(
     assert response.status_code == 200, response.text
     assets = (await txn_client.database.client.get(**document))["_source"]["assets"]
     assert assets["x-y.nc"] == {"href": "https://example.com/x-y.nc"}
+
+
+# RFC 6902 section 4.1: "-" is the position after the last element of a list.
+# Only "add" may use it; for every other operation, and as a "from" path, it
+# refers to a value that does not exist, so the patch must fail (sections 4.2-4.6).
+_DASH_NON_ADD_OPERATIONS = {
+    "test": {"op": "test", "path": "/properties/tags/-", "value": "a"},
+    "replace": {"op": "replace", "path": "/properties/tags/-", "value": "x"},
+    "remove": {"op": "remove", "path": "/properties/tags/-"},
+    "copy": {"op": "copy", "from": "/properties/tags/-", "path": "/properties/copied"},
+    "move": {"op": "move", "from": "/properties/tags/-", "path": "/properties/moved"},
+}
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize("tags", [["a"], []], ids=["non-empty", "empty"])
+@pytest.mark.parametrize("op", list(_DASH_NON_ADD_OPERATIONS))
+async def test_json_patch_dash_index_with_non_add_operation_does_not_exist(
+    app_client, ctx, txn_client, monkeypatch, validator, tags, op
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    url, document = _target(ctx, "item")
+    seed = deepcopy(ctx.item)
+    seed["properties"]["tags"] = tags
+    assert (await app_client.put(url, json=seed)).status_code == 200
+    before = await txn_client.database.client.get(**document)
+
+    response = await _patch(app_client, url, [_DASH_NON_ADD_OPERATIONS[op]])
+
+    assert response.status_code == 400, response.text
+    if validator == "false":
+        # The message from Debug.explain, not an out-of-bounds script error.
+        # Checking response.text is not enough: it echoes the script source,
+        # which contains every Debug.explain message.
+        detail = response.json()["detail"]
+        assert detail.get("to_string") == "- does not exist in properties/tags", detail
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "operation",
+    [
+        {"op": "add", "path": "/links/-/title", "value": "x"},
+        {"op": "replace", "path": "/links/-/href", "value": "x"},
+        {"op": "remove", "path": "/links/-/href"},
+        {"op": "test", "path": "/links/-/href", "value": "x"},
+        {"op": "copy", "from": "/links/-/href", "path": "/properties/copied"},
+    ],
+    ids=lambda operation: operation["op"],
+)
+async def test_json_patch_dash_index_inside_a_path_does_not_exist(
+    app_client, ctx, txn_client, monkeypatch, validator, operation
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    url, document = _target(ctx, "item")
+    before = await txn_client.database.client.get(**document)
+
+    response = await _patch(app_client, url, [operation])
+
+    assert response.status_code == 400, response.text
+    if validator == "false":
+        detail = response.json()["detail"]
+        pointer = operation.get("from", operation["path"]).lstrip("/")
+        assert detail.get("to_string") == f"- in {pointer} does not exist", detail
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+
+@pytest.mark.parametrize(
+    "operation,expected",
+    [
+        ({"op": "replace", "path": "/properties/-/x", "value": 2}, {"x": 2}),
+        ({"op": "remove", "path": "/properties/-/x"}, {}),
+        ({"op": "add", "path": "/properties/-/y", "value": 3}, {"x": 1, "y": 3}),
+    ],
+    ids=["replace", "remove", "add"],
+)
+async def test_json_patch_dash_member_of_object_inside_a_path(
+    app_client, ctx, txn_client, monkeypatch, operation, expected
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    url, document = _target(ctx, "item")
+    seed = deepcopy(ctx.item)
+    seed["properties"]["-"] = {"x": 1}
+    assert (await app_client.put(url, json=seed)).status_code == 200
+
+    response = await _patch(app_client, url, [operation])
+
+    assert response.status_code == 200, response.text
+    properties = (await txn_client.database.client.get(**document))["_source"][
+        "properties"
+    ]
+    assert properties["-"] == expected
