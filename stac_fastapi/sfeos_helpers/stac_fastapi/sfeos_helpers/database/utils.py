@@ -572,19 +572,12 @@ def check_commands(
                 part_nest += f"[{path_part}]"
                 continue
 
-            elif path_part == "-":
-                # RFC 6902: on a list "-" is the element after the last one,
-                # which does not exist and so has no members; on an object it
-                # is a member name.
-                commands.append(
-                    f"if (ctx._source{part_nest} instanceof ArrayList"
-                    f" || !ctx._source{part_nest}.containsKey('-'))"
-                    f"{{Debug.explain('- in {path.path} does not exist');}}"
-                )
-
             else:
+                # The parent must be an object: a list (e.g. "-" or a name in
+                # the middle of "/links/-/href") or a scalar has no members.
                 commands.append(
-                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                    f"if (!(ctx._source{part_nest} instanceof Map)"
+                    f" || !ctx._source{part_nest}.containsKey('{path_part}'))"
                     f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
                 )
 
@@ -596,7 +589,7 @@ def check_commands(
             # Only "add" may target "-" on a list (RFC 6902 section 4.1); for
             # every other operation, and as a "from" path, it does not exist.
             commands.append(
-                f"if (ctx._source{path.es_nest} instanceof ArrayList"
+                f"if (!(ctx._source{path.es_nest} instanceof Map)"
                 f" || !ctx._source{path.es_nest}.containsKey('-'))"
                 f"{{Debug.explain('- does not exist in {path.nest}');}}"  # noqa: E713
             )
@@ -607,12 +600,14 @@ def check_commands(
                 f"if ((ctx._source{path.es_nest} instanceof ArrayList"
                 f" && ctx._source{path.es_nest}.size() {bound})"
                 f" || (!(ctx._source{path.es_nest} instanceof ArrayList)"
-                f" && !ctx._source{path.es_nest}.containsKey('{path.raw_key}')))"
+                f" && (!(ctx._source{path.es_nest} instanceof Map)"
+                f" || !ctx._source{path.es_nest}.containsKey('{path.raw_key}'))))"
                 f"{{Debug.explain('{path.raw_key} does not exist in {path.nest}');}}"  # noqa: E713
             )
         else:
             commands.append(
-                f"if (!ctx._source{path.es_nest}.containsKey('{path.key}'))"
+                f"if (!(ctx._source{path.es_nest} instanceof Map)"
+                f" || !ctx._source{path.es_nest}.containsKey('{path.key}'))"
                 f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
             )
 

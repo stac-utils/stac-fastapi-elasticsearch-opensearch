@@ -380,7 +380,7 @@ def test_index_past_the_end_of_a_list_is_explained_as_missing():
 
 
 _DASH_ON_LIST = (
-    "if (ctx._source['links'] instanceof ArrayList"
+    "if (!(ctx._source['links'] instanceof Map)"
     " || !ctx._source['links'].containsKey('-'))"
     "{Debug.explain('- does not exist in links');}"
 )
@@ -434,8 +434,26 @@ def test_dash_index_inside_a_path_is_missing_on_a_list():
     )
 
     assert (
-        "if (ctx._source['links'] instanceof ArrayList"
+        "if (!(ctx._source['links'] instanceof Map)"
         " || !ctx._source['links'].containsKey('-'))"
         "{Debug.explain('- in links/-/href does not exist');}"
     ) in source
     assert "if (!ctx._source['links'].containsKey('-'))" not in source
+
+
+def test_member_lookup_requires_an_object_parent():
+    source = _script(
+        PatchRemove.model_validate({"op": "remove", "path": "/links/title/x"})
+    )
+    assert (
+        "if (!(ctx._source['links'] instanceof Map)"
+        " || !ctx._source['links'].containsKey('title'))"
+        "{Debug.explain('title in links/title/x does not exist');}"
+    ) in source
+
+    source = _script(PatchRemove.model_validate({"op": "remove", "path": "/links/foo"}))
+    assert (
+        "if (!(ctx._source['links'] instanceof Map)"
+        " || !ctx._source['links'].containsKey('foo'))"
+        "{Debug.explain('foo does not exist in links');}"
+    ) in source

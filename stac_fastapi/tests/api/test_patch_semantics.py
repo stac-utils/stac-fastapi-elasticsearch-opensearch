@@ -554,6 +554,84 @@ async def test_json_patch_dash_index_inside_a_path_does_not_exist(
     assert after["_version"] == before["_version"]
 
 
+# A member lookup on a value that is not an object (a list or a scalar) refers to
+# a value that does not exist; it must not reach containsKey on the wrong type.
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "operation,expected",
+    [
+        (
+            {"op": "remove", "path": "/links/title/x"},
+            "title in links/title/x does not exist",
+        ),
+        (
+            {"op": "replace", "path": "/links/-1/x", "value": 1},
+            "-1 in links/-1/x does not exist",
+        ),
+        (
+            {"op": "remove", "path": "/links/foo"},
+            "foo does not exist in links",
+        ),
+        (
+            {"op": "test", "path": "/links/foo", "value": 1},
+            "foo does not exist in links",
+        ),
+        (
+            {"op": "remove", "path": "/properties/datetime/x"},
+            "x does not exist in properties/datetime",
+        ),
+        (
+            {"op": "replace", "path": "/properties/datetime/x", "value": 1},
+            "x does not exist in properties/datetime",
+        ),
+        (
+            {"op": "copy", "from": "/links/foo", "path": "/properties/copied"},
+            "foo does not exist in links",
+        ),
+        (
+            {"op": "move", "from": "/links/foo", "path": "/properties/moved"},
+            "foo does not exist in links",
+        ),
+        (
+            {"op": "remove", "path": "/properties/datetime/0"},
+            "0 does not exist in properties/datetime",
+        ),
+        (
+            {"op": "replace", "path": "/properties/datetime/-1", "value": 1},
+            "-1 does not exist in properties/datetime",
+        ),
+    ],
+    ids=[
+        "list-member-in-path",
+        "negative-index-in-path",
+        "remove-list-member",
+        "test-list-member",
+        "remove-member-of-scalar",
+        "replace-member-of-scalar",
+        "copy-from-list-member",
+        "move-from-list-member",
+        "remove-index-of-scalar",
+        "replace-negative-index-of-scalar",
+    ],
+)
+async def test_json_patch_member_of_non_object_does_not_exist(
+    app_client, ctx, txn_client, monkeypatch, validator, operation, expected
+):
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    url, document = _target(ctx, "item")
+    before = await txn_client.database.client.get(**document)
+
+    response = await _patch(app_client, url, [operation])
+
+    assert response.status_code == 400, response.text
+    if validator == "false":
+        detail = response.json()["detail"]
+        assert detail.get("to_string") == expected, detail
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+
 @pytest.mark.parametrize(
     "operation,expected",
     [
