@@ -573,8 +573,11 @@ def check_commands(
                 continue
 
             else:
+                # The parent must be an object: a list (e.g. "-" or a name in
+                # the middle of "/links/-/href") or a scalar has no members.
                 commands.append(
-                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                    f"if (!(ctx._source{part_nest} instanceof Map)"
+                    f" || !ctx._source{part_nest}.containsKey('{path_part}'))"
                     f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
                 )
 
@@ -582,19 +585,29 @@ def check_commands(
 
     if from_path or op in ["remove", "replace", "test"]:
 
-        if isinstance(path.key, int):
+        if path.raw_key == "-":
+            # Only "add" may target "-" on a list (RFC 6902 section 4.1); for
+            # every other operation, and as a "from" path, it does not exist.
+            commands.append(
+                f"if (!(ctx._source{path.es_nest} instanceof Map)"
+                f" || !ctx._source{path.es_nest}.containsKey('-'))"
+                f"{{Debug.explain('- does not exist in {path.nest}');}}"  # noqa: E713
+            )
+        elif isinstance(path.key, int):
             # A negative key counts from the end, so -1 needs one element.
             bound = f"<= {path.key}" if path.key >= 0 else f"< {-path.key}"
             commands.append(
                 f"if ((ctx._source{path.es_nest} instanceof ArrayList"
                 f" && ctx._source{path.es_nest}.size() {bound})"
                 f" || (!(ctx._source{path.es_nest} instanceof ArrayList)"
-                f" && !ctx._source{path.es_nest}.containsKey('{path.raw_key}')))"
+                f" && (!(ctx._source{path.es_nest} instanceof Map)"
+                f" || !ctx._source{path.es_nest}.containsKey('{path.raw_key}'))))"
                 f"{{Debug.explain('{path.raw_key} does not exist in {path.nest}');}}"  # noqa: E713
             )
         else:
             commands.append(
-                f"if (!ctx._source{path.es_nest}.containsKey('{path.key}'))"
+                f"if (!(ctx._source{path.es_nest} instanceof Map)"
+                f" || !ctx._source{path.es_nest}.containsKey('{path.key}'))"
                 f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
             )
 
