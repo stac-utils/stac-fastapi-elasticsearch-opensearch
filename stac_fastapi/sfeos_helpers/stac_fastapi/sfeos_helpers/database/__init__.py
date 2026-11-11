@@ -75,6 +75,7 @@ from .utils import (
     check_item_exists_in_alias_sync,
     find_existing_item_ids,
     find_item_in_alias,
+    find_item_indexes_in_alias,
     get_bool_env,
     retry_on_connection_error,
     retry_on_datetime_not_found,
@@ -123,6 +124,7 @@ __all__ = [
     "check_item_exists_in_alias_sync",
     "find_existing_item_ids",
     "find_item_in_alias",
+    "find_item_indexes_in_alias",
     # Errors
     "BulkIndexError",
     "ItemAlreadyExistsError",
