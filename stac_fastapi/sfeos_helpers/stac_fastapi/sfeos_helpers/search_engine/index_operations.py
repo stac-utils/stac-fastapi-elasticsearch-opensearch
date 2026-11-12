@@ -11,6 +11,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_SETTINGS,
     ITEMS_ALIAS_PREFIX,
     ITEMS_INDEX_PREFIX,
+    SHARED_ITEMS_INDEX,
 )
 
 
@@ -63,6 +64,38 @@ class IndexOperations:
                 params={"ignore": [400]},
             )
         return index_name
+
+    async def create_shared_alias(self, client: Any, collection_id: str) -> str:
+        """Create the collection's filtered alias on the shared items index.
+
+        Args:
+            client: Search engine client instance.
+            collection_id (str): Collection identifier.
+
+        Returns:
+            str: The shared index name.
+        """
+        if hasattr(client, "options"):
+            response = await client.options(ignore_status=[400]).indices.create(
+                index=SHARED_ITEMS_INDEX, body=self._create_index_body({})
+            )
+        else:
+            response = await client.indices.create(
+                index=SHARED_ITEMS_INDEX,
+                body=self._create_index_body({}),
+                params={"ignore": [400]},
+            )
+        error = response.get("error")
+        if error and "resource_already_exists_exception" not in str(error):
+            raise RuntimeError(f"Could not create index {SHARED_ITEMS_INDEX}: {error}")
+
+        # Idempotent: putting the same alias and filter again changes nothing.
+        await client.indices.put_alias(
+            index=SHARED_ITEMS_INDEX,
+            name=index_alias_by_collection_id(collection_id),
+            body={"filter": {"term": {"collection": collection_id}}},
+        )
+        return SHARED_ITEMS_INDEX
 
     async def create_datetime_index(
         self,

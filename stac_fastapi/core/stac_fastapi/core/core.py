@@ -58,6 +58,7 @@ from stac_fastapi.core.utilities import (
     get_bool_env,
     get_int_env,
     items_index_is_partitioned,
+    items_index_strategy,
     json_merge_patch,
 )
 from stac_fastapi.core.validate import (
@@ -2415,6 +2416,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             f"Collection {collection_id}",
             lambda: self.database.find_collection_with_version(collection_id),
         )
+        if items_index_strategy() == "shared":
+            # The database retries the whole delete on connection errors; a pinned
+            # version keeps a replay from adopting a collection created meanwhile.
+            if version is None:
+                _, version = await self.database.find_collection_with_version(
+                    collection_id
+                )
+            await self.database.delete_collection(
+                collection_id=collection_id, expected=version, **kwargs
+            )
+            return None
         await self.database.delete_collection(
             collection_id=collection_id, version=version, **kwargs
         )

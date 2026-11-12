@@ -16,7 +16,7 @@ MAX_LIMIT = 10000
 
 TRUE_VALUES = ("true", "1", "yes", "y")
 FALSE_VALUES = ("false", "0", "no", "n")
-ItemsIndexStrategy = Literal["simple", "datetime"]
+ItemsIndexStrategy = Literal["simple", "datetime", "shared"]
 ITEMS_INDEX_STRATEGIES: tuple[str, ...] = get_args(ItemsIndexStrategy)
 
 

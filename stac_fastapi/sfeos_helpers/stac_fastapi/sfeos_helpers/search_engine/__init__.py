@@ -3,7 +3,7 @@
 from .base import BaseIndexInserter
 from .factory import IndexInsertionFactory
 from .index_operations import IndexOperations
-from .inserters import DatetimeIndexInserter, SimpleIndexInserter
+from .inserters import DatetimeIndexInserter, SharedIndexInserter, SimpleIndexInserter
 from .managers import DatetimeIndexManager, IndexSizeManager
 from .selection import (
     BaseIndexSelector,
@@ -20,6 +20,7 @@ __all__ = [
     "DatetimeIndexManager",
     "DatetimeIndexInserter",
     "SimpleIndexInserter",
+    "SharedIndexInserter",
     "IndexInsertionFactory",
     "DatetimeBasedIndexSelector",
     "UnfilteredIndexSelector",
