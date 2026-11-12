@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
 replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": ""})
+painless_string_escapes = str.maketrans({"\\": "\\\\", "'": "\\'"})
 
 
 def to_es(string: str):
@@ -57,7 +58,10 @@ class ElasticPath(BaseModel):
         Args:
             data (Any): input data
         """
-        data["parts"] = data["path"].lstrip("/").split("/")
+        # Every field below lands in single-quoted Painless string literals.
+        data["parts"] = (
+            data["path"].lstrip("/").translate(painless_string_escapes).split("/")
+        )
 
         data["key"] = data["parts"].pop(-1)
         data["raw_key"] = data["key"]

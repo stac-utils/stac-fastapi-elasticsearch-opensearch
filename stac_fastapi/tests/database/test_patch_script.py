@@ -457,3 +457,14 @@ def test_member_lookup_requires_an_object_parent():
         " || !ctx._source['links'].containsKey('foo'))"
         "{Debug.explain('foo does not exist in links');}"
     ) in source
+
+
+def test_quotes_and_backslashes_in_member_names_stay_inside_string_literals():
+    key = "x'] = 1; ctx.op = 'delete'; ctx._source['y\\"
+    source = _script(
+        PatchRemove.model_validate({"op": "remove", "path": f"/properties/{key}"})
+    )
+    escaped = "x\\'] = 1; ctx.op = \\'delete\\'; ctx._source[\\'y\\\\"
+    assert f"containsKey('{escaped}')" in source
+    assert f".remove('{escaped}')" in source
+    assert "ctx.op = 'delete'" not in source
