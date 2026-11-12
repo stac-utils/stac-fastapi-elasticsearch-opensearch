@@ -13,6 +13,10 @@ from stac_fastapi.types.stac import Item
 
 MAX_LIMIT = 10000
 
+TRUE_VALUES = ("true", "1", "yes", "y")
+FALSE_VALUES = ("false", "0", "no", "n")
+ITEMS_INDEX_STRATEGIES = ("simple", "datetime")
+
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +53,8 @@ def get_bool_env(name: str, default: bool | str = False) -> bool:
     Returns:
         bool: The boolean value parsed from the environment variable.
     """
-    true_values = ("true", "1", "yes", "y")
-    false_values = ("false", "0", "no", "n")
+    true_values = TRUE_VALUES
+    false_values = FALSE_VALUES
 
     # Normalize the default value
     if isinstance(default, bool):
@@ -78,6 +82,41 @@ def get_bool_env(name: str, default: bool | str = False) -> bool:
             f"Expected one of {true_values + false_values}. Using default: {default_str}"
         )
         return default_str in true_values
+
+
+def items_index_strategy() -> str:
+    """Return the configured items index strategy.
+
+    `ITEMS_INDEX_STRATEGY` wins when set; otherwise the deprecated
+    `ENABLE_DATETIME_INDEX_FILTERING` flag picks `datetime` or `simple`.
+
+    Raises:
+        ValueError: If the strategy is unknown, or the legacy flag is set and
+            disagrees with it.
+    """
+    strategy = os.getenv("ITEMS_INDEX_STRATEGY", "").strip().lower()
+    if not strategy:
+        return (
+            "datetime" if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING") else "simple"
+        )
+
+    if strategy not in ITEMS_INDEX_STRATEGIES:
+        raise ValueError(
+            f"ITEMS_INDEX_STRATEGY must be one of {', '.join(ITEMS_INDEX_STRATEGIES)}, "
+            f"got '{strategy}'"
+        )
+
+    legacy = os.getenv("ENABLE_DATETIME_INDEX_FILTERING", "").lower()
+    legacy_datetime = (
+        True if legacy in TRUE_VALUES else False if legacy in FALSE_VALUES else None
+    )
+    if legacy_datetime is not None and legacy_datetime != (strategy == "datetime"):
+        raise ValueError(
+            f"ENABLE_DATETIME_INDEX_FILTERING={legacy} conflicts with "
+            f"ITEMS_INDEX_STRATEGY={strategy}; remove the deprecated "
+            "ENABLE_DATETIME_INDEX_FILTERING"
+        )
+    return strategy
 
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> list[list[list[float]]]:
