@@ -1941,8 +1941,9 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # it. No route renames (PUT and PATCH refuse an id change).
                 raise ValueError("A conditional update cannot change the collection id")
             if isinstance(self.async_index_inserter, SharedIndexInserter):
-                raise ValueError(
-                    "ITEMS_INDEX_STRATEGY=shared cannot change a collection id"
+                raise HTTPException(
+                    status_code=400,
+                    detail="ITEMS_INDEX_STRATEGY=shared cannot change a collection id",
                 )
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
@@ -2196,7 +2197,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         version: DocumentVersion | None = None,
-        expected: DocumentVersion | None = None,
+        pinned: DocumentVersion | None = None,
         **kwargs: Any,
     ):
         """Delete a collection from the database.
@@ -2206,8 +2207,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id (str): The ID of the collection to be deleted.
             version (DocumentVersion, optional): Only delete this stored version
                 of the collection (If-Match); 412 otherwise.
-            expected (DocumentVersion, optional): With the shared items index,
-                the version this request started from; 409 if it has changed.
+            pinned (DocumentVersion, optional): With the shared items index, the
+                version core read when the request started (If-Match or not). A
+                change at any later step answers 409, also on a retried replay.
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
@@ -2227,7 +2229,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         if isinstance(self.async_index_inserter, SharedIndexInserter):
             await self._delete_shared_index_collection(
-                collection_id, version, expected, refresh
+                collection_id, version, pinned, refresh
             )
             return
 
@@ -2257,7 +2259,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         version: DocumentVersion | None,
-        expected: DocumentVersion | None,
+        pinned: DocumentVersion | None,
         refresh: Any,
     ) -> None:
         """Delete a collection's items from the shared index, then the collection.
@@ -2265,16 +2267,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         The collection document goes last, so a failed cleanup leaves it in place
         and DELETE can be retried. Every step is conditional on the version the
         request started from: `version` (If-Match) answers 412 when it is
-        already stale, any later change answers 409.
+        already stale, and any change from `pinned` answers 409.
         """
         _, current = await self.find_collection_with_version(collection_id)
         if version is not None and current != version:
             raise precondition_failed(f"Collection {collection_id}")
-        if expected is not None and current != expected:
+        if pinned is not None and current != pinned:
             raise ConflictError(
                 f"Collection {collection_id} changed during deletion; retry DELETE"
             )
-        start = expected or version or current
+        start = pinned or version or current
 
         await delete_item_index(collection_id, expected=start)
         try:

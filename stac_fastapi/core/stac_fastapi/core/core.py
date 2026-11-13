@@ -2424,7 +2424,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     collection_id
                 )
             await self.database.delete_collection(
-                collection_id=collection_id, expected=version, **kwargs
+                collection_id=collection_id, pinned=version, **kwargs
             )
             return None
         await self.database.delete_collection(

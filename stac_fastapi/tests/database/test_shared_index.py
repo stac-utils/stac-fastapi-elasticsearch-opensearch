@@ -4,6 +4,7 @@ import os
 from copy import deepcopy
 
 import pytest
+from fastapi import HTTPException
 
 from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
 from stac_fastapi.sfeos_helpers.database.utils import ConnectionTimeout
@@ -232,7 +233,7 @@ async def test_stale_expected_version_is_a_conflict(
     await touch_collection(database.client, "shared-a")
 
     with pytest.raises(ConflictError):
-        await database.delete_collection("shared-a", expected=old)
+        await database.delete_collection("shared-a", pinned=old)
 
     alias = index_alias_by_collection_id("shared-a")
     assert await database.client.indices.exists_alias(name=alias)
@@ -534,10 +535,11 @@ async def test_ids_the_shared_index_cannot_alias_are_rejected(
 async def test_rename_is_refused(app_client, database, test_collection, test_item):
     await add_collection(app_client, test_collection, test_item, "shared-a")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(HTTPException) as exc_info:
         await database.update_collection(
             "shared-a", collection_with(test_collection, "shared-renamed")
         )
+    assert exc_info.value.status_code == 400
 
     assert not await collection_exists(database.client, "shared-renamed")
     alias = index_alias_by_collection_id("shared-renamed")
