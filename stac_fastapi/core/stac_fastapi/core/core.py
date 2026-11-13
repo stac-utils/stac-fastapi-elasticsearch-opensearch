@@ -57,7 +57,7 @@ from stac_fastapi.core.utilities import (
     format_conflict_errors,
     get_bool_env,
     get_int_env,
-    items_index_strategy,
+    items_index_is_partitioned,
     json_merge_patch,
 )
 from stac_fastapi.core.validate import (
@@ -1899,7 +1899,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Queued writes bypass the datetime-index validation in create_item and
         # could create cross-index duplicates, so updates go straight to the
         # database when datetime index filtering is enabled.
-        if use_queue and items_index_strategy() == "datetime":
+        if use_queue and items_index_is_partitioned():
             use_queue = False
 
         # 1. UNIFIED PREPROCESSING LAYER
@@ -2478,7 +2478,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """
         request = kwargs.get("request")
 
-        if items_index_strategy() == "datetime":
+        if items_index_is_partitioned():
             raise HTTPException(
                 status_code=400,
                 detail="The /collections/{collection_id}/bulk_items endpoint is invalid with the datetime items index strategy. Try using the /collections/{collection_id}/items endpoint.",

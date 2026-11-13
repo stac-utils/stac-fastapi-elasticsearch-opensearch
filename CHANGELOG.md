@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Deprecated
 
-- `ENABLE_DATETIME_INDEX_FILTERING`. It is still read when `ITEMS_INDEX_STRATEGY` is unset. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
+- `ENABLE_DATETIME_INDEX_FILTERING`. It is still read when `ITEMS_INDEX_STRATEGY` is unset. Setting it logs a deprecation warning once, which also names a value that is not a boolean. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
 
 ### Fixed
 

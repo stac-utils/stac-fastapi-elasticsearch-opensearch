@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from stac_fastapi.core.utilities import items_index_strategy
+from stac_fastapi.core.utilities import items_index_is_partitioned
 
 from .base import BaseIndexInserter
 from .index_operations import IndexOperations
@@ -26,7 +26,7 @@ class IndexInsertionFactory:
         """
         index_operations = IndexOperations()
 
-        if items_index_strategy() == "datetime":
+        if items_index_is_partitioned():
             return DatetimeIndexInserter(client, index_operations)
         else:
             return SimpleIndexInserter(index_operations, client)

@@ -21,7 +21,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import LockError
 
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
-from stac_fastapi.core.utilities import get_bool_env, items_index_strategy
+from stac_fastapi.core.utilities import get_bool_env, items_index_is_partitioned
 from stac_fastapi.core.validate import (
     async_validate_batch_with_stac_validator,
     batch_validate_topology,
@@ -292,9 +292,7 @@ class ItemQueueWorker:
                     # entirely, so everything here is an insert. "create" gives
                     # alias-wide duplicate detection in bulk_async; silently
                     # upserting a stale queued item would be wrong in that mode.
-                    op_type = (
-                        "create" if items_index_strategy() == "datetime" else "index"
-                    )
+                    op_type = "create" if items_index_is_partitioned() else "index"
                     success, errors = await self.db.bulk_async(
                         collection_id=collection_id,
                         processed_items=valid_items,

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from stac_fastapi.core.utilities import items_index_strategy
+from stac_fastapi.core.utilities import items_index_is_partitioned
 
 from .base import BaseIndexSelector
 from .selectors import DatetimeBasedIndexSelector, UnfilteredIndexSelector
@@ -28,6 +28,6 @@ class IndexSelectorFactory:
         """
         return (
             DatetimeBasedIndexSelector(client)
-            if items_index_strategy() == "datetime"
+            if items_index_is_partitioned()
             else UnfilteredIndexSelector()
         )
