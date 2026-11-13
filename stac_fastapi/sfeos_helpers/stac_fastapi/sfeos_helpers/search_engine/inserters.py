@@ -13,6 +13,10 @@ from stac_fastapi.sfeos_helpers.database import (
     is_index_closed,
     mk_item_id,
 )
+from stac_fastapi.sfeos_helpers.mappings import (
+    ES_INDEX_NAME_UNSUPPORTED_CHARS,
+    SHARED_ITEMS_INDEX,
+)
 
 from .base import BaseIndexInserter
 from .index_operations import IndexOperations
@@ -418,3 +422,40 @@ class SimpleIndexInserter(BaseIndexInserter):
             }
             for item in items
         ]
+
+
+class SharedIndexInserter(SimpleIndexInserter):
+    """Items of every collection in one index, behind a filtered alias each."""
+
+    async def create_simple_index(self, client: Any, collection_id: str) -> str:
+        """Create the collection's filtered alias on the shared index.
+
+        Args:
+            client: Search engine client instance.
+            collection_id (str): Collection identifier.
+
+        Returns:
+            str: The shared index name.
+        """
+        return await self.search_adapter.create_shared_alias(client, collection_id)
+
+    def validate_collection_id(self, collection_id: str) -> None:
+        """Refuse ids whose alias could clash with another alias or the index.
+
+        Args:
+            collection_id (str): The id of the collection to be created.
+        """
+        unsupported = ES_INDEX_NAME_UNSUPPORTED_CHARS.intersection(collection_id)
+        if unsupported:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Collection id '{collection_id}' contains characters the shared "
+                    f"items index does not support: {' '.join(sorted(unsupported))}"
+                ),
+            )
+        if index_alias_by_collection_id(collection_id) == SHARED_ITEMS_INDEX:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Collection id '{collection_id}' is reserved by the shared items index",
+            )
