@@ -1564,8 +1564,10 @@ The datetime-based indexing strategy is particularly useful for large temporal d
 Enable datetime-based indexing by setting the following environment variable:
 
 ```bash
-ENABLE_DATETIME_INDEX_FILTERING=true
+ITEMS_INDEX_STRATEGY=datetime
 ```
+
+`ITEMS_INDEX_STRATEGY` accepts `simple` (the default, one index per collection) or `datetime`. The older `ENABLE_DATETIME_INDEX_FILTERING=true` still selects `datetime` when `ITEMS_INDEX_STRATEGY` is unset, but it is deprecated and logs a warning at startup. If both are set and disagree (for example `ENABLE_DATETIME_INDEX_FILTERING=false` with `ITEMS_INDEX_STRATEGY=datetime`), the API fails at startup.
 
 > [!IMPORTANT]
 > **Redis is required** when datetime-based indexing is enabled. The system uses Redis to cache index alias mappings from Elasticsearch/OpenSearch, which significantly speeds up search queries by avoiding repeated alias lookups. Insert operations always fetch fresh aliases directly from ES/OS and then refresh the Redis cache, ensuring that search queries always see up-to-date alias data. Configure Redis using the connection variables described in the [Redis for Navigation](#redis-for-navigation-environment-variables) section (`REDIS_HOST`/`REDIS_PORT` or `REDIS_SENTINEL_HOSTS`).
@@ -1574,7 +1576,8 @@ ENABLE_DATETIME_INDEX_FILTERING=true
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `ENABLE_DATETIME_INDEX_FILTERING` | Enables time-based index partitioning | `false` | `true` |
+| `ITEMS_INDEX_STRATEGY` | How item indexes are laid out: `simple` or `datetime` (time-based index partitioning) | `simple` | `datetime` |
+| `ENABLE_DATETIME_INDEX_FILTERING` | **Deprecated**, use `ITEMS_INDEX_STRATEGY=datetime`. Only read when `ITEMS_INDEX_STRATEGY` is unset | `false` | `true` |
 | `DATETIME_INDEX_MAX_SIZE_GB` | Maximum size limit for datetime indexes (GB) - note: add +20% to target size due to ES/OS compression | `25` | `50` |
 | `STAC_ITEMS_INDEX_PREFIX` | Prefix for item indexes | `items_` | `stac_items_` |
 | `STAC_ITEMS_ALIAS_PREFIX` | Prefix for item aliases | `STAC_ITEMS_INDEX_PREFIX` | `stac-items-` |
