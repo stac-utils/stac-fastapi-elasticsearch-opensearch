@@ -1602,6 +1602,8 @@ python scripts/item_queue_worker.py
 
 **Important:** Without the worker running, items will remain in the Redis queue and will not be indexed in Elasticsearch/OpenSearch.
 
+The worker reads `ITEMS_INDEX_STRATEGY` (and the deprecated `ENABLE_DATETIME_INDEX_FILTERING`) in its own process, so give it the same values as the API. Otherwise it writes queued items with a different index layout and duplicate handling than the API.
+
 ## How Datetime-Based Indexing Works
 
 ### Index and Alias Naming Convention
