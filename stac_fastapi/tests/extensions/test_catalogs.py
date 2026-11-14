@@ -5296,7 +5296,7 @@ async def test_patch_rejects_parent_ids_operations(
 async def test_merge_patch_ignores_parent_ids(
     catalogs_app_client, load_test_data, monkeypatch, validator, is_unlink
 ):
-    """Merge patch drops parent_ids at request parsing; pin it so the gap stays closed."""
+    """Merge patch drops parent_ids in patch_collection; pin it so the gap stays closed."""
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
     catalog_ids, collection = await _collection_in_two_catalogs(
         catalogs_app_client, load_test_data
