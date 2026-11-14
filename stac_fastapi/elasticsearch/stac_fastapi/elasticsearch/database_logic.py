@@ -1740,6 +1740,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         # sees refreshed documents, so it matched nothing for an item written
         # since the last refresh and still succeeded, and it rejects
         # refresh=wait_for.
+        # @retry_on_connection_error reruns this whole method. If a delete
+        # reached the cluster but its response timed out, the rerun finds
+        # nothing and answers 404 for a delete that worked (the If-Match branch
+        # above answers 412 in the same case).
         doc_id = mk_item_id(item_id, collection_id)
         try:
             indexes = await find_item_indexes_in_alias(

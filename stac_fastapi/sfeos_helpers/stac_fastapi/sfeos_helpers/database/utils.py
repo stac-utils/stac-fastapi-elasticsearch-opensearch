@@ -250,15 +250,7 @@ async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bo
     Raises:
         The search engine's NotFoundError when no index carries the alias.
     """
-    resp = await client.mget(
-        body={
-            "docs": [
-                {"_index": index, "_id": doc_id, "_source": False}
-                for index in await _alias_index_names(client, alias)
-            ]
-        }
-    )
-    return any(doc.get("found") for doc in resp.get("docs", []))
+    return bool(await find_item_indexes_in_alias(client, alias, doc_id))
 
 
 def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
