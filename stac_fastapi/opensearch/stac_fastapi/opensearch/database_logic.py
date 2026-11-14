@@ -49,6 +49,7 @@ from stac_fastapi.sfeos_helpers.database import (
     delete_item_index_shared,
     find_existing_item_ids,
     find_item_in_alias,
+    find_item_indexes_in_alias,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
     index_behind_alias,
@@ -1700,16 +1701,26 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise precondition_failed(f"Item {item_id}")
             return
 
+        # Find the item in real time and delete it by ID. A delete_by_query only
+        # sees refreshed documents, so it matched nothing for an item written
+        # since the last refresh and still succeeded, and it rejects
+        # refresh=wait_for.
+        doc_id = mk_item_id(item_id, collection_id)
         try:
-            await self.client.delete_by_query(
-                index=index_alias_by_collection_id(collection_id),
-                body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
-                refresh=refresh,
+            indexes = await find_item_indexes_in_alias(
+                self.client, index_alias_by_collection_id(collection_id), doc_id
             )
         except OSNotFoundError:
+            indexes = []
+        if not indexes:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
+        for index in indexes:
+            try:
+                await self.client.delete(index=index, id=doc_id, refresh=refresh)
+            except OSNotFoundError:
+                pass  # deleted concurrently: the item is gone either way
 
     async def get_items_mapping(self, collection_id: str) -> dict[str, Any]:
         """Get the mapping for the specified collection's items index.
