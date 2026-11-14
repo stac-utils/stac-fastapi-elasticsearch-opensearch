@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -147,6 +148,20 @@ def _op_member(op: Any, name: str) -> Any:
 def _targets_field(path: str, field: str) -> bool:
     """Match a JSON Patch pointer that addresses a top-level field."""
     return path.strip("/") == field
+
+
+def reject_invalid_pointer_escapes(patch: list) -> None:
+    """Answer 400 for a JSON Pointer "~" not followed by "0" or "1" (RFC 6901)."""
+    for op in patch:
+        for pointer in (
+            _op_member(op, "path"),
+            _op_member(op, "from") or _op_member(op, "from_"),
+        ):
+            if pointer and re.search(r"~(?![01])", pointer):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid JSON Patch: invalid escape in path '{pointer}'",
+                )
 
 
 def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
@@ -2029,6 +2044,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
                 )
+            if json_patch:
+                reject_invalid_pointer_escapes(patch)
             version = await check_if_match(
                 request,
                 resource,
@@ -2294,6 +2311,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
             )
 
+        # A merge patch ignores fields the backend owns. The partial request
+        # models allow extra fields, so drop them before they become an
+        # operation: parent_ids is catalog membership (it changes through
+        # /catalogs/{catalog_id}/collections) and bbox_shape is derived from
+        # the extent for geospatial queries.
+        extra = (
+            patch if isinstance(patch, dict) else getattr(patch, "model_extra", None)
+        )
+        if extra:
+            for field in ("parent_ids", "bbox_shape"):
+                extra.pop(field, None)
+
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
             # Request checks come before the precondition (RFC 9110, section 13.2.1).
@@ -2312,6 +2341,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
                 )
+            if json_patch:
+                reject_invalid_pointer_escapes(patch)
             _, current = await self.database.find_collection_with_version(collection_id)
             version = check_etag(if_match_header(request, resource), current, resource)
             if json_patch:
