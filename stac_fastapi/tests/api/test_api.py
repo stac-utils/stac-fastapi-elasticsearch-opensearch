@@ -924,6 +924,74 @@ async def test_patch_operations_keep_quotes_in_member_names_literal(app_client, 
 
 
 @pytest.mark.asyncio
+async def test_patch_operations_decode_json_pointer_members(app_client, ctx):
+    url = f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
+    members = {"a~1b": "a/b", "m~0n": "m~n", "café": "café", "--1": "--1"}
+    headers = {"Content-Type": "application/json-patch+json"}
+    before = (await app_client.get(url)).json()["properties"]
+
+    resp = await app_client.patch(
+        url,
+        json=[
+            {"op": "add", "path": f"/properties/{token}", "value": token}
+            for token in members
+        ],
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    item = (await app_client.get(url)).json()
+    assert {name: item["properties"].get(name) for name in members.values()} == {
+        name: token for token, name in members.items()
+    }
+
+    resp = await app_client.patch(
+        url, json=[{"op": "remove", "path": "//properties/a~1b"}], headers=headers
+    )
+    assert resp.status_code == 400
+    assert "a/b" in (await app_client.get(url)).json()["properties"]
+
+    resp = await app_client.patch(
+        url,
+        json=[{"op": "remove", "path": f"/properties/{token}"} for token in members],
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    item = (await app_client.get(url)).json()
+    assert item["properties"] == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "target, operation",
+    [
+        ("item", {"op": "add", "path": "/properties/a~2b", "value": 1}),
+        ("item", {"op": "add", "path": "/properties/a~", "value": 1}),
+        ("item", {"op": "move", "from": "/properties/a~2b", "path": "/properties/x"}),
+        ("collection", {"op": "add", "path": "/a~2b", "value": 1}),
+        ("collection", {"op": "add", "path": "/a~", "value": 1}),
+    ],
+)
+async def test_patch_rejects_invalid_pointer_escapes_before_if_match(
+    app_client, ctx, target, operation
+):
+    collection_url = f"/collections/{ctx.item['collection']}"
+    url = (
+        f"{collection_url}/items/{ctx.item['id']}"
+        if target == "item"
+        else collection_url
+    )
+
+    for extra in ({}, {"If-Match": '"stale"'}):
+        resp = await app_client.patch(
+            url,
+            json=[operation],
+            headers={"Content-Type": "application/json-patch+json", **extra},
+        )
+        assert resp.status_code == 400
+        assert "invalid escape" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_search_line_string_intersects(app_client, ctx):
     line = [[150.04, -33.14], [150.22, -33.89]]
     intersects = {"type": "LineString", "coordinates": line}

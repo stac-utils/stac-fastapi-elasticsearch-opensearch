@@ -229,10 +229,11 @@ def test_add_append_script_keeps_the_map_fallback_compilable():
         "/assets/x-y.nc/title",
         "/1abc/x",
         "/properties/eo:bands",
+        "/properties/café",
     ],
 )
 def test_variable_name_is_a_painless_identifier(path):
-    assert re.fullmatch(r"[A-Za-z_]\w*", ElasticPath(path=path).variable_name)
+    assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", ElasticPath(path=path).variable_name)
 
 
 def _script(operation):
@@ -468,3 +469,50 @@ def test_quotes_and_backslashes_in_member_names_stay_inside_string_literals():
     assert f"containsKey('{escaped}')" in source
     assert f".remove('{escaped}')" in source
     assert "ctx.op = 'delete'" not in source
+
+
+@pytest.mark.parametrize(
+    "path, member",
+    [
+        ("/properties/a~1b", "a/b"),
+        ("/properties/m~0n", "m~n"),
+        ("/properties/~01", "~1"),
+    ],
+)
+def test_pointer_escapes_are_decoded_into_member_names(path, member):
+    path = ElasticPath(path=path)
+    assert path.raw_key == member
+    assert path.es_path == f"['properties']['{member}']"
+
+
+def test_messages_echo_the_pointer_as_sent():
+    source = _script(
+        PatchRemove.model_validate({"op": "remove", "path": "/properties/a~1b"})
+    )
+    assert "containsKey('a/b')" in source
+    assert ".remove('a/b')" in source
+    assert "Debug.explain('a~1b does not exist in properties')" in source
+
+    source = _script(
+        PatchRemove.model_validate({"op": "remove", "path": "/properties/a~1b/x"})
+    )
+    assert "ctx._source['properties'].containsKey('a/b'))" in source
+    assert "Debug.explain('a~1b in properties/a~1b/x does not exist')" in source
+
+
+@pytest.mark.parametrize("member", ["--1", "\u0661"])
+def test_only_ascii_integers_are_array_indexes(member):
+    path = ElasticPath(path=f"/properties/{member}")
+    assert path.raw_key == member
+    assert path.key == member
+
+
+def test_double_leading_slash_addresses_the_empty_member():
+    path = ElasticPath(path="//properties/a~1b")
+    assert path.parts == ["", "properties"]
+    assert path.es_path == "['']['properties']['a/b']"
+
+    source = _script(
+        PatchRemove.model_validate({"op": "remove", "path": "//properties/a~1b"})
+    )
+    assert "ctx._source.containsKey(''))" in source

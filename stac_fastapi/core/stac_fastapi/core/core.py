@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -146,6 +147,20 @@ def _op_member(op: Any, name: str) -> Any:
 def _targets_field(path: str, field: str) -> bool:
     """Match a JSON Patch pointer that addresses a top-level field."""
     return path.strip("/") == field
+
+
+def reject_invalid_pointer_escapes(patch: list) -> None:
+    """Answer 400 for a JSON Pointer "~" not followed by "0" or "1" (RFC 6901)."""
+    for op in patch:
+        for pointer in (
+            _op_member(op, "path"),
+            _op_member(op, "from") or _op_member(op, "from_"),
+        ):
+            if pointer and re.search(r"~(?![01])", pointer):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid JSON Patch: invalid escape in path '{pointer}'",
+                )
 
 
 def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
@@ -2023,6 +2038,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
                 )
+            if json_patch:
+                reject_invalid_pointer_escapes(patch)
             version = await check_if_match(
                 request,
                 resource,
@@ -2306,6 +2323,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
                 )
+            if json_patch:
+                reject_invalid_pointer_escapes(patch)
             _, current = await self.database.find_collection_with_version(collection_id)
             version = check_etag(if_match_header(request, resource), current, resource)
             if json_patch:

@@ -578,7 +578,7 @@ def check_commands(
                 commands.append(
                     f"if (!(ctx._source{part_nest} instanceof Map)"
                     f" || !ctx._source{part_nest}.containsKey('{path_part}'))"
-                    f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
+                    f"{{Debug.explain('{path.pointer_parts[index]} in {path.path} does not exist');}}"
                 )
 
             part_nest += f"['{path_part}']"
@@ -608,7 +608,7 @@ def check_commands(
             commands.append(
                 f"if (!(ctx._source{path.es_nest} instanceof Map)"
                 f" || !ctx._source{path.es_nest}.containsKey('{path.key}'))"
-                f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
+                f"{{Debug.explain('{path.pointer_parts[-1]} does not exist in {path.nest}');}}"  # noqa: E713
             )
 
 

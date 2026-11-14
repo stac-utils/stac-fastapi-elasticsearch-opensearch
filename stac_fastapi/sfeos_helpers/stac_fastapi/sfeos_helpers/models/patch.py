@@ -35,6 +35,7 @@ class ElasticPath(BaseModel):
     """
 
     parts: list[str] = []
+    pointer_parts: list[str] = []
 
     path: str | None = None
     key: str | int | None = None
@@ -59,14 +60,18 @@ class ElasticPath(BaseModel):
             data (Any): input data
         """
         # Every field below lands in single-quoted Painless string literals.
-        data["parts"] = (
-            data["path"].lstrip("/").translate(painless_string_escapes).split("/")
+        # Split before decoding so "~1" stays inside its token, and strip only
+        # one "/" because "//x" addresses the member "" (RFC 6901).
+        tokens = (
+            data["path"].removeprefix("/").translate(painless_string_escapes).split("/")
         )
+        data["pointer_parts"] = tokens
+        data["parts"] = [t.replace("~1", "/").replace("~0", "~") for t in tokens]
 
         data["key"] = data["parts"].pop(-1)
         data["raw_key"] = data["key"]
-        data["nest"] = "/".join(data["parts"])
-        data["path"] = data["nest"] + "/" + data["key"]
+        data["nest"] = "/".join(tokens[:-1])
+        data["path"] = data["nest"] + "/" + tokens[-1]
 
         data["es_key"] = data["key"]
         data["es_nest"] = "".join(
@@ -75,7 +80,7 @@ class ElasticPath(BaseModel):
         )
         data["es_path"] = data["es_nest"] + f"['{data['es_key']}']"
 
-        if data["key"].lstrip("-").isdigit() or data["key"] == "-":
+        if re.fullmatch(r"-?[0-9]+", data["key"]) or data["key"] == "-":
             data["key"] = -1 if data["key"] == "-" else int(data["key"])
             if data["raw_key"] == "-":
                 # RFC 6902: "-" is the position after the last element (append).
@@ -89,7 +94,9 @@ class ElasticPath(BaseModel):
         # Painless identifiers may only contain word characters and must not
         # start with a digit, so "-" in "/links/-" or "/assets/x-y.nc/title"
         # must not reach the declaration.
-        variable_name = re.sub(r"\W", "_", f"{data['nest']}_{data['key']}")
+        variable_name = re.sub(
+            r"\W", "_", f"{data['nest']}_{data['key']}", flags=re.ASCII
+        )
         if variable_name[0].isdigit():
             variable_name = "_" + variable_name
         data["variable_name"] = variable_name
