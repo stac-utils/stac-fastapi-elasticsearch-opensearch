@@ -1478,3 +1478,38 @@ async def test_collections_full_last_page_has_no_next_link(
     finally:
         for coll_id in ids:
             await txn_client.delete_collection(coll_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "injected",
+    [
+        {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+        },
+        None,
+    ],
+)
+async def test_merge_patch_ignores_bbox_shape(
+    app_client, txn_client, ctx, monkeypatch, validator, injected
+):
+    """bbox_shape is backend-owned and derived from the extent, so a merge patch
+    must not replace or delete it. The test collection's extent is global: with
+    the injected 1-degree shape at the origin (or the field removed), a bbox
+    search inside the real extent would stop listing it."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    collection_id = ctx.collection["id"]
+
+    resp = await app_client.patch(
+        f"/collections/{collection_id}",
+        json={"bbox_shape": injected},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    await refresh_indices(txn_client)
+    resp = await app_client.get("/collections", params={"bbox": "100,10,110,20"})
+    assert resp.status_code == 200, resp.text
+    assert collection_id in {c["id"] for c in resp.json()["collections"]}

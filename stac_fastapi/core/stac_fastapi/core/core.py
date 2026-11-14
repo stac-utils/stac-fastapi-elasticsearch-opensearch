@@ -2288,6 +2288,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
             )
 
+        # A merge patch ignores fields the backend owns. The partial request
+        # models allow extra fields, so drop them before they become an
+        # operation: parent_ids is catalog membership (it changes through
+        # /catalogs/{catalog_id}/collections) and bbox_shape is derived from
+        # the extent for geospatial queries.
+        extra = (
+            patch if isinstance(patch, dict) else getattr(patch, "model_extra", None)
+        )
+        if extra:
+            for field in ("parent_ids", "bbox_shape"):
+                extra.pop(field, None)
+
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
             # Request checks come before the precondition (RFC 9110, section 13.2.1).
