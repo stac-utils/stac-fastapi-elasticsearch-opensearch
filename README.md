@@ -1642,7 +1642,7 @@ The system uses a precise naming convention:
 
 ## Shared Items Index
 
-With `ITEMS_INDEX_STRATEGY=shared`, the items of every collection go into one index, `<STAC_ITEMS_INDEX_PREFIX>shared` (`items_shared` by default). Each collection gets a filtered alias on it, `items_<collection id>`, whose filter is `{"term": {"collection": "<collection id>"}}`, so everything that reads or writes through the collection alias works as before.
+With `ITEMS_INDEX_STRATEGY=shared`, the items of every collection go into one index, `<STAC_ITEMS_INDEX_PREFIX>shared` (`items_shared` by default). Each collection gets a filtered alias named `<STAC_ITEMS_ALIAS_PREFIX>collection_<sha256>`, where `<sha256>` is the full SHA-256 hex digest of the original UTF-8 collection ID. Public IDs stay unchanged, and the alias filter uses the original ID: `{"term": {"collection": "<collection id>"}}`.
 
 Use it when a deployment has many small collections. Every index carries shards, mappings and cluster state, so with one index per collection, thousands of collections of a few items each cost far more than their data. On managed and serverless clusters that overhead shows up as slow index creation, long recoveries and a bill that grows with the index count. Large collections, or collections searched mostly by date, are better served by `simple` or `datetime`.
 
@@ -1651,7 +1651,7 @@ Trade-offs:
 - All collections share one mapping and one field limit. Queryables and sortables list the fields of every collection, not only the requested one.
 - It cannot be combined with `datetime`, and a collection id cannot change (`update_collection` with a new id raises an error).
 - `STAC_ITEMS_ALIAS_PREFIX` must equal `STAC_ITEMS_INDEX_PREFIX`, and the items mapping of `collection` must stay a plain indexed `keyword` (no `normalizer`, `ignore_above` or `index: false`). Otherwise the API fails at startup.
-- Collection ids may not contain `\ / * ? " < > | , # :` or a space, and the id `shared` is reserved. Creating such a collection returns `400`.
+- Colons are allowed in collection ids. The characters `\ / * ? " < > | , #` and spaces are rejected, and the id `shared` is reserved. In every strategy, an id that reads `collection_` followed by 64 lowercase hex digits (after those characters are removed) is reserved too, because its alias would match another collection's shared alias. Creating such a collection returns `400`.
 - The shared index uses the engine's default shard and replica counts. To use others, create `<prefix>shared` yourself before the first collection is created, and only after the API has started once, so that the items index template (mappings and sort settings) applies to it. An existing index is reused.
 
 ### Deleting a collection
@@ -1668,7 +1668,7 @@ Deleting a large collection can take longer than the client timeout. Raise `ES_T
 
 ### Migrating
 
-Switching an existing deployment to `shared` needs either a fresh deployment or a manual reindex:
+Switching an existing deployment to `shared` needs either a fresh deployment or a manual reindex. Pause writes during migration. For `my-collection` with the default prefixes:
 
 ```
 POST _reindex
@@ -1677,12 +1677,16 @@ POST _reindex
 POST _aliases
 {"actions": [
   {"remove": {"index": "<old items index>", "alias": "items_my-collection"}},
-  {"add": {"index": "items_shared", "alias": "items_my-collection",
+  {"add": {"index": "items_shared", "alias": "items_collection_6f61c615337a3a7d8ca4ab4d73a6e1a0d42355da8ecc734bfda8deb51187c9a0",
            "filter": {"term": {"collection": "my-collection"}}}}
 ]}
 ```
 
-Then delete the old index. Switching back from `shared` to `simple` or `datetime` while collections still live in the shared index is not supported. Deleting such a collection removes its items when the cleanup succeeds, but those strategies delete the collection document first, so a cleanup that fails (on OpenSearch, a client timeout is enough) leaves items that only an operator can remove.
+After verifying the reindex and the new alias, delete the old per-collection index.
+
+If the data already lives in `items_shared` under legacy `items_<collection id>` aliases, run only the alias replacement, using `items_shared` as the `remove` action's index. Keep the shared index and its documents.
+
+Switching back from `shared` to `simple` or `datetime` while collections still live in the shared index is not supported. When a physical shared items index exists, deleting a collection whose ID contains `:` returns `409` before changing its metadata. Retry with `ITEMS_INDEX_STRATEGY=shared`. For other IDs, cleanup removes the collection's items when it succeeds, but simple and datetime delete the collection document first, so a cleanup that fails (on OpenSearch, a client timeout is enough) leaves items that only an operator can remove.
 
 ## Interacting with the API
 
