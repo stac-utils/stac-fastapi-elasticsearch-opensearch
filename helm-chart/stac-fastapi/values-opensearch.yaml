@@ -66,7 +66,7 @@ app:
     WEB_CONCURRENCY: "4"
     ENABLE_DIRECT_RESPONSE: "false"
     DATABASE_REFRESH: "false"  # Better performance for bulk operations
-    ENABLE_DATETIME_INDEX_FILTERING: "true"  # Enable for large datasets
+    ITEMS_INDEX_STRATEGY: "datetime"  # Enable for large datasets
     DATETIME_INDEX_MAX_SIZE_GB: "50"
     STAC_FASTAPI_RATE_LIMIT: "1000/minute"
     ES_USE_SSL: "true"

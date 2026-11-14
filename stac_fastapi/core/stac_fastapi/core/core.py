@@ -57,6 +57,8 @@ from stac_fastapi.core.utilities import (
     format_conflict_errors,
     get_bool_env,
     get_int_env,
+    items_index_is_partitioned,
+    items_index_strategy,
     json_merge_patch,
 )
 from stac_fastapi.core.validate import (
@@ -1898,7 +1900,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Queued writes bypass the datetime-index validation in create_item and
         # could create cross-index duplicates, so updates go straight to the
         # database when datetime index filtering is enabled.
-        if use_queue and get_bool_env("ENABLE_DATETIME_INDEX_FILTERING", default=False):
+        if use_queue and items_index_is_partitioned():
             use_queue = False
 
         # 1. UNIFIED PREPROCESSING LAYER
@@ -2414,6 +2416,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             f"Collection {collection_id}",
             lambda: self.database.find_collection_with_version(collection_id),
         )
+        if items_index_strategy() == "shared":
+            # The database retries the whole delete on connection errors; a pinned
+            # version keeps a replay from adopting a collection created meanwhile.
+            if version is None:
+                _, version = await self.database.find_collection_with_version(
+                    collection_id
+                )
+            await self.database.delete_collection(
+                collection_id=collection_id, pinned=version, **kwargs
+            )
+            return None
         await self.database.delete_collection(
             collection_id=collection_id, version=version, **kwargs
         )
@@ -2477,10 +2490,10 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """
         request = kwargs.get("request")
 
-        if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        if items_index_is_partitioned():
             raise HTTPException(
                 status_code=400,
-                detail="The /collections/{collection_id}/bulk_items endpoint is invalid when ENABLE_DATETIME_INDEX_FILTERING is set to true. Try using the /collections/{collection_id}/items endpoint.",
+                detail="The /collections/{collection_id}/bulk_items endpoint is invalid with the datetime items index strategy. Try using the /collections/{collection_id}/items endpoint.",
             )
         if items.method == BulkTransactionMethod.UPSERT and get_bool_env(
             "REQUIRE_IF_MATCH", default=False
