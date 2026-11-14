@@ -9,6 +9,9 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Any
 
+from fastapi import HTTPException
+
+from stac_fastapi.core.etag import DocumentVersion
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
     COLLECTIONS_INDEX,
@@ -18,7 +21,9 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ITEM_INDICES,
     ITEMS_ALIAS_PREFIX,
     ITEMS_INDEX_PREFIX,
+    SHARED_ITEMS_INDEX,
 )
+from stac_fastapi.types.errors import ConflictError
 
 
 @lru_cache(256)
@@ -300,37 +305,99 @@ async def create_index_templates_shared(settings: Any) -> None:
     await client.close()
 
 
-async def delete_item_index_shared(settings: Any, collection_id: str) -> None:
-    """Delete the index for items in a collection.
+async def delete_item_index_shared(
+    settings: Any, collection_id: str, expected: DocumentVersion | None = None
+) -> None:
+    """Delete the items of a collection: its index, or its docs in the shared index.
+
+    The path follows what the collection alias resolves to, not the configured
+    strategy: an alias on another index deletes that index, as before; an alias
+    on the shared index, or none at all (a retried delete), deletes the
+    collection's documents from the shared index and any stray index named
+    after the alias. The shared index itself is never deleted.
 
     Args:
-        settings (Any): The settings object containing the client configuration.
-            Must have a create_client attribute that returns an Elasticsearch/OpenSearch client.
-        collection_id (str): The ID of the collection whose items index will be deleted.
-
-    Returns:
-        None: This function doesn't return any value but deletes an item index in the database.
-
-    Notes:
-        This function deletes an item index and its alias. It first resolves the alias to find
-        the actual index name, then deletes both the alias and the index.
+        settings (Any): Settings whose `create_client` returns a new client.
+        collection_id (str): The ID of the collection whose items are deleted.
+        expected (DocumentVersion, optional): The collection version the delete
+            started from; any other version, or none, raises `ConflictError`
+            before each step that removes items.
     """
     client = settings.create_client
+    try:
+        name = index_alias_by_collection_id(collection_id)
+        quiet, ignore_404 = _ignoring_404(client)
+        resolved = await quiet.indices.resolve_index(name=name, **ignore_404)
+        await _check_collection_version(client, collection_id, expected)
 
-    name = index_alias_by_collection_id(collection_id)
-    if hasattr(client, "options"):
-        resolved = await client.options(ignore_status=[404]).indices.resolve_index(
-            name=name
+        # Exact names only: the alias of collection "*" is the pattern `items_*`.
+        alias = next(
+            (a for a in resolved.get("aliases", []) if a["name"] == name), None
         )
-    else:
-        resolved = await client.indices.resolve_index(name=name, ignore=[404])
-    if "aliases" in resolved and resolved["aliases"]:
-        [alias] = resolved["aliases"]
-        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
-        await client.indices.delete(index=alias["indices"])
-    else:
-        await client.indices.delete(index=name, ignore=[404])
-    await client.close()
+        if alias:
+            await client.indices.delete_alias(index=alias["indices"], name=name)
+            if SHARED_ITEMS_INDEX not in alias["indices"]:
+                await client.indices.delete(index=alias["indices"])
+                return
+
+        await _delete_shared_items(client, collection_id, expected)
+        # A write to the removed alias, even one during the delete above,
+        # auto-creates an index under the alias name.
+        if "*" not in name and name != SHARED_ITEMS_INDEX:
+            await _check_collection_version(client, collection_id, expected)
+            await quiet.indices.delete(index=name, **ignore_404)
+    finally:
+        await client.close()
+
+
+def _ignoring_404(client: Any) -> tuple[Any, dict[str, Any]]:
+    """Return the client and call arguments that make a request accept a 404."""
+    if hasattr(client, "options"):
+        return client.options(ignore_status=[404]), {}
+    return client, {"ignore": [404]}
+
+
+async def _check_collection_version(
+    client: Any, collection_id: str, expected: DocumentVersion | None
+) -> None:
+    if expected is None:
+        return
+    quiet, ignore_404 = _ignoring_404(client)
+    doc = await quiet.get(index=COLLECTIONS_INDEX, id=collection_id, **ignore_404)
+    if not doc.get("found") or DocumentVersion.from_hit(doc) != expected:
+        raise ConflictError(
+            f"Collection {collection_id} changed during deletion; retry DELETE"
+        )
+
+
+async def _delete_shared_items(
+    client: Any, collection_id: str, expected: DocumentVersion | None
+) -> None:
+    quiet, ignore_404 = _ignoring_404(client)
+    for _ in range(2):
+        # delete_by_query only sees refreshed documents.
+        await quiet.indices.refresh(index=SHARED_ITEMS_INDEX, **ignore_404)
+        await _check_collection_version(client, collection_id, expected)
+        result = await quiet.delete_by_query(
+            index=SHARED_ITEMS_INDEX,
+            body={"query": {"term": {"collection": collection_id}}},
+            conflicts="proceed",
+            refresh=True,
+            wait_for_completion=True,
+            slices="auto",
+            **ignore_404,
+        )
+        if result.get("status") == 404:
+            return
+        if result.get("failures") or result.get("timed_out"):
+            break
+        if not result.get("version_conflicts"):
+            return
+    raise HTTPException(
+        status_code=500,
+        detail=f"Deleting the items of collection {collection_id} did not finish; "
+        "retry DELETE",
+    )
 
 
 async def index_behind_alias(client: Any, alias: str, index: str) -> bool:

@@ -99,6 +99,7 @@ from stac_fastapi.sfeos_helpers.search_engine import (
     DatetimeIndexInserter,
     IndexInsertionFactory,
     IndexSelectorFactory,
+    SharedIndexInserter,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
@@ -179,7 +180,9 @@ async def create_collection_index() -> None:
 
 
 @retry_on_connection_error
-async def delete_item_index(collection_id: str):
+async def delete_item_index(
+    collection_id: str, expected: DocumentVersion | None = None
+) -> None:
     """Delete the index for items in a collection.
 
     Args:
@@ -189,7 +192,9 @@ async def delete_item_index(collection_id: str):
         This function delegates to the shared implementation in delete_item_index_shared.
     """
     await delete_item_index_shared(
-        settings=AsyncElasticsearchSettings(), collection_id=collection_id
+        settings=AsyncElasticsearchSettings(),
+        collection_id=collection_id,
+        expected=expected,
     )
 
 
@@ -1826,6 +1831,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the creation attempt
         logger.info(f"Creating collection {collection_id} with refresh={refresh}")
 
+        self.async_index_inserter.validate_collection_id(collection_id)
+
         if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
             "ENABLE_COLLECTIONS_SEARCH_ROUTE"
         ):
@@ -1849,11 +1856,26 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
             raise
 
+        version = DocumentVersion.from_hit(response)
         if self.async_index_inserter.should_create_collection_index():
-            await self.async_index_inserter.create_simple_index(
-                self.client, collection_id
-            )
-        return DocumentVersion.from_hit(response)
+            try:
+                await self.async_index_inserter.create_simple_index(
+                    self.client, collection_id
+                )
+            except Exception:
+                # Without its index the collection is unusable, and a retried
+                # create would get 409. Conditional, so a replacement survives.
+                try:
+                    await self.client.delete(
+                        index=version.index,
+                        id=collection_id,
+                        refresh=refresh,
+                        **version.write_kwargs(),
+                    )
+                except (ESNotFoundError, ESConflictError):
+                    pass
+                raise
+        return version
 
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.
@@ -1969,6 +1991,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # A create, a reindex and a delete: no one conditional write covers
                 # it. No route renames (PUT and PATCH refuse an id change).
                 raise ValueError("A conditional update cannot change the collection id")
+            if isinstance(self.async_index_inserter, SharedIndexInserter):
+                raise HTTPException(
+                    status_code=400,
+                    detail="ITEMS_INDEX_STRATEGY=shared cannot change a collection id",
+                )
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
@@ -2220,6 +2247,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         version: DocumentVersion | None = None,
+        pinned: DocumentVersion | None = None,
         **kwargs: Any,
     ):
         """Delete a collection from the database.
@@ -2228,6 +2256,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id (str): The ID of the collection to be deleted.
             version (DocumentVersion, optional): Only delete this stored version
                 of the collection (If-Match); 412 otherwise.
+            pinned (DocumentVersion, optional): With the shared items index, the
+                version core read when the request started (If-Match or not). A
+                change at any later step answers 409, also on a retried replay.
             kwargs (Any, optional): Additional keyword arguments, including `refresh`.
                 - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
                 - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
@@ -2249,6 +2280,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         refresh = kwargs.get("refresh", self.async_settings.database_refresh)
         refresh = validate_refresh(refresh)
 
+        if isinstance(self.async_index_inserter, SharedIndexInserter):
+            await self._delete_shared_index_collection(
+                collection_id, version, pinned, refresh
+            )
+            return
+
         # Verify that the collection exists
         await self.find_collection(collection_id=collection_id)
         if version is not None and not await index_behind_alias(
@@ -2265,6 +2302,43 @@ class DatabaseLogic(BaseDatabaseLogic):
         except ESConflictError:
             raise precondition_failed(f"Collection {collection_id}")
         await delete_item_index(collection_id)
+        await self.async_index_inserter.refresh_cache()
+
+    async def _delete_shared_index_collection(
+        self,
+        collection_id: str,
+        version: DocumentVersion | None,
+        pinned: DocumentVersion | None,
+        refresh: Any,
+    ) -> None:
+        """Delete a collection's items from the shared index, then the collection.
+
+        The collection document goes last, so a failed cleanup leaves it in place
+        and DELETE can be retried. Every step is conditional on the version the
+        request started from: `version` (If-Match) answers 412 when it is
+        already stale, and any change from `pinned` answers 409.
+        """
+        _, current = await self.find_collection_with_version(collection_id)
+        if version is not None and current != version:
+            raise precondition_failed(f"Collection {collection_id}")
+        if pinned is not None and current != pinned:
+            raise ConflictError(
+                f"Collection {collection_id} changed during deletion; retry DELETE"
+            )
+        start = pinned or version or current
+
+        await delete_item_index(collection_id, expected=start)
+        try:
+            await self.client.delete(
+                index=start.index,
+                id=collection_id,
+                refresh=refresh,
+                **start.write_kwargs(),
+            )
+        except (ESConflictError, ESNotFoundError):
+            raise ConflictError(
+                f"Collection {collection_id} changed during deletion; retry DELETE"
+            )
         await self.async_index_inserter.refresh_cache()
 
     @retry_on_connection_error
