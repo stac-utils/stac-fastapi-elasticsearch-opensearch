@@ -1796,7 +1796,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         for error in errors:
             doc_id = next(iter(error.values())).get("_id", "")
-            failed_item_ids.add(item_ids[doc_id][0])
+            failed_item_ids.add(item_ids.get(doc_id, (doc_id, collection_id))[0])
 
         successfully_added_ids = [
             item.get("id")
@@ -1806,18 +1806,23 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         if conflict_errors and raise_on_error:
             doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
-            item_id = item_ids[doc_id][0]
+            item_id = item_ids.get(doc_id, (doc_id, collection_id))[0]
             raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
 
         for error in other_errors:
             detail = next(iter(error.values()))
-            detail["item_id"], detail["collection_id"] = item_ids[detail["_id"]]
+            doc_id = detail.get("_id", "")
+            detail["item_id"], detail["collection_id"] = item_ids.get(
+                doc_id, (doc_id, collection_id)
+            )
         if other_errors and raise_on_error:
             raise BulkIndexError(errors=other_errors, collection_id=collection_id)
 
         # Parse conflicts exactly ONCE and cache the result to avoid redundant generation
         formatted_conflicts = (
-            format_conflict_errors(conflict_errors, item_ids) if conflict_errors else {}
+            format_conflict_errors(conflict_errors, item_ids, collection_id)
+            if conflict_errors
+            else {}
         )
 
         # Fix Spot 3: Database writes failed completely
@@ -2701,12 +2706,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
             doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
-            item_id = item_ids[doc_id][0]
+            item_id = item_ids.get(doc_id, (doc_id, collection_id))[0]
             raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
 
         for error in other_errors:
             detail = next(iter(error.values()))
-            detail["item_id"], detail["collection_id"] = item_ids[detail["_id"]]
+            doc_id = detail.get("_id", "")
+            detail["item_id"], detail["collection_id"] = item_ids.get(
+                doc_id, (doc_id, collection_id)
+            )
         if other_errors:
             logger.error(f"Bulk sync operation encountered errors: {other_errors}")
             if get_bool_env("RAISE_ON_BULK_ERROR"):

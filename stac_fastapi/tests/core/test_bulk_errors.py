@@ -168,3 +168,70 @@ def test_bulk_items_errors_preserve_public_ids(monkeypatch, success, status, str
         assert error["create"]["collection_id"] == COLLECTION_ID
     assert error["create"]["_id"] == f"{FAILED_ID}|{COLLECTION_ID}"
     database.bulk_sync.assert_called_once()
+
+
+def _error_without_known_id(status, doc_id):
+    error = _bulk_error(status)
+    if doc_id is None:
+        del error["create"]["_id"]
+    else:
+        error["create"]["_id"] = doc_id
+    return error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("doc_id", [None, "unknown"])
+@pytest.mark.parametrize("status", [400, 409])
+@pytest.mark.parametrize("strict", [False, True])
+async def test_feature_collection_errors_without_known_id_do_not_crash(
+    monkeypatch, doc_id, status, strict
+):
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", str(strict).lower())
+    features = [{"id": FAILED_ID, "collection": COLLECTION_ID}]
+    error = _error_without_known_id(status, doc_id)
+    database = Mock()
+    database.bulk_async = AsyncMock(return_value=(0, [error]))
+    client = TransactionsClient(database=database, session=None, settings=Mock())
+    monkeypatch.setattr(
+        client, "_validate_feature_collection", AsyncMock(return_value=(features, {}))
+    )
+    request = {"type": "FeatureCollection", "features": features}
+    expected = HTTPException
+    if strict:
+        expected = ItemAlreadyExistsError if status == 409 else BulkIndexError
+
+    with pytest.raises(expected) as exc:
+        await client._create_feature_collection(COLLECTION_ID, request, "", False)
+
+    if status == 409 and not strict:
+        item_id = doc_id or ""
+        assert exc.value.detail["conflict_errors"] == {
+            item_id: f"Item '{item_id}' already exists in collection '{COLLECTION_ID}'"
+        }
+    if status == 400:
+        assert error["create"]["item_id"] == (doc_id or "")
+        assert error["create"]["collection_id"] == COLLECTION_ID
+
+
+@pytest.mark.parametrize("doc_id", [None, "unknown"])
+@pytest.mark.parametrize("status", [400, 409])
+@pytest.mark.parametrize("strict", [False, True])
+def test_bulk_items_errors_without_known_id_do_not_crash(
+    monkeypatch, doc_id, status, strict
+):
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", str(strict).lower())
+    features = {FAILED_ID: {"id": FAILED_ID, "collection": COLLECTION_ID}}
+    error = _error_without_known_id(status, doc_id)
+    database = Mock()
+    database.bulk_sync.return_value = (0, [error])
+    client = BulkTransactionsClient(database=database, settings=Mock())
+
+    if strict:
+        expected = ItemAlreadyExistsError if status == 409 else BulkIndexError
+        with pytest.raises(expected):
+            client.bulk_item_insert(Items(items=features))
+    else:
+        result = client.bulk_item_insert(Items(items=features))
+        assert result["errors"] == [
+            {"id": doc_id or "", "msg": error["create"]["error"]["reason"]}
+        ]
