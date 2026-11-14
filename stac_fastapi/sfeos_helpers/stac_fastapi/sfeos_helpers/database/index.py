@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from stac_fastapi.core.etag import DocumentVersion
+from stac_fastapi.core.utilities import items_index_strategy
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
     COLLECTIONS_INDEX,
@@ -42,7 +43,11 @@ def index_by_collection_id(collection_id: str) -> str:
     return f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{hashed}"
 
 
-@lru_cache(256)
+def _shared_alias_by_collection_id(collection_id: str) -> str:
+    digest = hashlib.sha256(collection_id.encode("utf-8")).hexdigest()
+    return f"{ITEMS_ALIAS_PREFIX}collection_{digest}"
+
+
 def index_alias_by_collection_id(collection_id: str) -> str:
     """
     Translate a collection id into an Elasticsearch index alias.
@@ -53,11 +58,11 @@ def index_alias_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index alias derived from the collection id.
     """
-    cleaned = (
-        "*"
-        if collection_id == "*"
-        else collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-    )
+    if collection_id == "*":
+        return f"{ITEMS_ALIAS_PREFIX}*"
+    if items_index_strategy() == "shared":
+        return _shared_alias_by_collection_id(collection_id)
+    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
     return f"{ITEMS_ALIAS_PREFIX}{cleaned}"
 
 
@@ -311,7 +316,7 @@ async def delete_item_index_shared(
     """Delete the items of a collection: its index, or its docs in the shared index.
 
     The path follows what the collection alias resolves to, not the configured
-    strategy: an alias on another index deletes that index, as before; an alias
+    strategy: a legacy alias on another index deletes that index, as before; an alias
     on the shared index, or none at all (a retried delete), deletes the
     collection's documents from the shared index and any stray index named
     after the alias. The shared index itself is never deleted.
@@ -325,9 +330,20 @@ async def delete_item_index_shared(
     """
     client = settings.create_client
     try:
-        name = index_alias_by_collection_id(collection_id)
         quiet, ignore_404 = _ignoring_404(client)
+        shared_name = _shared_alias_by_collection_id(collection_id)
+        name = shared_name
         resolved = await quiet.indices.resolve_index(name=name, **ignore_404)
+        if not (resolved.get("aliases") or resolved.get("indices")) and not (
+            items_index_strategy() == "shared" and ":" in collection_id
+        ):
+            cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+            name = f"{ITEMS_ALIAS_PREFIX}{'*' if collection_id == '*' else cleaned}"
+            resolved = await quiet.indices.resolve_index(name=name, **ignore_404)
+            if items_index_strategy() == "shared" and not (
+                resolved.get("aliases") or resolved.get("indices")
+            ):
+                name = shared_name
         await _check_collection_version(client, collection_id, expected)
 
         # Exact names only: the alias of collection "*" is the pattern `items_*`.
@@ -335,10 +351,28 @@ async def delete_item_index_shared(
             (a for a in resolved.get("aliases", []) if a["name"] == name), None
         )
         if alias:
-            await client.indices.delete_alias(index=alias["indices"], name=name)
+            if SHARED_ITEMS_INDEX in alias["indices"]:
+                aliases = await client.indices.get_alias(name=name)
+                alias_filter = aliases[SHARED_ITEMS_INDEX]["aliases"][name].get(
+                    "filter"
+                )
+                if alias["indices"] != [SHARED_ITEMS_INDEX] or alias_filter != {
+                    "term": {"collection": collection_id}
+                }:
+                    raise ConflictError(
+                        f"Alias {name} does not belong to collection {collection_id}"
+                    )
+            elif name == shared_name:
+                raise ConflictError(
+                    f"Alias {name} does not target the shared items index"
+                )
+            await _check_collection_version(client, collection_id, expected)
             if SHARED_ITEMS_INDEX not in alias["indices"]:
+                # Deleting the index drops its alias, so no request runs between
+                # the version check and the removal of the items.
                 await client.indices.delete(index=alias["indices"])
                 return
+            await client.indices.delete_alias(index=alias["indices"], name=name)
 
         await _delete_shared_items(client, collection_id, expected)
         # A write to the removed alias, even one during the delete above,
@@ -355,6 +389,21 @@ def _ignoring_404(client: Any) -> tuple[Any, dict[str, Any]]:
     if hasattr(client, "options"):
         return client.options(ignore_status=[404]), {}
     return client, {"ignore": [404]}
+
+
+async def check_legacy_collection_delete(client: Any, collection_id: str) -> None:
+    """Keep canonical shared collection metadata until cleanup runs in shared mode."""
+    if ":" not in collection_id:
+        return
+    quiet, ignore_404 = _ignoring_404(client)
+    resolved = await quiet.indices.resolve_index(name=SHARED_ITEMS_INDEX, **ignore_404)
+    if any(
+        entry["name"] == SHARED_ITEMS_INDEX for entry in resolved.get("indices", [])
+    ):
+        raise ConflictError(
+            f"Collection {collection_id} may use the shared items index; "
+            "retry DELETE with ITEMS_INDEX_STRATEGY=shared"
+        )
 
 
 async def _check_collection_version(

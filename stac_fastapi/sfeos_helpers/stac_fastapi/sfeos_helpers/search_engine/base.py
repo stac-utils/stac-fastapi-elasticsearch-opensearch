@@ -1,7 +1,12 @@
 """Base classes for index inserters."""
 
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
+
+from fastapi import HTTPException, status
+
+from stac_fastapi.sfeos_helpers.mappings import _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE
 
 
 class BaseIndexInserter(ABC):
@@ -73,10 +78,18 @@ class BaseIndexInserter(ABC):
     def validate_collection_id(self, collection_id: str) -> None:
         """Validate a collection id before the collection is created.
 
+        IDs whose per-collection alias would equal another collection's shared
+        alias (`collection_<sha256>`) are refused in every strategy.
+
         Args:
             collection_id (str): The id of the collection to be created.
         """
-        pass
+        cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+        if re.fullmatch(r"collection_[0-9a-f]{64}", cleaned):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Collection id '{collection_id}' is reserved for shared items index aliases",
+            )
 
     def validate_datetime_field_update(self, field_path: str) -> None:
         """Validate if a datetime field can be updated.

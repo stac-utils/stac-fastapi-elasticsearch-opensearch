@@ -1,5 +1,6 @@
 """ITEMS_INDEX_STRATEGY=shared: every collection's items in one index."""
 
+import hashlib
 import os
 from copy import deepcopy
 
@@ -16,6 +17,7 @@ from stac_fastapi.types.errors import ConflictError
 from ..conftest import rebuilt_index_strategy
 
 OPENSEARCH = os.getenv("BACKEND", "elasticsearch").lower() == "opensearch"
+CANONICAL_ID = "fao-gismgr:ASIS:raster:mapsets:ASI-D"
 MERGE_PATCH = {"Content-Type": "application/merge-patch+json"}
 
 
@@ -80,16 +82,39 @@ def database(txn_client, shared_index_env):
     return txn_client.database
 
 
+@pytest.fixture(
+    params=[
+        ("shared-a", "shared-b"),
+        ("a:b", "ab"),
+        (CANONICAL_ID, CANONICAL_ID + "-2"),
+    ]
+)
+def collection_ids(request):
+    return request.param
+
+
+def test_alias_strategy_changes_preserve_public_ids(monkeypatch):
+    for strategy in ("shared", "simple", "datetime", "shared"):
+        monkeypatch.setenv("ITEMS_INDEX_STRATEGY", strategy)
+        expected = (
+            "items_collection_" + hashlib.sha256(CANONICAL_ID.encode()).hexdigest()
+            if strategy == "shared"
+            else "items_" + CANONICAL_ID.replace(":", "")
+        )
+        assert index_alias_by_collection_id(CANONICAL_ID) == expected
+        assert index_alias_by_collection_id("*") == "items_*"
+
+
 @pytest.mark.asyncio
 async def test_collections_share_one_index_with_filtered_aliases(
-    app_client, database, test_collection, test_item
+    app_client, database, test_collection, test_item, collection_ids
 ):
-    for collection_id in ("shared-a", "shared-b"):
+    for collection_id in collection_ids:
         await add_collection(app_client, test_collection, test_item, collection_id)
 
     client = database.client
     assert set(await client.indices.get(index="items_*")) == {SHARED_ITEMS_INDEX}
-    for collection_id in ("shared-a", "shared-b"):
+    for collection_id in collection_ids:
         alias = index_alias_by_collection_id(collection_id)
         aliases = await client.indices.get_alias(name=alias)
         assert aliases[SHARED_ITEMS_INDEX]["aliases"][alias]["filter"] == {
@@ -99,23 +124,24 @@ async def test_collections_share_one_index_with_filtered_aliases(
 
 @pytest.mark.asyncio
 async def test_same_item_id_in_two_collections_stays_separate(
-    app_client, database, test_collection, test_item
+    app_client, database, test_collection, test_item, collection_ids
 ):
-    for collection_id in ("shared-a", "shared-b"):
+    a, b = collection_ids
+    for collection_id in collection_ids:
         await add_collection(app_client, test_collection, test_item, collection_id)
-    url_a = "/collections/shared-a/items/shared-item"
-    url_b = "/collections/shared-b/items/shared-item"
+    url_a = f"/collections/{a}/items/shared-item"
+    url_b = f"/collections/{b}/items/shared-item"
 
-    assert (await app_client.get(url_a)).json()["properties"]["title"] == "shared-a"
+    assert (await app_client.get(url_a)).json()["properties"]["title"] == a
 
-    replacement = item_with(test_item, "shared-a", title="put")
+    replacement = item_with(test_item, a, title="put")
     assert (await app_client.put(url_a, json=replacement)).status_code == 200
     response = await app_client.patch(
         url_a, json={"properties": {"title": "patched"}}, headers=MERGE_PATCH
     )
     assert response.status_code == 200, response.text
     assert (await app_client.get(url_a)).json()["properties"]["title"] == "patched"
-    assert (await app_client.get(url_b)).json()["properties"]["title"] == "shared-b"
+    assert (await app_client.get(url_b)).json()["properties"]["title"] == b
 
     assert (await app_client.delete(url_a)).status_code == 204
     assert (await app_client.get(url_a)).status_code == 404
@@ -124,43 +150,62 @@ async def test_same_item_id_in_two_collections_stays_separate(
 
 @pytest.mark.asyncio
 async def test_listing_and_search_are_scoped_and_bulk_lands_in_its_collection(
-    app_client, database, test_collection, test_item
+    app_client, database, test_collection, test_item, collection_ids
 ):
-    for collection_id in ("shared-a", "shared-b"):
+    a, b = collection_ids
+    for collection_id in collection_ids:
         await add_collection(app_client, test_collection, test_item, collection_id)
     bulk = {
         "type": "FeatureCollection",
-        "features": [
-            item_with(test_item, "shared-b", f"bulk-{n}", "bulk") for n in range(3)
-        ],
+        "features": [item_with(test_item, b, f"bulk-{n}", "bulk") for n in range(3)],
     }
-    response = await app_client.post("/collections/shared-b/items", json=bulk)
+    response = await app_client.post(f"/collections/{b}/items", json=bulk)
     assert response.status_code == 201, response.text
 
-    listing = (await app_client.get("/collections/shared-a/items")).json()
+    listing = (await app_client.get(f"/collections/{a}/items")).json()
     assert [f["id"] for f in listing["features"]] == ["shared-item"]
     assert (
-        len((await app_client.get("/collections/shared-b/items")).json()["features"])
-        == 4
+        len((await app_client.get(f"/collections/{b}/items")).json()["features"]) == 4
     )
 
-    scoped = await app_client.post("/search", json={"collections": ["shared-a"]})
-    assert [f["collection"] for f in scoped.json()["features"]] == ["shared-a"]
+    scoped = await app_client.post("/search", json={"collections": [a]})
+    assert [f["collection"] for f in scoped.json()["features"]] == [a]
 
     everything = await app_client.post("/search", json={"ids": ["shared-item"]})
-    assert sorted(f["collection"] for f in everything.json()["features"]) == [
-        "shared-a",
-        "shared-b",
-    ]
-    assert await count(database.client, "shared-a") == 1
-    assert await count(database.client, "shared-b") == 4
+    assert sorted(f["collection"] for f in everything.json()["features"]) == sorted(
+        collection_ids
+    )
+    queryables = await app_client.get(f"/collections/{a}/queryables")
+    assert queryables.status_code == 200, queryables.text
+    assert "title" in queryables.json()["properties"]
+    page = await app_client.get(f"/collections/{b}/items", params={"limit": 2})
+    next_link = next(link for link in page.json()["links"] if link["rel"] == "next")
+    next_page = await app_client.get(next_link["href"])
+    features = page.json()["features"] + next_page.json()["features"]
+    assert len({feature["id"] for feature in features}) == 4
+    assert {feature["collection"] for feature in features} == {b}
+    assert await count(database.client, a) == 1
+    assert await count(database.client, b) == 4
+    response = await app_client.post(
+        f"/collections/{a}/items",
+        json={
+            "type": "FeatureCollection",
+            "features": [item_with(test_item, a, "bulk-a")],
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert (await app_client.get(f"/collections/{a}/items/bulk-a")).json()[
+        "collection"
+    ] == a
+    assert await count(database.client, a) == 2
 
 
 @pytest.mark.asyncio
 async def test_delete_removes_unrefreshed_items_and_keeps_other_collections(
-    app_client, database, test_collection, test_item
+    app_client, database, test_collection, test_item, collection_ids
 ):
-    for collection_id in ("shared-a", "shared-b"):
+    a, b = collection_ids
+    for collection_id in collection_ids:
         await add_collection(app_client, test_collection, test_item, collection_id)
     indices = database.client.indices
     prior = await indices.get_settings(
@@ -173,22 +218,25 @@ async def test_delete_removes_unrefreshed_items_and_keeps_other_collections(
     try:
         # A plain write: create_item's existence lookup would refresh the index.
         await database.client.index(
-            index=index_alias_by_collection_id("shared-a"),
-            id="unrefreshed|shared-a",
-            body=item_with(test_item, "shared-a", "unrefreshed"),
+            index=index_alias_by_collection_id(a),
+            id=f"unrefreshed|{a}",
+            body=item_with(test_item, a, "unrefreshed"),
             refresh="false",
         )
 
-        assert (await app_client.delete("/collections/shared-a")).status_code == 204
+        assert (await app_client.delete(f"/collections/{a}")).status_code == 204
     finally:
         await indices.put_settings(
             index=SHARED_ITEMS_INDEX,
             body={"refresh_interval": interval.get("refresh_interval")},
         )
 
-    assert await count(database.client, "shared-a") == 0
-    assert await count(database.client, "shared-b") == 1
-    assert not await indices.exists_alias(name=index_alias_by_collection_id("shared-a"))
+    assert await count(database.client, a) == 0
+    assert await count(database.client, b) == 1
+    assert not await indices.exists_alias(name=index_alias_by_collection_id(a))
+    await add_collection(app_client, test_collection, test_item, a)
+    assert await count(database.client, a) == 1
+    assert await count(database.client, b) == 1
 
 
 @pytest.mark.asyncio
@@ -211,6 +259,39 @@ async def test_delete_removes_a_legacy_per_collection_index(
 
     assert not await client.indices.exists(index="items_legacy_old")
     assert await count(client, "shared-b") == 1
+
+
+@pytest.mark.asyncio
+async def test_change_during_legacy_cleanup_keeps_the_index(
+    app_client, database, monkeypatch, test_collection, test_item
+):
+    client = database.client
+    await client.index(
+        index=COLLECTIONS_INDEX,
+        id="legacy",
+        body=collection_with(test_collection, "legacy"),
+        refresh=True,
+    )
+    await client.indices.create(
+        index="items_legacy_old", body={"aliases": {"items_legacy": {}}}
+    )
+    indices_class = type(client.indices)
+    delete_alias = indices_class.delete_alias
+
+    async def delete_alias_then_change(self, *args, **kwargs):
+        response = await delete_alias(self, *args, **kwargs)
+        await touch_collection(client, "legacy")
+        return response
+
+    with monkeypatch.context() as patch:
+        patch.setattr(indices_class, "delete_alias", delete_alias_then_change)
+        try:
+            await database.delete_collection("legacy")
+        except ConflictError:
+            pass
+
+    if await collection_exists(client, "legacy"):
+        assert await client.indices.exists(index="items_legacy_old")
 
 
 @pytest.mark.asyncio
@@ -465,8 +546,16 @@ async def test_retried_delete_removes_a_stray_index_from_a_failed_cleanup(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("strategy", ["shared", "simple", "datetime"])
 async def test_delete_removes_an_index_created_by_a_write_during_cleanup(
-    app_client, database, monkeypatch, test_collection, test_item
+    app,
+    app_client,
+    txn_client,
+    database,
+    monkeypatch,
+    test_collection,
+    test_item,
+    strategy,
 ):
     await add_collection(app_client, test_collection, test_item, "shared-a")
     client = database.client
@@ -484,8 +573,13 @@ async def test_delete_removes_an_index_created_by_a_write_during_cleanup(
         return await delete_by_query(self, *args, **kwargs)
 
     with monkeypatch.context() as patch:
-        patch.setattr(type(client), "delete_by_query", write_then_delete)
-        assert (await app_client.delete("/collections/shared-a")).status_code == 204
+        patch.setenv("ITEMS_INDEX_STRATEGY", strategy)
+        async with rebuilt_index_strategy(txn_client, app):
+            if strategy != "shared":
+                await client.indices.delete_alias(index=SHARED_ITEMS_INDEX, name=stray)
+                stray = index_alias_by_collection_id("shared-a")
+            patch.setattr(type(client), "delete_by_query", write_then_delete)
+            assert (await app_client.delete("/collections/shared-a")).status_code == 204
 
     assert not await client.indices.exists(index=stray)
     response = await app_client.post(
@@ -520,6 +614,125 @@ async def test_simple_strategy_deletes_shared_layout_collections(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("strategy", ["simple", "datetime"])
+@pytest.mark.parametrize("missing_alias", [False, True])
+@pytest.mark.parametrize("foreign_kind", ["alias", "index"])
+async def test_colon_delete_requires_shared_strategy_and_preserves_legacy_names(
+    app,
+    app_client,
+    txn_client,
+    database,
+    monkeypatch,
+    test_collection,
+    test_item,
+    strategy,
+    missing_alias,
+    foreign_kind,
+):
+    client = database.client
+    for collection_id in ("a:b", "ab"):
+        await add_collection(app_client, test_collection, test_item, collection_id)
+    alias = index_alias_by_collection_id("a:b")
+    if missing_alias:
+        await client.indices.delete_alias(index=SHARED_ITEMS_INDEX, name=alias)
+    foreign_index = "items_foreign" if foreign_kind == "alias" else "items_ab"
+    await client.index(
+        index=foreign_index, id="foreign", body={"value": 1}, refresh=True
+    )
+    if foreign_kind == "alias":
+        await client.indices.put_alias(index=foreign_index, name="items_ab")
+
+    with monkeypatch.context() as patch:
+        patch.setenv("ITEMS_INDEX_STRATEGY", strategy)
+        async with rebuilt_index_strategy(txn_client, app):
+            response = await app_client.delete("/collections/a:b")
+    assert response.status_code == 409, response.text
+    assert "ITEMS_INDEX_STRATEGY=shared" in response.text
+    assert await collection_exists(client, "a:b")
+    assert await collection_exists(client, "ab")
+    assert await count(client, "a:b") == 1
+    assert await count(client, "ab") == 1
+    assert bool(await client.indices.exists_alias(name=alias)) is not missing_alias
+
+    assert (await app_client.delete("/collections/a:b")).status_code == 204
+    assert not await collection_exists(client, "a:b")
+    assert await count(client, "a:b") == 0
+    assert await count(client, "ab") == 1
+    assert await collection_exists(client, "ab")
+    assert (await client.count(index="items_ab"))["count"] == 1
+    assert await client.indices.exists(index=foreign_index)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strategy", ["simple", "datetime"])
+@pytest.mark.parametrize("shared_name_alias", [False, True])
+async def test_legacy_colon_delete_without_shared_physical_index(
+    app,
+    app_client,
+    txn_client,
+    database,
+    monkeypatch,
+    test_collection,
+    test_item,
+    strategy,
+    shared_name_alias,
+):
+    client = database.client
+    if shared_name_alias:
+        await client.indices.create(
+            index="items_foreign", body={"aliases": {SHARED_ITEMS_INDEX: {}}}
+        )
+    with monkeypatch.context() as patch:
+        patch.setenv("ITEMS_INDEX_STRATEGY", strategy)
+        async with rebuilt_index_strategy(txn_client, app):
+            await add_collection(app_client, test_collection, test_item, "a:b")
+            assert (await app_client.delete("/collections/a:b")).status_code == 204
+    assert not await collection_exists(client, "a:b")
+    assert not await client.indices.exists(index="items_ab")
+    if shared_name_alias:
+        assert await client.indices.exists_alias(name=SHARED_ITEMS_INDEX)
+        assert await client.indices.exists(index="items_foreign")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", ["legacy", "shared-b", None])
+async def test_legacy_shared_alias_requires_its_exact_collection_filter(
+    app_client,
+    database,
+    test_collection,
+    test_item,
+    owner,
+):
+    await add_collection(app_client, test_collection, test_item, "shared-b")
+    client = database.client
+    await client.index(
+        index=COLLECTIONS_INDEX,
+        id="legacy",
+        body=collection_with(test_collection, "legacy"),
+        refresh=True,
+    )
+    await client.index(
+        index=SHARED_ITEMS_INDEX,
+        id="shared-item|legacy",
+        body=item_with(test_item, "legacy"),
+        refresh=True,
+    )
+    await client.indices.put_alias(
+        index=SHARED_ITEMS_INDEX,
+        name="items_legacy",
+        body={"filter": {"term": {"collection": owner}}} if owner else {},
+    )
+    response = await app_client.delete("/collections/legacy")
+    assert response.status_code == (204 if owner == "legacy" else 409), response.text
+    assert await collection_exists(client, "legacy") is (owner != "legacy")
+    assert bool(await client.indices.exists_alias(name="items_legacy")) is (
+        owner != "legacy"
+    )
+    assert await count(client, "legacy") == (0 if owner == "legacy" else 1)
+    assert await count(client, "shared-b") == 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("collection_id", ["a b", "a|b", "shared"])
 async def test_ids_the_shared_index_cannot_alias_are_rejected(
     app_client, database, test_collection, collection_id
@@ -527,6 +740,31 @@ async def test_ids_the_shared_index_cannot_alias_are_rejected(
     response = await app_client.post(
         "/collections", json=collection_with(test_collection, collection_id)
     )
+    assert response.status_code == 400, response.text
+    assert not await collection_exists(database.client, collection_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strategy", ["shared", "simple", "datetime"])
+@pytest.mark.parametrize("suffix", ["", "#"])
+async def test_ids_shaped_like_a_shared_alias_are_rejected(
+    app,
+    app_client,
+    txn_client,
+    database,
+    monkeypatch,
+    test_collection,
+    strategy,
+    suffix,
+):
+    # Its alias would be the shared alias of collection "a".
+    collection_id = f"collection_{hashlib.sha256(b'a').hexdigest()}{suffix}"
+    with monkeypatch.context() as patch:
+        patch.setenv("ITEMS_INDEX_STRATEGY", strategy)
+        async with rebuilt_index_strategy(txn_client, app):
+            response = await app_client.post(
+                "/collections", json=collection_with(test_collection, collection_id)
+            )
     assert response.status_code == 400, response.text
     assert not await collection_exists(database.client, collection_id)
 

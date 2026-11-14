@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - `ITEMS_INDEX_STRATEGY=shared` stores the items of all collections in one index, with a filtered alias per collection, for deployments with many small collections. See [Shared Items Index](README.md#shared-items-index). [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
 
+### Changed
+
+- Shared mode accepts collection IDs that contain colons, and names each collection's alias after the SHA-256 hash of the original ID. Public IDs stay unchanged. Collection IDs of the form `collection_<64 hex digits>` are now rejected with `400` in every strategy, since their alias would match another collection's shared alias. Shared mode has not been released yet, so released deployments need no migration; a deployment already running shared mode from `main` must [replace its collection aliases](README.md#migrating).
+- Deleting a collection whose ID contains a colon in simple or datetime mode returns `409` while a physical shared items index exists. Retry the deletion in shared mode so its items are cleaned up before its metadata is removed.
+
 ### Deprecated
 
 - `ENABLE_DATETIME_INDEX_FILTERING`. It is still read when `ITEMS_INDEX_STRATEGY` is unset. Setting it logs a deprecation warning once, which also names a value that is not a boolean. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)

@@ -68,6 +68,7 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
     decode_token_to_search_after,
     encode_search_after_to_token,
 )
+from stac_fastapi.sfeos_helpers.database.index import check_legacy_collection_delete
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
@@ -2242,6 +2243,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             self.client, COLLECTIONS_INDEX, version.index
         ):
             raise precondition_failed(f"Collection {collection_id}")
+        await check_legacy_collection_delete(self.client, collection_id)
         try:
             await self.client.delete(
                 index=version.index if version else COLLECTIONS_INDEX,
