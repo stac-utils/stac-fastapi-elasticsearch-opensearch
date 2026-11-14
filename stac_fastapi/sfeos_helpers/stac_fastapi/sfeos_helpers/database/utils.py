@@ -225,7 +225,7 @@ async def find_item_indexes_in_alias(client: Any, alias: str, doc_id: str) -> li
     resp = await client.mget(
         body={
             "docs": [
-                {"_index": index, "_id": doc_id}
+                {"_index": index, "_id": doc_id, "_source": False}
                 for index in await _alias_index_names(client, alias)
             ]
         }
