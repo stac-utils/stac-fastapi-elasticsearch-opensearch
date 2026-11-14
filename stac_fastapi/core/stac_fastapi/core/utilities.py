@@ -477,7 +477,9 @@ def build_bulk_summary(
     }
 
 
-def format_bulk_errors(errors: list[dict]) -> list[dict[str, str]]:
+def format_bulk_errors(
+    errors: list[dict], item_ids: dict[str, tuple[str, str]]
+) -> list[dict[str, str]]:
     """Format raw bulk action errors into transaction error objects."""
     formatted = []
     for action in errors:
@@ -485,11 +487,13 @@ def format_bulk_errors(errors: list[dict]) -> list[dict[str, str]]:
         doc_id = detail.get("_id", "")
         error = detail.get("error", {})
         reason = error.get("reason") if isinstance(error, dict) else None
-        formatted.append({"id": doc_id.split("|", 1)[0], "msg": reason or str(error)})
+        formatted.append({"id": item_ids[doc_id][0], "msg": reason or str(error)})
     return formatted
 
 
-def format_conflict_errors(conflicts: list[dict]) -> dict[str, str]:
+def format_conflict_errors(
+    conflicts: list[dict], item_ids: dict[str, tuple[str, str]]
+) -> dict[str, str]:
     """Format database conflict errors into a clean dictionary.
 
     Parses conflict error objects and extracts human-readable messages.
@@ -505,11 +509,8 @@ def format_conflict_errors(conflicts: list[dict]) -> dict[str, str]:
     conflict_details = {}
     for c in conflicts:
         doc_id = next(iter(c.values())).get("_id", "")
-        if "|" in doc_id:
-            item_id, coll_id = doc_id.split("|", 1)
-            conflict_details[
-                item_id
-            ] = f"Item '{item_id}' already exists in collection '{coll_id}'"
-        else:
-            conflict_details[doc_id] = f"Item '{doc_id}' already exists"
+        item_id, coll_id = item_ids[doc_id]
+        conflict_details[
+            item_id
+        ] = f"Item '{item_id}' already exists in collection '{coll_id}'"
     return conflict_details
