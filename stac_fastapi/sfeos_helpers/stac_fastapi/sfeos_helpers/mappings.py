@@ -278,6 +278,8 @@ class Geometry(Protocol):  # noqa
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 ITEMS_ALIAS_PREFIX = os.getenv("STAC_ITEMS_ALIAS_PREFIX", ITEMS_INDEX_PREFIX)
+# The one physical items index of ITEMS_INDEX_STRATEGY=shared.
+SHARED_ITEMS_INDEX = f"{ITEMS_INDEX_PREFIX}shared"
 
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "\\",
