@@ -70,6 +70,14 @@ class BaseIndexInserter(ABC):
         """
         pass
 
+    def validate_collection_id(self, collection_id: str) -> None:
+        """Validate a collection id before the collection is created.
+
+        Args:
+            collection_id (str): The id of the collection to be created.
+        """
+        pass
+
     def validate_datetime_field_update(self, field_path: str) -> None:
         """Validate if a datetime field can be updated.
 

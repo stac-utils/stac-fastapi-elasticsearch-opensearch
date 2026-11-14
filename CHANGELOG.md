@@ -7,10 +7,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- `ITEMS_INDEX_STRATEGY` (`simple` or `datetime`) selects how item indexes are laid out. `datetime` replaces `ENABLE_DATETIME_INDEX_FILTERING=true`. If both variables are set and disagree, the API fails at startup, so Helm values overrides that still set `ENABLE_DATETIME_INDEX_FILTERING` must switch to `ITEMS_INDEX_STRATEGY`; the chart's example values files already do. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
+
+- `ITEMS_INDEX_STRATEGY=shared` stores the items of all collections in one index, with a filtered alias per collection, for deployments with many small collections. See [Shared Items Index](README.md#shared-items-index). [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
+
+### Deprecated
+
+- `ENABLE_DATETIME_INDEX_FILTERING`. It is still read when `ITEMS_INDEX_STRATEGY` is unset. Setting it logs a deprecation warning once, which also names a value that is not a boolean. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
+
 ### Fixed
 
+- Creating a collection no longer leaves the collection behind when creating its items index fails (for example on a client timeout), which made a retried create return `409`. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
 - With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch that uses the append index `-` on a non-empty list with any operation except `add`, or as a `from` path (for example `remove /links/-`), now fails with `- does not exist in links` instead of an out-of-bounds runtime error. `-` in the middle of a path through a list (for example `/links/-/href`) now fails with `- in links/-/href does not exist` for every operation instead of `dynamic method [java.util.ArrayList, containsKey/1] not found`. The same check now applies to any member of a value that is not an object: in the middle of a path for every operation (for example `/links/title/x` or `/links/-1/x`), and as the last segment for `test`, `replace`, `remove` and `from` paths (for example `remove /links/foo` or `remove /properties/datetime/x`). These used to fail with the same `dynamic method … not found` error and now report `does not exist`. The status code stays `400`, and on an object `-` is still a member name. [#999](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/999)
 - `DELETE /collections/{collection_id}/items/{item_id}` without `If-Match` finds the item in real time and deletes it by ID. It used a `delete_by_query`, which only sees refreshed documents: with `DATABASE_REFRESH=false`, a `DELETE` sent before the next refresh answered `204` and left the item in place, and with `DATABASE_REFRESH=wait_for` every item `DELETE` answered `500`. A `DELETE` of an item that doesn't exist now answers `404` also in a collection that has items, where it answered `204`. [#1007](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1007)
+- With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch path whose member names contain `'` or `\` (for example `/properties/it's`) now acts on that member instead of failing with `400 script_exception: compile error`. These characters are now escaped in the update script, so a member name can no longer end its string literal and add statements to the script.
 
 ## [v8.1.2] - 2026-11-08
 

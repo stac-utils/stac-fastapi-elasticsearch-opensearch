@@ -165,8 +165,7 @@ app:
     # Rate limiting
     STAC_FASTAPI_RATE_LIMIT: "200/minute"
 
-    # Datetime index filtering
-    ENABLE_DATETIME_INDEX_FILTERING: "false"
+    # Datetime index filtering (set ITEMS_INDEX_STRATEGY: "datetime" to enable)
     DATETIME_INDEX_MAX_SIZE_GB: "25"
     STAC_ITEMS_INDEX_PREFIX: "items_"
 

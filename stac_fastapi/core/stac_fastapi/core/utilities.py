@@ -4,14 +4,20 @@ This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
 
+import functools
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, Literal, cast, get_args
 
 from stac_fastapi.types.stac import Item
 
 MAX_LIMIT = 10000
+
+TRUE_VALUES = ("true", "1", "yes", "y")
+FALSE_VALUES = ("false", "0", "no", "n")
+ItemsIndexStrategy = Literal["simple", "datetime", "shared"]
+ITEMS_INDEX_STRATEGIES: tuple[str, ...] = get_args(ItemsIndexStrategy)
 
 
 logger = logging.getLogger(__name__)
@@ -49,8 +55,8 @@ def get_bool_env(name: str, default: bool | str = False) -> bool:
     Returns:
         bool: The boolean value parsed from the environment variable.
     """
-    true_values = ("true", "1", "yes", "y")
-    false_values = ("false", "0", "no", "n")
+    true_values = TRUE_VALUES
+    false_values = FALSE_VALUES
 
     # Normalize the default value
     if isinstance(default, bool):
@@ -78,6 +84,57 @@ def get_bool_env(name: str, default: bool | str = False) -> bool:
             f"Expected one of {true_values + false_values}. Using default: {default_str}"
         )
         return default_str in true_values
+
+
+@functools.cache
+def _warn_legacy_index_flag(value: str, is_recognized: bool) -> None:
+    detail = "" if is_recognized else ", which is not a boolean and is treated as unset"
+    logger.warning(
+        f"ENABLE_DATETIME_INDEX_FILTERING is deprecated, use ITEMS_INDEX_STRATEGY "
+        f"instead (got '{value}'{detail})"
+    )
+
+
+def items_index_strategy() -> ItemsIndexStrategy:
+    """Return the configured items index strategy.
+
+    `ITEMS_INDEX_STRATEGY` wins when set; otherwise the deprecated
+    `ENABLE_DATETIME_INDEX_FILTERING` flag picks `datetime` or `simple`.
+    Setting the deprecated flag logs a warning once.
+
+    Raises:
+        ValueError: If the strategy is unknown, or the legacy flag is set and
+            disagrees with it.
+    """
+    legacy = os.getenv("ENABLE_DATETIME_INDEX_FILTERING", "").lower()
+    legacy_datetime = (
+        True if legacy in TRUE_VALUES else False if legacy in FALSE_VALUES else None
+    )
+    if legacy:
+        _warn_legacy_index_flag(legacy, legacy_datetime is not None)
+
+    strategy = os.getenv("ITEMS_INDEX_STRATEGY", "").strip().lower()
+    if not strategy:
+        return "datetime" if legacy_datetime else "simple"
+
+    if strategy not in ITEMS_INDEX_STRATEGIES:
+        raise ValueError(
+            f"ITEMS_INDEX_STRATEGY must be one of {', '.join(ITEMS_INDEX_STRATEGIES)}, "
+            f"got '{strategy}'"
+        )
+
+    if legacy_datetime is not None and legacy_datetime != (strategy == "datetime"):
+        raise ValueError(
+            f"ENABLE_DATETIME_INDEX_FILTERING={legacy} conflicts with "
+            f"ITEMS_INDEX_STRATEGY={strategy}; remove the deprecated "
+            "ENABLE_DATETIME_INDEX_FILTERING"
+        )
+    return cast(ItemsIndexStrategy, strategy)
+
+
+def items_index_is_partitioned() -> bool:
+    """Return whether a collection's items can span several indexes."""
+    return items_index_strategy() == "datetime"
 
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> list[list[list[float]]]:

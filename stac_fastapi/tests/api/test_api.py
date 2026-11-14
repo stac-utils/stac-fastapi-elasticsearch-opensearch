@@ -892,6 +892,38 @@ async def test_patch_operations_item(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_patch_operations_keep_quotes_in_member_names_literal(app_client, ctx):
+    url = f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
+    keys = [
+        "it's",
+        "a\\b",
+        "x'] = 1; ctx._source['collection'] = 'other'; ctx._source['y",
+    ]
+    headers = {"Content-Type": "application/json-patch+json"}
+
+    resp = await app_client.patch(
+        url,
+        json=[
+            {"op": "add", "path": f"/properties/{key}", "value": key} for key in keys
+        ],
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    item = (await app_client.get(url)).json()
+    assert item["collection"] == ctx.item["collection"]
+    assert all(item["properties"][key] == key for key in keys)
+
+    resp = await app_client.patch(
+        url,
+        json=[{"op": "remove", "path": f"/properties/{key}"} for key in keys],
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    item = (await app_client.get(url)).json()
+    assert not any(key in item["properties"] for key in keys)
+
+
+@pytest.mark.asyncio
 async def test_search_line_string_intersects(app_client, ctx):
     line = [[150.04, -33.14], [150.22, -33.89]]
     intersects = {"type": "LineString", "coordinates": line}
