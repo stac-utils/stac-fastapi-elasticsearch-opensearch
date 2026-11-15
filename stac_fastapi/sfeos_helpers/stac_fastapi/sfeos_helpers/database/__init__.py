@@ -55,6 +55,7 @@ from .index import (
     index_behind_alias,
     index_by_collection_id,
     indices,
+    resolve_aliases_shared,
 )
 from .mapping import get_queryables_mapping_shared
 from .query import (
@@ -95,6 +96,7 @@ __all__ = [
     "create_index_templates_shared",
     "delete_item_index_shared",
     "index_behind_alias",
+    "resolve_aliases_shared",
     "index_alias_by_collection_id",
     "index_by_collection_id",
     "filter_indexes_by_datetime",

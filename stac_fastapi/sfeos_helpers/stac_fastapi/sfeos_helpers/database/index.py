@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import HTTPException
 
@@ -462,3 +463,43 @@ async def index_behind_alias(client: Any, alias: str, index: str) -> bool:
     for entry in resolved.get("aliases", []):
         behind.update(entry.get("indices", []))
     return index in behind
+
+
+# Keeps each resolve request line well under the 4 KB HTTP line limit.
+_RESOLVE_BATCH_CHARS = 3000
+
+
+async def resolve_aliases_shared(
+    client: Any, aliases: list[str]
+) -> dict[str, tuple[str, ...]]:
+    """Map each existing alias or index name to its sorted backing indices.
+
+    Names are resolved in comma-joined batches; missing names are left out.
+    """
+    # ES and OS clients pass ignore_unavailable differently.
+    if hasattr(client, "options"):
+        ignore_unavailable: dict[str, Any] = {"ignore_unavailable": True}
+    else:
+        ignore_unavailable = {"params": {"ignore_unavailable": "true"}}
+
+    batches: list[list[str]] = []
+    batch_chars = _RESOLVE_BATCH_CHARS
+    for name in dict.fromkeys(aliases):
+        # The client percent-encodes the names into the URL.
+        name_chars = len(quote(name, safe="")) + 1
+        if batch_chars + name_chars > _RESOLVE_BATCH_CHARS:
+            batches.append([])
+            batch_chars = 0
+        batches[-1].append(name)
+        batch_chars += name_chars
+
+    backing: dict[str, tuple[str, ...]] = {}
+    for batch in batches:
+        resolved = await client.indices.resolve_index(
+            name=",".join(batch), **ignore_unavailable
+        )
+        for entry in resolved.get("indices", []):
+            backing[entry["name"]] = (entry["name"],)
+        for entry in resolved.get("aliases", []):
+            backing[entry["name"]] = tuple(sorted(entry.get("indices", [])))
+    return backing

@@ -3,6 +3,7 @@
 import os
 import time
 from collections import deque
+from copy import deepcopy
 from typing import Any
 
 import attr
@@ -151,15 +152,20 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
             return queryables
 
-        properties = queryables["properties"].copy()
-        queryables.update(
-            {
-                "properties": properties,
-                "additionalProperties": False,
-            }
+        mapping_data = await self.database.get_items_mapping(collection_id)
+        return await self.collection_queryables(
+            collection_id, self.queryables_from_mapping(mapping_data), url_str
         )
 
-        mapping_data = await self.database.get_items_mapping(collection_id)
+    def queryables_from_mapping(
+        self, mapping_data: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+        """Parse an items mapping into queryable properties and the enum fields.
+
+        Only the first index in `mapping_data` is read. Each enum field maps its
+        full field name to its entry in the returned properties.
+        """
+        properties = DEFAULT_QUERYABLES.copy()
         mapping_properties = next(iter(mapping_data.values()))["mappings"]["properties"]
         stack: deque[tuple[str, dict[str, Any]]] = deque(mapping_properties.items())
         enum_fields: dict[str, dict[str, Any]] = {}
@@ -205,6 +211,18 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             if field_result.pop("$enum", False):
                 enum_fields[field_fqn] = field_result
 
+        return properties, enum_fields
+
+    async def collection_queryables(
+        self,
+        collection_id: str,
+        parsed_mapping: tuple[dict[str, Any], dict[str, dict[str, Any]]],
+        url_str: str = "",
+    ) -> dict[str, Any]:
+        """Build a collection's queryables from a parsed mapping and its enum values."""
+        # Copied together so the enum entries stay the same objects as in properties.
+        properties, enum_fields = deepcopy(parsed_mapping)
+
         if enum_fields:
             unique_values = await self.database.get_items_unique_values(
                 collection_id, enum_fields
@@ -212,4 +230,12 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             for field_fqn, values in unique_values.items():
                 enum_fields[field_fqn]["enum"] = values
 
-        return queryables
+        return {
+            "$schema": "https://json-schema.org/draft-07/schema",
+            "$id": url_str,
+            "type": "object",
+            "title": "Queryables for STAC API",
+            "description": "Queryable names for the STAC API Item Search filter.",
+            "properties": properties,
+            "additionalProperties": False,
+        }

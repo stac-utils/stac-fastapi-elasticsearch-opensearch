@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- With `ROOT_QUERYABLES_UNION=true`, rebuilding the root `/queryables` fetches and parses each items index mapping once, instead of once per collection. Collections that share an index (`ITEMS_INDEX_STRATEGY=shared`) now cost one mapping request in total. Their aliases are resolved in batches, and each collection still gets its own enum values. [#1014](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1014)
+
 ## [v8.2.0] - 2026-11-15
 
 ### Added
