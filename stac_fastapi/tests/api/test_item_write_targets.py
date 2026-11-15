@@ -235,6 +235,69 @@ async def test_put_requires_searchable_target_after_unrefreshed_create(
         await refresh_indices(txn_client)
 
 
+async def test_delete_removes_an_unrefreshed_item(
+    app_client, txn_client, ctx, monkeypatch
+):
+    """A DELETE before the next refresh deletes the item instead of answering 204
+    and leaving it in place (the lookup is a real-time mget, not a search)."""
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "false")
+    monkeypatch.setenv("DATABASE_REFRESH", "false")
+    item = deepcopy(ctx.item)
+    item["id"] = f"unrefreshed-delete-{uuid.uuid4()}"
+    url = f"/collections/{item['collection']}/items/{item['id']}"
+    alias = index_alias_by_collection_id(ctx.collection["id"])
+    indices = txn_client.database.client.indices
+    concrete_indices = list((await indices.get_settings(index=alias)).keys())
+    prior = await indices.get_settings(index=alias, name="index.refresh_interval")
+    for concrete in concrete_indices:
+        await indices.put_settings(index=concrete, body={"refresh_interval": "-1"})
+    try:
+        await txn_client.database.create_item(item=item, refresh=False)
+        assert (await stored(txn_client, item))["found"]
+        assert (await app_client.delete(url)).status_code == 204
+        found = await txn_client.database.client.mget(
+            body={
+                "docs": [
+                    {"_index": index, "_id": mk_item_id(item["id"], item["collection"])}
+                    for index in concrete_indices
+                ]
+            }
+        )
+        assert not any(doc.get("found") for doc in found["docs"])
+    finally:
+        for concrete in concrete_indices:
+            settings = prior.get(concrete, {}).get("settings", {}).get("index", {})
+            interval = settings.get("refresh_interval")
+            await indices.put_settings(
+                index=concrete, body={"refresh_interval": interval}
+            )
+        await refresh_indices(txn_client)
+
+
+async def test_delete_with_database_refresh_wait_for(app_client, ctx, monkeypatch):
+    """DELETE accepts DATABASE_REFRESH=wait_for, like POST and PATCH (delete_by_query
+    rejected it with a 400 from the search engine, which surfaced as a 500)."""
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "false")
+    monkeypatch.setenv("DATABASE_REFRESH", "wait_for")
+    item = deepcopy(ctx.item)
+    item["id"] = f"wait-for-delete-{uuid.uuid4()}"
+    url = f"/collections/{item['collection']}/items/{item['id']}"
+    assert (
+        await app_client.post(f"/collections/{item['collection']}/items", json=item)
+    ).status_code == 201
+    assert (await app_client.delete(url)).status_code == 204
+    assert (await app_client.get(url)).status_code == 404
+
+
+async def test_delete_of_a_missing_item_in_an_existing_collection_is_404(
+    app_client, ctx
+):
+    """A DELETE that matches nothing answers 404, not 204, also when the collection
+    has an items index (test_delete_missing_item covers a collection without one)."""
+    url = f"/collections/{ctx.collection['id']}/items/missing-{uuid.uuid4()}"
+    assert (await app_client.delete(url)).status_code == 404
+
+
 @pytest.mark.parametrize("validator", ["false", "true"])
 @pytest.mark.parametrize("format", ["merge", "json"])
 @pytest.mark.parametrize("unhide", ["put", "patch"])
