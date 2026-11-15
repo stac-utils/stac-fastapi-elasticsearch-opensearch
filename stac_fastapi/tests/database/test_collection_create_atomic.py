@@ -4,6 +4,7 @@ import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
@@ -299,3 +300,35 @@ async def test_rename(
         )
         assert response.status_code == 200, response.text
         assert response.json()["collection"] == destination["id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ["-b", "-b'c"])
+async def test_rename_keeps_item_ids(
+    owned_collection_app, test_collection, test_item, suffix
+):
+    app = owned_collection_app
+    source = f"{app.prefix}-a"
+    destination = f"{app.prefix}{suffix}"
+    response = await app.client.post(
+        "/collections", json=dict(deepcopy(test_collection), id=source)
+    )
+    assert response.status_code == 201, response.text
+    # Each id contains a collection id, so rewriting it inside _id would misplace or collide items.
+    item_ids = [source, f"{destination}{source}", f"{destination}{destination}"]
+    for item_id in item_ids:
+        item = dict(deepcopy(test_item), id=item_id, collection=source)
+        response = await app.client.post(f"/collections/{source}/items", json=item)
+        assert response.status_code == 201, response.text
+
+    await app.database.update_collection(
+        source, dict(deepcopy(test_collection), id=destination), refresh=True
+    )
+
+    for item_id in item_ids:
+        response = await app.client.get(
+            f"/collections/{quote(destination, safe='')}/items/{quote(item_id, safe='')}"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["id"] == item_id
+        assert response.json()["collection"] == destination
