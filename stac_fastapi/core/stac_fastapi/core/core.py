@@ -207,6 +207,23 @@ def patch_addresses_field(patch: list, field: str) -> bool:
     return False
 
 
+def reject_generation_patch(patch: Any) -> None:
+    """Refuse a patch that addresses the backend-owned `collection_generation`.
+
+    A JSON Patch that reads or writes it answers 400; a merge patch drops it.
+    """
+    if isinstance(patch, list):
+        if patch_addresses_field(patch, "collection_generation"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not address collection_generation.",
+            )
+        return
+    extra = patch if isinstance(patch, dict) else getattr(patch, "model_extra", None)
+    if extra:
+        extra.pop("collection_generation", None)
+
+
 def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
     """Split `fields` selectors into include and exclude sets, ignoring empty names."""
     includes: set[str] = set()
@@ -2031,6 +2048,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     detail=f"A patch may not change the item {field}.",
                 )
 
+        reject_generation_patch(patch)
+
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
             # Request checks come before the precondition (RFC 9110, section 13.2.1).
@@ -2315,6 +2334,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 status_code=400,
                 detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
             )
+        reject_generation_patch(patch)
 
         # A merge patch ignores fields the backend owns. The partial request
         # models allow extra fields, so drop them before they become an

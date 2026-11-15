@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- With `ITEMS_INDEX_STRATEGY=shared`, two overlapping deletes of a collection followed by a create of the same id no longer let the late delete remove the new collection's items or its alias. Each created collection stores a random `collection_generation` in its document and its items, its alias filters on it, and a delete removes only the items of the generation it started from. A delete that returns `409` after removing the alias puts it back while the collection exists. Collections created by earlier versions keep their term-only alias. Item writes to a collection that has no alias (while it is being created or deleted, or after a delete that did not finish) now return `409`, or fail per item in a bulk response, where they used to create an index named after the alias. Upgrade every API replica and the Redis queue worker together, with ingestion paused. [#1010](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1010)
+
 ## [v8.2.0] - 2026-11-15
 
 ### Added

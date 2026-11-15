@@ -395,6 +395,7 @@ _BASE_ITEMS_MAPPINGS = {
     "properties": {
         "id": {"type": "keyword"},
         "collection": {"type": "keyword"},
+        "collection_generation": {"type": "keyword"},
         "geometry": {"type": "geo_shape"},
         "assets": {"type": "object", "enabled": get_bool_env("STAC_INDEX_ASSETS")},
         "links": {"type": "object", "enabled": False},
@@ -428,6 +429,7 @@ _BASE_ES_COLLECTIONS_MAPPINGS = {
             "fields": {"keyword": {"type": "keyword"}},
         },
         "parent_ids": {"type": "keyword"},
+        "collection_generation": {"type": "keyword"},
         "bbox_shape": {"type": "geo_shape"},
         "extent.temporal.interval": {
             "type": "date",

@@ -3,6 +3,7 @@
 from typing import Any
 
 from stac_fastapi.core.utilities import items_index_strategy
+from stac_fastapi.sfeos_helpers.database import GENERATION_FIELD
 from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_MAPPINGS,
     ITEMS_ALIAS_PREFIX,
@@ -19,24 +20,27 @@ def validate_shared_index_config() -> None:
 
     Searches across all collections read `<alias prefix>*`, which must match
     the shared index; the alias filters and the delete of a collection's items
-    need one exact, indexed `collection` term per item.
+    need one exact, indexed `collection` and `collection_generation` term
+    per item.
     """
     if ITEMS_ALIAS_PREFIX != ITEMS_INDEX_PREFIX:
         raise ValueError(
             "ITEMS_INDEX_STRATEGY=shared requires STAC_ITEMS_ALIAS_PREFIX to equal "
             "STAC_ITEMS_INDEX_PREFIX"
         )
-    collection = ES_ITEMS_MAPPINGS.get("properties", {}).get("collection", {})
-    if (
-        collection.get("type") != "keyword"
-        or "normalizer" in collection
-        or "ignore_above" in collection
-        or collection.get("index") is False
-    ):
-        raise ValueError(
-            "ITEMS_INDEX_STRATEGY=shared requires the items mapping of `collection` "
-            f"to be a plain indexed keyword, got {collection}"
-        )
+    properties = ES_ITEMS_MAPPINGS.get("properties", {})
+    for field in ("collection", GENERATION_FIELD):
+        mapping = properties.get(field, {})
+        if (
+            mapping.get("type") != "keyword"
+            or "normalizer" in mapping
+            or "ignore_above" in mapping
+            or mapping.get("index") is False
+        ):
+            raise ValueError(
+                f"ITEMS_INDEX_STRATEGY=shared requires the items mapping of `{field}` "
+                f"to be a plain indexed keyword, got {mapping}"
+            )
 
 
 class IndexInsertionFactory:

@@ -1604,6 +1604,8 @@ python scripts/item_queue_worker.py
 
 The worker reads `ITEMS_INDEX_STRATEGY` (and the deprecated `ENABLE_DATETIME_INDEX_FILTERING`) in its own process, so give it the same values as the API. Otherwise it writes queued items with a different index layout and duplicate handling than the API.
 
+With `ITEMS_INDEX_STRATEGY=shared`, pause ingestion and upgrade every API replica and the worker together when moving to a version that stores `collection_generation` (see [Shared Items Index](#shared-items-index)). An older writer stores items without a generation, and the alias of a collection created by the new version doesn't show them.
+
 ## How Datetime-Based Indexing Works
 
 ### Index and Alias Naming Convention
@@ -1642,7 +1644,13 @@ The system uses a precise naming convention:
 
 ## Shared Items Index
 
-With `ITEMS_INDEX_STRATEGY=shared`, the items of every collection go into one index, `<STAC_ITEMS_INDEX_PREFIX>shared` (`items_shared` by default). Each collection gets a filtered alias named `<STAC_ITEMS_ALIAS_PREFIX>collection_<sha256>`, where `<sha256>` is the full SHA-256 hex digest of the original UTF-8 collection ID. Public IDs stay unchanged, and the alias filter uses the original ID: `{"term": {"collection": "<collection id>"}}`.
+With `ITEMS_INDEX_STRATEGY=shared`, the items of every collection go into one index, `<STAC_ITEMS_INDEX_PREFIX>shared` (`items_shared` by default). Each collection gets a filtered alias named `<STAC_ITEMS_ALIAS_PREFIX>collection_<sha256>`, where `<sha256>` is the full SHA-256 hex digest of the original UTF-8 collection ID. Public IDs stay unchanged. Each time a collection is created it gets a random `collection_generation`, stored in the collection document and in each of its items, and the alias filter matches the original ID and that generation:
+
+```json
+{"bool": {"filter": [{"term": {"collection": "<collection id>"}}, {"term": {"collection_generation": "<generation>"}}]}}
+```
+
+A collection created by a version without generations keeps the filter `{"term": {"collection": "<collection id>"}}`, and its new items get no generation. The field is never returned in responses, queryables or sortables, and clients can't set it: creates and updates ignore it, a merge patch drops it, and a JSON Patch that addresses it returns `400`.
 
 Use it when a deployment has many small collections. Every index carries shards, mappings and cluster state, so with one index per collection, thousands of collections of a few items each cost far more than their data. On managed and serverless clusters that overhead shows up as slow index creation, long recoveries and a bill that grows with the index count. Large collections, or collections searched mostly by date, are better served by `simple` or `datetime`.
 
@@ -1650,7 +1658,7 @@ Trade-offs:
 
 - All collections share one mapping and one field limit. Queryables and sortables list the fields of every collection, not only the requested one.
 - It cannot be combined with `datetime`, and a collection id cannot change (`update_collection` with a new id raises an error).
-- `STAC_ITEMS_ALIAS_PREFIX` must equal `STAC_ITEMS_INDEX_PREFIX`, and the items mapping of `collection` must stay a plain indexed `keyword` (no `normalizer`, `ignore_above` or `index: false`). Otherwise the API fails at startup.
+- `STAC_ITEMS_ALIAS_PREFIX` must equal `STAC_ITEMS_INDEX_PREFIX`, and the items mappings of `collection` and `collection_generation` must stay plain indexed `keyword`s (no `normalizer`, `ignore_above` or `index: false`). Otherwise the API fails at startup. At startup the API adds `collection_generation` to the mappings of the collections index and of the shared index when they were created without it.
 - Colons are allowed in collection ids. The characters `\ / * ? " < > | , #` and spaces are rejected, and the id `shared` is reserved. In every strategy, an id that reads `collection_` followed by 64 lowercase hex digits (after those characters are removed) is reserved too, because its alias would match another collection's shared alias. Creating such a collection returns `400`.
 - The shared index uses the engine's default shard and replica counts. To use others, create `<prefix>shared` yourself before the first collection is created, and only after the API has started once, so that the items index template (mappings and sort settings) applies to it. An existing index is reused.
 
@@ -1658,11 +1666,17 @@ Trade-offs:
 
 `DELETE /collections/{collection_id}` is synchronous. It removes the collection alias, refreshes the shared index, deletes the collection's items with a delete-by-query, and deletes the collection document last. Until it finishes, searches across all collections still return the collection's items.
 
-If the delete-by-query reports failures, keeps hitting version conflicts or times out, the request returns `500`, the collection stays, and `DELETE` can be retried. A retry also removes any index that writes created under the collection alias in the meantime.
+If the delete-by-query reports failures, keeps hitting version conflicts or times out, the request returns `500`, the collection stays, and `DELETE` can be retried. Until then the collection has no alias, so item writes to it fail. A retry also removes any index that a direct write to the alias name created in the meantime.
 
-`If-Match` is checked when the delete starts (`412` if it does not match). If the collection changes after that, for example a `PUT` while its items are being deleted, the request returns `409` and `DELETE` can be retried. The checks run before each step, not atomically with it, so two overlapping deletes of a collection followed by a re-create of the same id leave a short window in which the late delete can remove items of the new collection.
+`If-Match` is checked when the delete starts (`412` if it does not match). If the collection changes after that, for example a `PUT` while its items are being deleted, the request returns `409` and `DELETE` can be retried. The delete-by-query matches only the generation read when the delete started, so when two deletes overlap and the id is created again, the late delete leaves the new collection's items alone. A delete that returns `409` after removing the alias puts the alias back if the collection still exists and neither of its alias names is in use. That restore is a separate request, so a search sent in between misses the collection's items.
 
-Writes are not blocked while a delete runs. Once the alias is gone, an item written to the collection auto-creates an index named after the alias; the delete removes that index at its end. An item written in the moment between that and the deletion of the collection document leaves such an index behind, which keeps the collection id from being created again until an operator deletes the index.
+A few cases are not cleaned up:
+
+- Items with an old generation stay hidden from the collection created again under the same id, but searches across all collections still return them. They come from writes that land after the delete that should have removed them: an item prepared before the delete and written after the re-create, a Redis-queued item flushed after it, or a write the cleanup missed. If such an item has the same id as an item of the new collection, `GET`, `PUT` and `PATCH` of that id return `404` and `POST` returns `409`. A `DELETE` of the item without `If-Match` removes it, and `POST` then works. With `If-Match` or `REQUIRE_IF_MATCH=true`, the `DELETE` returns `404` (or `428`), so delete the document `<item id>|<collection id>` from the shared index directly.
+- Items without a generation under a collection that has one, written directly to the index or by an older version of the API, are hidden and never deleted.
+- A create that stalls before writing its alias while the collection is deleted, and not created again, leaves an alias without a collection. Creating that id again replaces the alias.
+
+Writes are not blocked while a delete runs, but item writes need the collection alias to exist. While a collection is being created or deleted, or after a delete that did not finish, creating an item returns `409` and a bulk write reports each item as failed. This keeps the engine from creating an index named after the alias. A direct write to the alias name, outside the API, still creates one. The delete removes such an index at its end, but one created after that keeps the collection id from being created again until an operator deletes it.
 
 Deleting a large collection can take longer than the client timeout. Raise `ES_TIMEOUT` for such deployments: a delete-by-query that times out on the client is sent again by the connection retries, up to 25 times on Elasticsearch and 5 times on OpenSearch with the default `RETRY_MAX_ATTEMPTS_CONNECTION_ERROR`.
 
