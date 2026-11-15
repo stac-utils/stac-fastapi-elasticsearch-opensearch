@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v8.2.0] - 2026-11-15
+
 ### Added
 
 - `ITEMS_INDEX_STRATEGY` (`simple` or `datetime`) selects how item indexes are laid out. `datetime` replaces `ENABLE_DATETIME_INDEX_FILTERING=true`. If both variables are set and disagree, the API fails at startup, so Helm values overrides that still set `ENABLE_DATETIME_INDEX_FILTERING` must switch to `ITEMS_INDEX_STRATEGY`; the chart's example values files already do. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
@@ -33,7 +35,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
-- Updated stac-fastapi dependencies to v7.1.1 (`stac-fastapi.types`, `stac-fastapi.api`, `stac-fastapi.extensions`). Creates now return a `Location` header with the new resource's URL. A merge patch (`application/merge-patch+json` or `application/json`) on a collection still ignores the backend-owned `parent_ids` and `bbox_shape` fields, which the partial request models now pass through as extra fields.
+- Updated stac-fastapi dependencies to v7.1.1 (`stac-fastapi.types`, `stac-fastapi.api`, `stac-fastapi.extensions`). Creates now return a `Location` header with the new resource's URL. A merge patch (`application/merge-patch+json` or `application/json`) on a collection still ignores the backend-owned `parent_ids` and `bbox_shape` fields, which the partial request models now pass through as extra fields. [#1016](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1016)
 
 ## [v8.1.2] - 2026-11-08
 
@@ -1191,7 +1193,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.2...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.2.0...main
+[v8.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.2...v8.2.0
 [v8.1.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.1...v8.1.2
 [v8.1.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.0...v8.1.1
 [v8.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0...v8.1.0
