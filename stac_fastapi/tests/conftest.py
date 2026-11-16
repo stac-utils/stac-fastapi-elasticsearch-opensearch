@@ -418,12 +418,13 @@ def build_test_app():
     return api.app
 
 
-def build_test_app_with_catalogs(transactions_enabled: bool = True):
+def build_test_app_with_catalogs(transactions_enabled: bool = True, **settings):
     """Build a test app with catalogs extension enabled."""
     # Turn on the flag in settings
     test_settings = AsyncSettings(
         enable_catalogs_route=True,
         enable_transactions_extensions=transactions_enabled,
+        **settings,
     )
     test_database = DatabaseLogic()
 

@@ -93,6 +93,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     item_serializer: ItemSerializer = attr.ib(default=ItemSerializer)
     core_client: Any = attr.ib(default=None)
     transactions_client: Any = attr.ib(default=None)
+    extension_conformance_classes: list[str] = attr.ib(factory=list)
 
     def _get_base_url(self, request: Request | None) -> str:
         """Extract base URL from request with sensible default.
@@ -1589,6 +1590,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         conformance classes of registered catalog extensions via
         ``app.state.catalogs_conformance_classes``, and the transaction
         extension is only registered when transactions are enabled.
+
+        Filter and sort classes come from the extensions the scoped routes
+        use. Aggregation is not declared: no scoped aggregate endpoint exists.
         """
         await self.database.find_catalog(catalog_id)
         return {
@@ -1599,6 +1603,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 "https://api.stacspec.org/v1.0.0/children",
                 "https://api.stacspec.org/v1.0.0/children#type-filter",
                 "https://api.stacspec.org/v1.0.0/item-search",
+                *self.extension_conformance_classes,
             ]
         }
 

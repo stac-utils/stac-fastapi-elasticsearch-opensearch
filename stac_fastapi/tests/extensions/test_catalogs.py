@@ -4,8 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from stac_fastapi.core.catalogs_client import CatalogsClient
+from stac_fastapi.extensions.filter import FilterConformanceClasses
+from stac_fastapi.extensions.sort import SortConformanceClasses
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
 from ..conftest import (
@@ -4772,6 +4775,47 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
     assert "https://api.stacspec.org/v1.0.0/children#type-filter" in conforms_to
     assert "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search" in conforms_to
     assert "https://api.stacspec.org/v1.0.0/item-search" in conforms_to
+
+
+SCOPED_FILTER_SORT_CONFORMANCE = {
+    FilterConformanceClasses.FILTER,
+    FilterConformanceClasses.SEARCH,
+    FilterConformanceClasses.COLLECTIONS,
+    FilterConformanceClasses.CQL2_TEXT,
+    FilterConformanceClasses.CQL2_JSON,
+    SortConformanceClasses.ITEM_SEARCH_SORT,
+    SortConformanceClasses.COLLECTION_SEARCH_SORT,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "enabled_extensions, is_filter_sort_declared",
+    [(None, True), (["fields", "query", "free_text", "pagination"], False)],
+)
+async def test_catalog_conformance_declares_scoped_filter_and_sort(
+    catalogs_app_client, load_test_data, enabled_extensions, is_filter_sort_declared
+):
+    """Sub-catalog conformance lists filter and sort only when the scoped routes accept them."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    app = build_test_app_with_catalogs(enabled_extensions=enabled_extensions)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test-server"
+    ) as client:
+        resp = await client.get(f"/catalogs/{test_catalog['id']}/conformance")
+    assert resp.status_code == 200
+    conforms_to = set(resp.json()["conformsTo"])
+
+    if is_filter_sort_declared:
+        assert SCOPED_FILTER_SORT_CONFORMANCE <= conforms_to
+    else:
+        assert not SCOPED_FILTER_SORT_CONFORMANCE & conforms_to
+    assert not any("sortables" in uri for uri in conforms_to)
+    assert not any("aggregation" in uri for uri in conforms_to)
 
 
 # ============================================================================
