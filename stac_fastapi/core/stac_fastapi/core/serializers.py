@@ -392,7 +392,7 @@ class CollectionSerializer(Serializer):
             for key in ["assets", "item_assets"]:
                 if key in collection:
                     collection[key] = [
-                        {"es_key": k, **v} for k, v in collection.get(key, {}).items()
+                        {"es_key": k, **v} for k, v in (collection[key] or {}).items()
                     ]
         return collection
 

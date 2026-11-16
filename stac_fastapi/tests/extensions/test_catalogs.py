@@ -241,6 +241,36 @@ async def test_create_catalog_collection_indexes_assets(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("scoped", [False, True])
+async def test_create_collection_with_null_assets_when_indexing_assets(
+    catalogs_app_client, load_test_data, monkeypatch, scoped
+):
+    """With STAC_INDEX_ASSETS on, null assets and item_assets are stored as empty."""
+    monkeypatch.setenv("STAC_INDEX_ASSETS", "true")
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    collection["assets"] = None
+    collection["item_assets"] = None
+    path = "/collections"
+    if scoped:
+        catalog_id = await _create_catalog(catalogs_app_client, load_test_data)
+        path = f"/catalogs/{catalog_id}/collections"
+
+    try:
+        resp = await catalogs_app_client.post(path, json=collection)
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["assets"] == {}
+        assert resp.json()["item_assets"] == {}
+
+        resp = await catalogs_app_client.get(f"/collections/{collection['id']}")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["assets"] == {}
+        assert resp.json()["item_assets"] == {}
+    finally:
+        await catalogs_app_client.delete(f"/collections/{collection['id']}")
+
+
+@pytest.mark.asyncio
 async def test_update_catalog(catalogs_app_client, load_test_data):
     """Test updating an existing catalog."""
     # First create a catalog
