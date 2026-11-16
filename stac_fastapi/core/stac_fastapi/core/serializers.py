@@ -383,6 +383,8 @@ class CollectionSerializer(Serializer):
             A dictionary representation of the collection for the database.
         """
         collection = deepcopy(collection)
+        # The backend derives bbox_shape from the extent.
+        collection.pop("bbox_shape", None)
         collection["links"] = resolve_links(
             collection.get("links", []), str(request.base_url)
         )

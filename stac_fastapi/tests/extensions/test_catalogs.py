@@ -8,7 +8,11 @@ import pytest
 from stac_fastapi.core.catalogs_client import CatalogsClient
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
-from ..conftest import build_test_app_with_catalogs, get_flattened_routes
+from ..conftest import (
+    build_test_app_with_catalogs,
+    get_flattened_routes,
+    refresh_indices,
+)
 
 
 @pytest.mark.asyncio
@@ -166,6 +170,38 @@ async def test_create_collection_ignores_parent_ids_in_body(
     assert list_resp.status_code == 200
     listed_ids = [c["id"] for c in list_resp.json()["collections"]]
     assert collection["id"] not in listed_ids
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_collection_ignores_bbox_shape_in_body(
+    catalogs_app_client, txn_client, load_test_data
+):
+    """POST /catalogs/{catalog_id}/collections derives bbox_shape from the extent (#1017)."""
+    catalog_id = await _create_catalog(catalogs_app_client, load_test_data)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    collection["bbox_shape"] = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+    }
+
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=collection
+    )
+    assert resp.status_code == 201, resp.text
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection["id"]
+    )
+    assert stored["_source"]["bbox_shape"]["coordinates"] == [
+        [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]
+    ]
+    await refresh_indices(txn_client)
+    resp = await catalogs_app_client.get(
+        "/collections", params={"bbox": "100,10,110,20"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert collection["id"] in {c["id"] for c in resp.json()["collections"]}
 
 
 @pytest.mark.asyncio

@@ -2310,11 +2310,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 detail="A patch may not change the collection type.",
             )
 
-        if isinstance(patch, list) and patch_addresses_field(patch, "parent_ids"):
-            raise HTTPException(
-                status_code=400,
-                detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
-            )
+        if isinstance(patch, list):
+            for field, reason in (
+                ("parent_ids", "use /catalogs/{catalog_id}/collections"),
+                ("bbox_shape", "it is derived from the collection extent"),
+            ):
+                if patch_addresses_field(patch, field):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"A patch may not address {field}; {reason}.",
+                    )
 
         # A merge patch ignores fields the backend owns. The partial request
         # models allow extra fields, so drop them before they become an

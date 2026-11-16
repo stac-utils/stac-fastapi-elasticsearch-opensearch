@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `PATCH /collections/{collection_id}` returns `400` for any JSON Patch operation whose `path` or `from` is `/bbox_shape` (or below it), including a read-only `test` or a `copy` from it, and for a root replace whose value carries `bbox_shape`. Previously `add` stored the client's shape in both validator modes, and with `ENABLE_STAC_VALIDATOR=false` `replace` overwrote it and `remove` deleted it, so `GET /collections?bbox=` matched the wrong area or stopped listing the collection. Merge patch still ignores `bbox_shape`. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
+- `POST /collections`, `PUT /collections/{collection_id}` and `POST /catalogs/{catalog_id}/collections` no longer read `bbox_shape` from the request body. They still return `201` or `200`, and the stored shape is derived from the collection's spatial extent. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
+- With `ENABLE_STAC_VALIDATOR=false`, a collection patch whose first extent bbox gives a shape the index rejects (for example `[5, 5, 5, 5]`) now returns `400` and changes nothing. It used to return `200`. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
+
+### Fixed
+
+- A collection patch with `ENABLE_STAC_VALIDATOR=false` (JSON Patch or merge patch) now rebuilds `bbox_shape` from the patched extent in the same write, and removes it when the extent has no usable bbox. Before, the old shape stayed, so `GET /collections?bbox=` kept matching the previous extent. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
+- `bbox_shape` is derived when `ENABLE_COLLECTIONS_SEARCH` is unset. Collection search is on by default, but create, update and patch only derived the shape when `ENABLE_COLLECTIONS_SEARCH` or `ENABLE_COLLECTIONS_SEARCH_ROUTE` was explicitly `true`. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
+
 ## [v8.2.0] - 2026-11-15
 
 ### Added
