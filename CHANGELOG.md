@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `POST /catalogs/{catalog_id}/collections` now converts a new collection the same way as `POST /collections` before storing it, including assets and relative link hrefs. With `STAC_INDEX_ASSETS=true`, a collection with assets was stored with its assets unconverted, so the request failed with `500` after the write and reading the collection back failed the same way. [#1027](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1027)
 - With `STAC_INDEX_ASSETS=true`, `POST /collections` and `POST /catalogs/{catalog_id}/collections` accept a collection with `"assets": null` or `"item_assets": null` and store it without assets. They returned `500`. [#1027](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1027)
 - Renaming a collection refreshes its items index first, so items written since the last refresh (for example with `DATABASE_REFRESH=false`) are no longer lost. [#1024](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1024)
+- When the selected item indexes are too many for the request URL, an Elasticsearch search no longer returns items that match none of the branches of a CQL2 `or` filter, and a filter with a single comparison no longer fails with `400`. [#1029](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1029)
 
 ## [v8.2.0] - 2026-11-15
 
