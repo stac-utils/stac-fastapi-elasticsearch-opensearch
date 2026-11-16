@@ -1570,6 +1570,8 @@ ITEMS_INDEX_STRATEGY=datetime
 
 `ITEMS_INDEX_STRATEGY` accepts `simple` (the default, one index per collection), `datetime` or `shared` (see [Shared Items Index](#shared-items-index)). The older `ENABLE_DATETIME_INDEX_FILTERING=true` still selects `datetime` when `ITEMS_INDEX_STRATEGY` is unset, but it is deprecated and logs a warning at startup. If both are set and disagree (for example `ENABLE_DATETIME_INDEX_FILTERING=false` with `ITEMS_INDEX_STRATEGY=datetime`), the API fails at startup.
 
+With `datetime`, a collection id cannot change (`update_collection` with a new id raises an error).
+
 > [!IMPORTANT]
 > **Redis is required** when datetime-based indexing is enabled. The system uses Redis to cache index alias mappings from Elasticsearch/OpenSearch, which significantly speeds up search queries by avoiding repeated alias lookups. Insert operations always fetch fresh aliases directly from ES/OS and then refresh the Redis cache, ensuring that search queries always see up-to-date alias data. Configure Redis using the connection variables described in the [Redis for Navigation](#redis-for-navigation-environment-variables) section (`REDIS_HOST`/`REDIS_PORT` or `REDIS_SENTINEL_HOSTS`).
 

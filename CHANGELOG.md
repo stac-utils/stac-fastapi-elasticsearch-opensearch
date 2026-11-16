@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - With `ROOT_QUERYABLES_UNION=true`, rebuilding the root `/queryables` fetches and parses each items index mapping once, instead of once per collection. Collections that share an index (`ITEMS_INDEX_STRATEGY=shared`) now cost one mapping request in total. Their aliases are resolved in batches, and each collection still gets its own enum values. [#1014](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1014)
+- Renaming a collection with `ITEMS_INDEX_STRATEGY=datetime` now returns `400`, as it already did with `shared`. The rename used to move the items into an index without aliases, where they could not be fetched or searched. [#1024](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1024)
 
 ### Fixed
 
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `bbox_shape` is derived when `ENABLE_COLLECTIONS_SEARCH` is unset. Collection search is on by default, but create, update and patch only derived the shape when `ENABLE_COLLECTIONS_SEARCH` or `ENABLE_COLLECTIONS_SEARCH_ROUTE` was explicitly `true`. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
 - `POST /catalogs/{catalog_id}/collections` now converts a new collection the same way as `POST /collections` before storing it, including assets and relative link hrefs. With `STAC_INDEX_ASSETS=true`, a collection with assets was stored with its assets unconverted, so the request failed with `500` after the write and reading the collection back failed the same way. [#1027](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1027)
 - With `STAC_INDEX_ASSETS=true`, `POST /collections` and `POST /catalogs/{catalog_id}/collections` accept a collection with `"assets": null` or `"item_assets": null` and store it without assets. They returned `500`. [#1027](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1027)
+- Renaming a collection refreshes its items index first, so items written since the last refresh (for example with `DATABASE_REFRESH=false`) are no longer lost. [#1024](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1024)
 
 ## [v8.2.0] - 2026-11-15
 
