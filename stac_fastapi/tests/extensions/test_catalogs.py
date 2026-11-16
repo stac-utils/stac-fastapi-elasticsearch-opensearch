@@ -205,6 +205,42 @@ async def test_create_catalog_collection_ignores_bbox_shape_in_body(
 
 
 @pytest.mark.asyncio
+async def test_create_catalog_collection_indexes_assets(
+    catalogs_app_client, txn_client, load_test_data, monkeypatch
+):
+    """POST /catalogs/{catalog_id}/collections stores assets as STAC_INDEX_ASSETS expects."""
+    monkeypatch.setenv("STAC_INDEX_ASSETS", "true")
+    catalog_id = await _create_catalog(catalogs_app_client, load_test_data)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    thumbnail = {"href": "https://example.com/thumbnail.png", "type": "image/png"}
+    collection["assets"] = {"thumbnail": thumbnail}
+
+    # Delete while the flag is on: later tests read the indexed form without it.
+    try:
+        resp = await catalogs_app_client.post(
+            f"/catalogs/{catalog_id}/collections", json=collection
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["assets"] == {"thumbnail": thumbnail}
+
+        stored = await txn_client.database.client.get(
+            index=COLLECTIONS_INDEX, id=collection["id"]
+        )
+        assert stored["_source"]["assets"] == [{"es_key": "thumbnail", **thumbnail}]
+
+        for path in (
+            f"/collections/{collection['id']}",
+            f"/catalogs/{catalog_id}/collections/{collection['id']}",
+        ):
+            resp = await catalogs_app_client.get(path)
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["assets"] == {"thumbnail": thumbnail}
+    finally:
+        await catalogs_app_client.delete(f"/collections/{collection['id']}")
+
+
+@pytest.mark.asyncio
 async def test_update_catalog(catalogs_app_client, load_test_data):
     """Test updating an existing catalog."""
     # First create a catalog

@@ -985,7 +985,6 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         # Create new collection
         col_dict = self._to_dict(collection)
         col_dict["parent_ids"] = [catalog_id]
-        col_dict.pop("bbox_shape", None)
 
         # Filter out dynamic links
         if "links" in col_dict:
@@ -995,6 +994,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 if isinstance(link, dict)
                 and link.get("rel") not in ("parent", "child", "children")
             ]
+        col_dict = self.collection_serializer.stac_to_db(col_dict, request)
 
         try:
             version = await self.database.create_collection(col_dict, refresh=True)

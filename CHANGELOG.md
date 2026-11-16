@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - A collection patch with `ENABLE_STAC_VALIDATOR=false` (JSON Patch or merge patch) now rebuilds `bbox_shape` from the patched extent in the same write, and removes it when the extent has no usable bbox. Before, the old shape stayed, so `GET /collections?bbox=` kept matching the previous extent. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
 - `bbox_shape` is derived when `ENABLE_COLLECTIONS_SEARCH` is unset. Collection search is on by default, but create, update and patch only derived the shape when `ENABLE_COLLECTIONS_SEARCH` or `ENABLE_COLLECTIONS_SEARCH_ROUTE` was explicitly `true`. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)
+- `POST /catalogs/{catalog_id}/collections` now converts a new collection the same way as `POST /collections` before storing it, including assets and relative link hrefs. With `STAC_INDEX_ASSETS=true`, a collection with assets was stored with its assets unconverted, so the request failed with `500` after the write and reading the collection back failed the same way. [#1027](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1027)
 
 ## [v8.2.0] - 2026-11-15
 
