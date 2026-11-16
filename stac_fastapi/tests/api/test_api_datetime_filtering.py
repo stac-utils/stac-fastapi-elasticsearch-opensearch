@@ -2042,3 +2042,147 @@ async def test_items_of_collection_without_item_indexes_return_empty_for_datetim
         assert engine_calls == []
     finally:
         await delete_collections_and_items(txn_client)
+
+
+def _spy_engine_calls(app, monkeypatch) -> list:
+    engine_calls = []
+    db_client = app.state.database_logic.client
+    for name in ("search", "count"):
+
+        async def spy(*args, _name=name, _original=getattr(db_client, name), **kwargs):
+            engine_calls.append((_name, kwargs.get("index")))
+            return await _original(*args, **kwargs)
+
+        monkeypatch.setattr(db_client, name, spy)
+    return engine_calls
+
+
+async def _create_cql2_index_selection_data(app_client, load_test_data) -> dict:
+    """Create indexed collections a and b with one item each, and an empty one."""
+    suffix = uuid.uuid4()
+    ids = {
+        "a": f"cql2-a-{suffix}",
+        "b": f"cql2-b-{suffix}",
+        "empty": f"cql2-empty-{suffix}",
+    }
+    for key, collection_id in list(ids.items()):
+        collection = load_test_data("test_collection.json")
+        collection["id"] = collection_id
+        response = await app_client.post("/collections", json=collection)
+        assert response.status_code == 201, response.text
+        if key == "empty":
+            continue
+        item = load_test_data("test_item.json")
+        item["id"] = f"item-{key}-{suffix}"
+        item["collection"] = collection_id
+        response = await app_client.post(
+            f"/collections/{collection_id}/items", json=item
+        )
+        assert response.status_code == 201, response.text
+        ids[f"item_{key}"] = item["id"]
+    return ids
+
+
+def _eq(field: str, value: str) -> dict:
+    return {"op": "=", "args": [{"property": field}, value]}
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_cql2_collection_without_item_indexes_returns_empty_for_datetime_index(
+    datetime_filtering_env, app, app_client, load_test_data, txn_client, monkeypatch
+):
+    await delete_collections_and_items(txn_client)
+    try:
+        ids = await _create_cql2_index_selection_data(app_client, load_test_data)
+        engine_calls = _spy_engine_calls(app, monkeypatch)
+
+        response = await app_client.post(
+            "/search",
+            json={
+                "filter-lang": "cql2-json",
+                "filter": _eq("collection", ids["empty"]),
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert result["features"] == []
+        assert result["numberMatched"] == 0
+        assert engine_calls == []
+    finally:
+        await delete_collections_and_items(txn_client)
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("make_filter", "force_url_fallback"),
+    [
+        pytest.param(
+            lambda ids: {
+                "op": "or",
+                "args": [_eq("collection", ids["a"]), _eq("id", ids["item_b"])],
+            },
+            False,
+            id="indexed-collection-or-id",
+        ),
+        pytest.param(
+            lambda ids: {"op": "<>", "args": [{"property": "collection"}, ids["a"]]},
+            False,
+            id="collection-not-equal",
+        ),
+        pytest.param(
+            lambda ids: {
+                "op": "or",
+                "args": [_eq("collection", ids["empty"]), _eq("id", ids["item_b"])],
+            },
+            False,
+            id="empty-collection-or-id",
+        ),
+        pytest.param(
+            lambda ids: {
+                "op": "or",
+                "args": [
+                    _eq("collection", ids["a"]),
+                    {
+                        "op": ">",
+                        "args": [{"property": "datetime"}, "2020-01-01T00:00:00Z"],
+                    },
+                ],
+            },
+            True,
+            id="collection-or-datetime-url-length-fallback",
+        ),
+    ],
+)
+async def test_cql2_branch_outside_named_collection_is_searched_for_datetime_index(
+    datetime_filtering_env,
+    app,
+    app_client,
+    load_test_data,
+    txn_client,
+    monkeypatch,
+    make_filter,
+    force_url_fallback,
+):
+    await delete_collections_and_items(txn_client)
+    try:
+        ids = await _create_cql2_index_selection_data(app_client, load_test_data)
+        if force_url_fallback:
+            backend_module = sys.modules[type(app.state.database_logic).__module__]
+            monkeypatch.setattr(backend_module, "ES_MAX_URL_LENGTH", 0)
+        engine_calls = _spy_engine_calls(app, monkeypatch)
+
+        response = await app_client.post(
+            "/search",
+            json={"filter-lang": "cql2-json", "filter": make_filter(ids)},
+        )
+
+        assert response.status_code == 200, response.text
+        feature_ids = {feature["id"] for feature in response.json()["features"]}
+        assert ids["item_b"] in feature_ids
+        assert engine_calls
+        assert all(index for _, index in engine_calls), engine_calls
+    finally:
+        await delete_collections_and_items(txn_client)

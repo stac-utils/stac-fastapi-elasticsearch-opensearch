@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- With `ITEMS_INDEX_STRATEGY=datetime`, a CQL2 filter that matches no item index now returns an empty result instead of searching every index, which failed with `400` (`No mapping found for [collection]`). Filters with a branch outside the named collections now return those items as well, among them `collection = 'a' OR id = 'x'`, `collection = 'a' OR datetime > T`, `collection <> 'a'`, `NOT collection = 'a' OR NOT collection = 'b'` and double negations. Such filters search `items_*`. [#990](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/990)
+
 ## [v8.2.0] - 2026-11-15
 
 ### Added
