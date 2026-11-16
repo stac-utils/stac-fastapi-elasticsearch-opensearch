@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from stac_fastapi.core.catalogs_client import CatalogsClient
+from stac_fastapi.core.models.links import SORTABLES_REL
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
 from ..conftest import (
@@ -5673,6 +5674,67 @@ async def test_core_post_collection_response_links_match_get(
     assert _links(post.json()) == _links(get.json())
     assert "queryables" in {link["rel"] for link in post.json()["links"]}
     assert _related_hrefs(post.json()) == []
+
+
+def _extension_links(body):
+    rels = {"queryables", "aggregate", "aggregations", SORTABLES_REL}
+    return sorted(
+        (link["rel"], link["href"]) for link in body["links"] if link["rel"] in rels
+    )
+
+
+@pytest.mark.asyncio
+async def test_scoped_collection_responses_carry_global_extension_links(
+    catalogs_app_client, load_test_data
+):
+    """Catalog-scoped collection responses carry the global extension links."""
+    created_in = await _create_catalog(catalogs_app_client, load_test_data)
+    linked_in = await _create_catalog(catalogs_app_client, load_test_data)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    scoped_path = f"/catalogs/{created_in}/collections/{collection['id']}"
+
+    create = await catalogs_app_client.post(
+        f"/catalogs/{created_in}/collections", json=collection
+    )
+    assert create.status_code == 201
+    link = await catalogs_app_client.post(
+        f"/catalogs/{linked_in}/collections", json={"id": collection["id"]}
+    )
+    assert link.status_code == 200
+    collection["title"] = "Updated via scoped PUT"
+    put = await catalogs_app_client.put(scoped_path, json=collection)
+    assert put.status_code == 200
+
+    expected = _extension_links(
+        (await catalogs_app_client.get(f"/collections/{collection['id']}")).json()
+    )
+    assert {rel for rel, _ in expected} == {
+        "queryables",
+        "aggregate",
+        "aggregations",
+        SORTABLES_REL,
+    }
+
+    scoped = await catalogs_app_client.get(scoped_path)
+    listing = await catalogs_app_client.get(f"/catalogs/{created_in}/collections")
+    children = await catalogs_app_client.get(f"/catalogs/{linked_in}/children")
+    listed = next(
+        c for c in listing.json()["collections"] if c["id"] == collection["id"]
+    )
+    child = next(c for c in children.json()["children"] if c["id"] == collection["id"])
+
+    responses = {
+        "create": create.json(),
+        "link": link.json(),
+        "put": put.json(),
+        "get": scoped.json(),
+        "listing": listed,
+        "children": child,
+    }
+    assert {name: _extension_links(body) for name, body in responses.items()} == {
+        name: expected for name in responses
+    }
 
 
 @pytest.mark.asyncio

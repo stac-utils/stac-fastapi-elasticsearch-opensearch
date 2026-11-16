@@ -94,6 +94,11 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     core_client: Any = attr.ib(default=None)
     transactions_client: Any = attr.ib(default=None)
 
+    @property
+    def _extension_names(self) -> list[str]:
+        """Application extensions plus CatalogsExtension, for serializer link gating."""
+        return [*self.database.extensions, "CatalogsExtension"]
+
     def _get_base_url(self, request: Request | None) -> str:
         """Extract base URL from request with sensible default.
 
@@ -179,7 +184,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         base_url = self._get_base_url(request)
         catalogs = [
             self.catalog_serializer.db_to_stac(
-                cat, request, extensions=["CatalogsExtension"]
+                cat, request, extensions=self._extension_names
             )
             for cat in catalogs_list
         ]
@@ -360,7 +365,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             raise
         record_etag(request, version)
         created_obj = self.catalog_serializer.db_to_stac(
-            db_catalog_dict, request, extensions=["CatalogsExtension"]
+            db_catalog_dict, request, extensions=self._extension_names
         )
         created_dict = self._to_dict(created_obj)
         created_dict["links"] = [
@@ -380,7 +385,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         # 2. Serialize database record to STAC object
         catalog_obj = self.catalog_serializer.db_to_stac(
-            catalog_dict, request, extensions=["CatalogsExtension"]
+            catalog_dict, request, extensions=self._extension_names
         )
 
         # Ensure we have a clean working dictionary for dynamic link building
@@ -551,7 +556,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         updated, new_version = await self.database.find_catalog_with_version(catalog_id)
         record_etag(request, new_version)
         updated_obj = self.catalog_serializer.db_to_stac(
-            updated, request, extensions=["CatalogsExtension"]
+            updated, request, extensions=self._extension_names
         )
 
         updated_dict = self._to_dict(updated_obj)
@@ -647,7 +652,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         collections = [
             self.collection_serializer.db_to_stac_in_catalog(
-                col, request, catalog_id=catalog_id, extensions=["CatalogsExtension"]
+                col, request, catalog_id=catalog_id, extensions=self._extension_names
             )
             for col in collections_list
         ]
@@ -736,7 +741,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         for cat in catalogs_list:
             catalog_obj = self.catalog_serializer.db_to_stac(
-                cat, request, extensions=["CatalogsExtension"]
+                cat, request, extensions=self._extension_names
             )
             catalog_dict = self._to_dict(catalog_obj)
             catalog_links = list(catalog_dict.get("links", []))
@@ -881,7 +886,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 raise
             record_etag(request, version)
             new_obj = self.catalog_serializer.db_to_stac(
-                db_catalog_dict, request, extensions=["CatalogsExtension"]
+                db_catalog_dict, request, extensions=self._extension_names
             )
             new_dict = self._to_dict(new_obj)
             new_dict["links"] = [
@@ -910,7 +915,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             )
             raise
         existing_obj = self.catalog_serializer.db_to_stac(
-            existing, request, extensions=["CatalogsExtension"]
+            existing, request, extensions=self._extension_names
         )
         existing_dict = self._to_dict(existing_obj)
         existing_dict["links"] = [
@@ -961,7 +966,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 existing,
                 request,
                 catalog_id=catalog_id,
-                extensions=["CatalogsExtension"],
+                extensions=self._extension_names,
             )
             # Linking an existing collection returns 200 OK (Mode B);
             # 201 Created is reserved for newly created collections
@@ -1009,7 +1014,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             col_dict,
             request,
             catalog_id=catalog_id,
-            extensions=["CatalogsExtension"],
+            extensions=self._extension_names,
         )
         # Return 201 Created for new collection
         content = self._to_dict(collection_obj)
@@ -1046,7 +1051,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             collection_dict,
             request,
             catalog_id=catalog_id,
-            extensions=["CatalogsExtension"],
+            extensions=self._extension_names,
         )
         collection_dict_out = self._to_dict(collection_obj)
         collection_dict_out["links"] = [
@@ -1129,7 +1134,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             updated_collection,
             request,
             catalog_id=catalog_id,
-            extensions=["CatalogsExtension"],
+            extensions=self._extension_names,
         )
         collection_dict_out = self._to_dict(collection_obj)
         collection_dict_out["links"] = [
@@ -1483,7 +1488,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             if child.get("type") == "Catalog":
                 children.append(
                     self.catalog_serializer.db_to_stac(
-                        child, request, extensions=["CatalogsExtension"]
+                        child, request, extensions=self._extension_names
                     )
                 )
             else:
@@ -1492,7 +1497,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                         child,
                         request,
                         catalog_id=catalog_id,
-                        extensions=["CatalogsExtension"],
+                        extensions=self._extension_names,
                     )
                 )
 
