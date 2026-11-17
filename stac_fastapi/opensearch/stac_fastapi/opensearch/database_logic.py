@@ -2075,10 +2075,12 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # A create, a reindex and a delete: no one conditional write covers
                 # it. No route renames (PUT and PATCH refuse an id change).
                 raise ValueError("A conditional update cannot change the collection id")
-            if isinstance(self.async_index_inserter, SharedIndexInserter):
+            if isinstance(
+                self.async_index_inserter, (SharedIndexInserter, DatetimeIndexInserter)
+            ):
                 raise HTTPException(
                     status_code=400,
-                    detail="ITEMS_INDEX_STRATEGY=shared cannot change a collection id",
+                    detail="Only ITEMS_INDEX_STRATEGY=simple can change a collection id",
                 )
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
@@ -2089,6 +2091,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             source_alias = index_alias_by_collection_id(collection_id)
             destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
 
+            # Reindex reads a search snapshot, so unrefreshed items would be lost.
+            await self.client.indices.refresh(index=source_alias)
             # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
