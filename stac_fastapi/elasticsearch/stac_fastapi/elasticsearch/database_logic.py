@@ -114,7 +114,6 @@ from stac_fastapi.sfeos_helpers.search_engine import (
     SharedIndexInserter,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -2102,7 +2101,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "source": {"index": index_alias_by_collection_id(collection_id)},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
+                        "source": "ctx._source.collection = params.collection; ctx._id = ctx._source.id + '|' + params.collection;",
+                        "params": {"collection": collection_dict.get("id")},
                     },
                 },
                 wait_for_completion=True,
@@ -2304,21 +2304,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched collection.
         """
-        new_collection_id = None
-        script_operations = []
-
-        for operation in operations:
-            if (
-                operation.op in ["add", "replace"]
-                and operation.path == "collection"
-                and collection_id != operation.value
-            ):
-                new_collection_id = operation.value
-
-            else:
-                script_operations.append(operation)
-
-        script = operations_to_script(script_operations, create_nest=create_nest)
+        script = operations_to_script(operations, create_nest=create_nest)
 
         if version is not None and not await index_behind_alias(
             self.client, COLLECTIONS_INDEX, version.index
@@ -2342,19 +2328,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
 
-        collection = await self.find_collection(collection_id)
-
-        if new_collection_id:
-            collection["id"] = new_collection_id
-            collection["links"] = resolve_links([], base_url)
-
-            await self.update_collection(
-                collection_id=collection_id,
-                collection=collection,
-                refresh=refresh,
-            )
-
-        return collection
+        return await self.find_collection(collection_id)
 
     @retry_on_connection_error
     async def delete_collection(
