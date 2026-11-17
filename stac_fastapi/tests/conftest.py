@@ -2,6 +2,7 @@ import asyncio
 import copy
 import json
 import os
+from contextlib import asynccontextmanager
 from typing import Any, Callable, List
 
 import pytest
@@ -497,23 +498,18 @@ def get_flattened_routes(router_obj, prefix=""):
     return api_routes
 
 
-@pytest_asyncio.fixture()
-async def datetime_filtering_env(txn_client, app, monkeypatch):
-    """Enable datetime index filtering for a test.
+@asynccontextmanager
+async def rebuilt_index_strategy(txn_client, app):
+    """Rebuild the index strategy objects under the current environment.
 
-    Sets ENABLE_DATETIME_INDEX_FILTERING=True so these tests run under a plain
-    ``pytest`` invocation without requiring the environment variable at process
-    start. Because the index inserter and selector are chosen when each
-    DatabaseLogic instance is constructed, the strategy objects on the shared
-    test database and the app's database are rebuilt under the new flag and
-    restored afterwards.
+    The index inserter and selector are chosen when each DatabaseLogic instance
+    is constructed, so the strategy objects on the shared test database and the
+    app's database are rebuilt and restored afterwards.
     """
     from stac_fastapi.sfeos_helpers.search_engine import (
         IndexInsertionFactory,
         IndexSelectorFactory,
     )
-
-    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "true")
 
     databases = {id(db): db for db in (txn_client.database, app.state.database_logic)}
     saved = {
@@ -527,13 +523,39 @@ async def datetime_filtering_env(txn_client, app, monkeypatch):
         db.async_index_selector = IndexSelectorFactory.create_selector(db.client)
         if hasattr(db.async_index_selector, "cache_manager"):
             await db.async_index_selector.cache_manager.clear_cache()
+    try:
+        yield
+    finally:
+        for db_id, db in databases.items():
+            db.async_index_inserter, db.async_index_selector = saved[db_id]
+            if hasattr(db.async_index_selector, "cache_manager"):
+                await db.async_index_selector.cache_manager.clear_cache()
 
-    yield
 
-    for db_id, db in databases.items():
-        db.async_index_inserter, db.async_index_selector = saved[db_id]
-        if hasattr(db.async_index_selector, "cache_manager"):
-            await db.async_index_selector.cache_manager.clear_cache()
+@pytest_asyncio.fixture()
+async def datetime_filtering_env(txn_client, app, monkeypatch):
+    """Enable datetime index filtering for a test.
+
+    Sets ENABLE_DATETIME_INDEX_FILTERING=True so these tests run under a plain
+    ``pytest`` invocation without requiring the environment variable at process
+    start.
+    """
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "true")
+    async with rebuilt_index_strategy(txn_client, app):
+        yield
+
+
+@pytest_asyncio.fixture()
+async def shared_index_env(txn_client, app, monkeypatch):
+    """Put the items of every collection in one shared index for a test."""
+    monkeypatch.delenv("ENABLE_DATETIME_INDEX_FILTERING", raising=False)
+    monkeypatch.setenv("ITEMS_INDEX_STRATEGY", "shared")
+    await delete_collections_and_items(txn_client)
+    try:
+        async with rebuilt_index_strategy(txn_client, app):
+            yield
+    finally:
+        await delete_collections_and_items(txn_client)
 
 
 @pytest_asyncio.fixture()

@@ -147,7 +147,6 @@ app:
     WEB_CONCURRENCY: "10"
     ENABLE_DIRECT_RESPONSE: "false"
     DATABASE_REFRESH: "false"
-    ENABLE_DATETIME_INDEX_FILTERING: "false"
     STAC_FASTAPI_RATE_LIMIT: "200/minute"
 ```
 
@@ -282,9 +281,11 @@ Enable datetime-based index filtering for better performance with temporal queri
 ```yaml
 app:
   env:
-    ENABLE_DATETIME_INDEX_FILTERING: "true"
+    ITEMS_INDEX_STRATEGY: "datetime"
     DATETIME_INDEX_MAX_SIZE_GB: "50"
 ```
+
+`ENABLE_DATETIME_INDEX_FILTERING` is deprecated. The example values files now set `ITEMS_INDEX_STRATEGY` instead, so a values override that still sets `ENABLE_DATETIME_INDEX_FILTERING` must be replaced by `ITEMS_INDEX_STRATEGY`; if the two disagree, the API fails at startup.
 
 ### For Maximum Performance
 

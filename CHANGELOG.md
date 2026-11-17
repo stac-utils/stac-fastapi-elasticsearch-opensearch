@@ -10,10 +10,45 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - `STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS` and `STAC_FASTAPI_ES_AGGREGATIONS_FILE` declare additional aggregations through configuration, without patching `AGGREGATION_MAPPING`. An aggregation is still advertised on the collections that list it, and a name ending in `_frequency` is returned as a frequency distribution. [#NNN](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/NNN)
+### Changed
+
+- With `ROOT_QUERYABLES_UNION=true`, rebuilding the root `/queryables` fetches and parses each items index mapping once, instead of once per collection. Collections that share an index (`ITEMS_INDEX_STRATEGY=shared`) now cost one mapping request in total. Their aliases are resolved in batches, and each collection still gets its own enum values. [#1014](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1014)
 
 ### Fixed
 
+- With `ITEMS_INDEX_STRATEGY=shared`, two overlapping deletes of a collection followed by a create of the same id no longer let the late delete remove the new collection's items or its alias. Each created collection stores a random `collection_generation` in its document and its items, its alias filters on it, and a delete removes only the items of the generation it started from. A delete that returns `409` after removing the alias puts it back while the collection exists. Collections created by earlier versions keep their term-only alias. Item writes to a collection that has no alias (while it is being created or deleted, or after a delete that did not finish) now return `409`, or fail per item in a bulk response, where they used to create an index named after the alias. With `ENABLE_REDIS_QUEUE=true` such a write is still accepted with `202`, and the worker moves the item to its dead-letter queue (with `RAISE_ON_BULK_ERROR=true` it leaves the batch queued and retries it). `collection_generation` is reserved in every strategy: clients can't set it, and a JSON Patch that addresses it returns `400`. A database-level `update_collection` with `preserve_parent_ids=False` keeps the stored generation, and its write is now conditional on the document it read, so a concurrent change returns `409` (`412` with a version). Upgrade every API replica and the Redis queue worker together, with ingestion paused. [#1010](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1010)
+- With `ENABLE_STAC_VALIDATOR=false`, a merge patch that sets `collection` on a collection (for example `{"collection": "b"}` sent to `PATCH /collections/a`) now stores it as a member of collection `a`, as it already did with the validator on and as JSON Patch `add /collection` does. It used to rename the collection to `b` and answer `404`. [#1011](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1011)
+- Renaming a collection with `DatabaseLogic.update_collection` keeps every item's ID. The reindex replaced every occurrence of the old collection ID in each document ID, so an item whose ID contained it got the wrong document ID: fetching it returned `404`, and it could overwrite another item. A collection ID containing `'` no longer fails the reindex with a Painless compile error. [#1011](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1011)
+
+## [v8.2.0] - 2026-11-15
+
+### Added
+
+- `ITEMS_INDEX_STRATEGY` (`simple` or `datetime`) selects how item indexes are laid out. `datetime` replaces `ENABLE_DATETIME_INDEX_FILTERING=true`. If both variables are set and disagree, the API fails at startup, so Helm values overrides that still set `ENABLE_DATETIME_INDEX_FILTERING` must switch to `ITEMS_INDEX_STRATEGY`; the chart's example values files already do. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
+
+- `ITEMS_INDEX_STRATEGY=shared` stores the items of all collections in one index, with a filtered alias per collection, for deployments with many small collections. Collection IDs may contain colons, and each alias is named after the SHA-256 hash of the original ID. See [Shared Items Index](README.md#shared-items-index). [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
+
+### Changed
+
+- Collection IDs of the form `collection_<64 hex digits>` are now rejected with `400` in every strategy, since their alias would match another collection's shared alias. [#1021](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1021)
+- Deleting a collection whose ID contains a colon in simple or datetime mode returns `409` while a physical shared items index exists. Retry the deletion in shared mode so its items are cleaned up before its metadata is removed.
+
+### Deprecated
+
+- `ENABLE_DATETIME_INDEX_FILTERING`. It is still read when `ITEMS_INDEX_STRATEGY` is unset. Setting it logs a deprecation warning once, which also names a value that is not a boolean. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
+
+### Fixed
+
+- Bulk errors keep the original Item and Collection IDs, including IDs that contain `|`. A FeatureCollection whose database writes all fail now includes `database_errors` in its `400` response. [#1020](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1020)
+- Creating a collection no longer leaves the collection behind when creating its items index fails (for example on a client timeout), which made a retried create return `409`. [#1008](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1008)
 - With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch that uses the append index `-` on a non-empty list with any operation except `add`, or as a `from` path (for example `remove /links/-`), now fails with `- does not exist in links` instead of an out-of-bounds runtime error. `-` in the middle of a path through a list (for example `/links/-/href`) now fails with `- in links/-/href does not exist` for every operation instead of `dynamic method [java.util.ArrayList, containsKey/1] not found`. The same check now applies to any member of a value that is not an object: in the middle of a path for every operation (for example `/links/title/x` or `/links/-1/x`), and as the last segment for `test`, `replace`, `remove` and `from` paths (for example `remove /links/foo` or `remove /properties/datetime/x`). These used to fail with the same `dynamic method … not found` error and now report `does not exist`. The status code stays `400`, and on an object `-` is still a member name. [#999](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/999)
+- `DELETE /collections/{collection_id}/items/{item_id}` without `If-Match` finds the item in real time and deletes it by ID. It used a `delete_by_query`, which only sees refreshed documents: with `DATABASE_REFRESH=false`, a `DELETE` sent before the next refresh answered `204` and left the item in place, and with `DATABASE_REFRESH=wait_for` every item `DELETE` answered `500`. A `DELETE` of an item that doesn't exist now answers `404` also in a collection that has items, where it answered `204`. [#1007](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1007)
+- With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch path whose member names contain `'` or `\` (for example `/properties/it's`) now acts on that member instead of failing with `400 script_exception: compile error`. These characters are now escaped in the update script, so a member name can no longer end its string literal and add statements to the script. [#1015](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1015)
+- With `ENABLE_STAC_VALIDATOR=false`, a JSON Patch path now decodes `~1` to `/` and `~0` to `~` (RFC 6901), as merge patch and the validator already do: `add /properties/a~1b` writes the member `a/b` instead of `a~1b`, and `remove` acts on `a/b` instead of `a~1b` when both exist. A member whose name contains a literal `~0` or `~1` is now addressed as `~00` or `~01`, so a key stored as `a~1b` by an earlier version is at `/properties/a~01b`. A `~` not followed by `0` or `1` (for example `/properties/a~2b`) now returns `400` before any `If-Match` check, as with the validator on. `remove` and `move` on member names with non-ASCII letters (for example `/properties/café`) no longer fail with a Painless compile error, and a member name such as `--1` is no longer read as an array index, which returned `500`. Only one leading `/` is stripped, so `remove //properties/a~1b` addresses the member `""` and returns `400` instead of removing `/properties/a~1b`. [#1018](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1018)
+
+### Updated
+
+- Updated stac-fastapi dependencies to v7.1.1 (`stac-fastapi.types`, `stac-fastapi.api`, `stac-fastapi.extensions`). Creates now return a `Location` header with the new resource's URL. A merge patch (`application/merge-patch+json` or `application/json`) on a collection still ignores the backend-owned `parent_ids` and `bbox_shape` fields, which the partial request models now pass through as extra fields. [#1016](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1016)
 
 ## [v8.1.2] - 2026-11-08
 
@@ -1171,7 +1206,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.2...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.2.0...main
+[v8.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.2...v8.2.0
 [v8.1.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.1...v8.1.2
 [v8.1.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.0...v8.1.1
 [v8.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.0.0...v8.1.0

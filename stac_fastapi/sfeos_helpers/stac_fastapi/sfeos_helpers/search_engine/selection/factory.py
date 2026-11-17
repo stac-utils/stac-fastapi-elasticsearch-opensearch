@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.utilities import items_index_is_partitioned
 
 from .base import BaseIndexSelector
 from .selectors import DatetimeBasedIndexSelector, UnfilteredIndexSelector
@@ -15,7 +15,7 @@ class IndexSelectorFactory:
     def create_selector(client: Any) -> BaseIndexSelector:
         """Create an appropriate asynchronous index selector based on environment configuration.
 
-        Checks the ENABLE_DATETIME_INDEX_FILTERING environment variable to determine
+        Checks the items index strategy to determine
         whether to use datetime-based filtering or return all available indices.
 
         Args:
@@ -26,12 +26,8 @@ class IndexSelectorFactory:
             IndexSelectionStrategy: Either an AsyncDatetimeBasedIndexSelector if datetime
                 filtering is enabled, or an UnfilteredIndexSelector otherwise.
         """
-        use_datetime_filtering = get_bool_env(
-            "ENABLE_DATETIME_INDEX_FILTERING", default="false"
-        )
-
         return (
             DatetimeBasedIndexSelector(client)
-            if use_datetime_filtering
+            if items_index_is_partitioned()
             else UnfilteredIndexSelector()
         )

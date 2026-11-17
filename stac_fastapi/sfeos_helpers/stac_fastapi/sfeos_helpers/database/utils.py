@@ -204,6 +204,35 @@ async def find_item_in_alias(
     return None
 
 
+async def find_item_indexes_in_alias(client: Any, alias: str, doc_id: str) -> list[str]:
+    """Real-time lookup of every concrete index under an alias that holds a document.
+
+    Like ``find_item_in_alias``, this uses ``mget``, so it sees documents that
+    have not been refreshed yet. It returns every index holding the ID, so a
+    caller can act on all copies, as a query on the alias would.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to look the document up under.
+        doc_id: The document ID to look up.
+
+    Returns:
+        list[str]: The concrete index names holding the document; empty if none.
+
+    Raises:
+        The search engine's NotFoundError when no index carries the alias.
+    """
+    resp = await client.mget(
+        body={
+            "docs": [
+                {"_index": index, "_id": doc_id, "_source": False}
+                for index in await _alias_index_names(client, alias)
+            ]
+        }
+    )
+    return [doc["_index"] for doc in resp.get("docs", []) if doc.get("found")]
+
+
 async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
     """Check if an item exists across all indexes for an alias.
 
@@ -221,15 +250,7 @@ async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bo
     Raises:
         The search engine's NotFoundError when no index carries the alias.
     """
-    resp = await client.mget(
-        body={
-            "docs": [
-                {"_index": index, "_id": doc_id, "_source": False}
-                for index in await _alias_index_names(client, alias)
-            ]
-        }
-    )
-    return any(doc.get("found") for doc in resp.get("docs", []))
+    return bool(await find_item_indexes_in_alias(client, alias, doc_id))
 
 
 def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
@@ -578,7 +599,7 @@ def check_commands(
                 commands.append(
                     f"if (!(ctx._source{part_nest} instanceof Map)"
                     f" || !ctx._source{part_nest}.containsKey('{path_part}'))"
-                    f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
+                    f"{{Debug.explain('{path.pointer_parts[index]} in {path.path} does not exist');}}"
                 )
 
             part_nest += f"['{path_part}']"
@@ -608,7 +629,7 @@ def check_commands(
             commands.append(
                 f"if (!(ctx._source{path.es_nest} instanceof Map)"
                 f" || !ctx._source{path.es_nest}.containsKey('{path.key}'))"
-                f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
+                f"{{Debug.explain('{path.pointer_parts[-1]} does not exist in {path.nest}');}}"  # noqa: E713
             )
 
 

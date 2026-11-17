@@ -332,6 +332,8 @@ class Geometry(Protocol):  # noqa
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 ITEMS_ALIAS_PREFIX = os.getenv("STAC_ITEMS_ALIAS_PREFIX", ITEMS_INDEX_PREFIX)
+# The one physical items index of ITEMS_INDEX_STRATEGY=shared.
+SHARED_ITEMS_INDEX = f"{ITEMS_INDEX_PREFIX}shared"
 
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "\\",
@@ -447,6 +449,7 @@ _BASE_ITEMS_MAPPINGS = {
     "properties": {
         "id": {"type": "keyword"},
         "collection": {"type": "keyword"},
+        "collection_generation": {"type": "keyword"},
         "geometry": {"type": "geo_shape"},
         "assets": {"type": "object", "enabled": get_bool_env("STAC_INDEX_ASSETS")},
         "links": {"type": "object", "enabled": False},
@@ -480,6 +483,7 @@ _BASE_ES_COLLECTIONS_MAPPINGS = {
             "fields": {"keyword": {"type": "keyword"}},
         },
         "parent_ids": {"type": "keyword"},
+        "collection_generation": {"type": "keyword"},
         "bbox_shape": {"type": "geo_shape"},
         "extent.temporal.interval": {
             "type": "date",

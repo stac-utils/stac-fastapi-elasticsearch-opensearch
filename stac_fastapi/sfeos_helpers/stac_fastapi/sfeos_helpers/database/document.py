@@ -23,6 +23,14 @@ def mk_item_id(item_id: str, collection_id: str) -> str:
     return f"{item_id}|{collection_id}"
 
 
+def bulk_item_id_map(items: list[Item]) -> dict[str, tuple[str, str]]:
+    """Map physical IDs to request IDs without decoding storage delimiters."""
+    return {
+        mk_item_id(item["id"], item["collection"]): (item["id"], item["collection"])
+        for item in items
+    }
+
+
 def mk_actions(
     collection_id: str,
     processed_items: list[Item],

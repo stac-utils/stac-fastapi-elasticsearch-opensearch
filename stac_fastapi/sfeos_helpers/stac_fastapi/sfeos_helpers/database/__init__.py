@@ -45,16 +45,23 @@ from .datetime import (
     is_index_closed,
     return_date,
 )
-from .document import mk_actions, mk_item_id
+from .document import bulk_item_id_map, mk_actions, mk_item_id
 from .index import (
+    GENERATION_FIELD,
     create_index_templates_shared,
     delete_item_index_shared,
+    ensure_generation_mappings,
     filter_indexes_by_datetime,
     filter_indexes_by_datetime_range,
     index_alias_by_collection_id,
     index_behind_alias,
     index_by_collection_id,
     indices,
+    reconcile_shared_alias,
+    resolve_aliases_shared,
+    restore_shared_alias,
+    shared_alias_filter,
+    stamp_collection_generation,
 )
 from .mapping import get_queryables_mapping_shared
 from .query import (
@@ -75,6 +82,7 @@ from .utils import (
     check_item_exists_in_alias_sync,
     find_existing_item_ids,
     find_item_in_alias,
+    find_item_indexes_in_alias,
     get_bool_env,
     retry_on_connection_error,
     retry_on_datetime_not_found,
@@ -91,9 +99,16 @@ __all__ = [
     "search_sub_catalogs_with_pagination_shared",
     "search_children_with_pagination_shared",
     # Index operations
+    "GENERATION_FIELD",
     "create_index_templates_shared",
     "delete_item_index_shared",
+    "ensure_generation_mappings",
+    "reconcile_shared_alias",
+    "restore_shared_alias",
+    "shared_alias_filter",
+    "stamp_collection_generation",
     "index_behind_alias",
+    "resolve_aliases_shared",
     "index_alias_by_collection_id",
     "index_by_collection_id",
     "filter_indexes_by_datetime",
@@ -112,6 +127,7 @@ __all__ = [
     "get_queryables_mapping_shared",
     # Document operations
     "mk_item_id",
+    "bulk_item_id_map",
     "mk_actions",
     # Utility functions
     "validate_refresh",
@@ -123,6 +139,7 @@ __all__ = [
     "check_item_exists_in_alias_sync",
     "find_existing_item_ids",
     "find_item_in_alias",
+    "find_item_indexes_in_alias",
     # Errors
     "BulkIndexError",
     "ItemAlreadyExistsError",

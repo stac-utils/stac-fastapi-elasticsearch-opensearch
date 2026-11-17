@@ -4,11 +4,17 @@ This module provides functions for creating and managing indices in Elasticsearc
 """
 
 import hashlib
+import logging
 import re
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
+from urllib.parse import quote
 
+from fastapi import HTTPException
+
+from stac_fastapi.core.etag import DocumentVersion
+from stac_fastapi.core.utilities import items_index_strategy
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
     COLLECTIONS_INDEX,
@@ -18,7 +24,13 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ITEM_INDICES,
     ITEMS_ALIAS_PREFIX,
     ITEMS_INDEX_PREFIX,
+    SHARED_ITEMS_INDEX,
 )
+from stac_fastapi.types.errors import ConflictError
+
+logger = logging.getLogger(__name__)
+
+GENERATION_FIELD = "collection_generation"
 
 
 @lru_cache(256)
@@ -37,7 +49,104 @@ def index_by_collection_id(collection_id: str) -> str:
     return f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{hashed}"
 
 
-@lru_cache(256)
+def _shared_alias_by_collection_id(collection_id: str) -> str:
+    digest = hashlib.sha256(collection_id.encode("utf-8")).hexdigest()
+    return f"{ITEMS_ALIAS_PREFIX}collection_{digest}"
+
+
+def shared_alias_filter(collection_id: str, generation: str | None) -> dict:
+    """Return the shared alias filter of one creation of a collection.
+
+    A collection created before generations existed (`generation` None) keeps
+    the term-only filter its alias was created with.
+    """
+    term = {"term": {"collection": collection_id}}
+    if generation is None:
+        return term
+    return {"bool": {"filter": [term, {"term": {GENERATION_FIELD: generation}}]}}
+
+
+def stamp_collection_generation(item: dict, generation: str | None) -> dict:
+    """Set the item's generation to its collection's, or drop it if there is none."""
+    if generation is None:
+        item.pop(GENERATION_FIELD, None)
+    else:
+        item[GENERATION_FIELD] = generation
+    return item
+
+
+async def ensure_generation_mappings(client: Any) -> None:
+    """Map the generation field on indexes created before it existed.
+
+    Adding a field is allowed under strict dynamic mappings; an index created
+    later gets it from its template.
+    """
+    quiet, ignore_404 = _ignoring_404(client)
+    for index in (COLLECTIONS_INDEX, SHARED_ITEMS_INDEX):
+        await quiet.indices.put_mapping(
+            index=index,
+            body={"properties": {GENERATION_FIELD: {"type": "keyword"}}},
+            **ignore_404,
+        )
+
+
+async def reconcile_shared_alias(client: Any, collection_id: str) -> None:
+    """Point the collection's shared alias at the generation stored now.
+
+    Every alias writer re-reads after its put: one paused before its put while
+    the id was deleted and created again would otherwise leave the old filter.
+    A missing collection document stops it without putting anything.
+    """
+    quiet, ignore_404 = _ignoring_404(client)
+    put = None
+    while True:
+        doc = await quiet.get(index=COLLECTIONS_INDEX, id=collection_id, **ignore_404)
+        if not doc.get("found"):
+            return
+        wanted = shared_alias_filter(
+            collection_id, doc["_source"].get(GENERATION_FIELD)
+        )
+        if wanted == put:
+            return
+        await client.indices.put_alias(
+            index=SHARED_ITEMS_INDEX,
+            name=_shared_alias_by_collection_id(collection_id),
+            body={"filter": wanted},
+        )
+        put = wanted
+
+
+async def restore_shared_alias(client: Any, collection_id: str) -> None:
+    """Put back the alias of a live collection whose shared delete answered 409.
+
+    Stateless, so it also covers a replayed delete that cannot see what an
+    earlier attempt removed. Nothing is put while either alias name of the
+    collection resolves; a stray index under the shared name is left to the
+    retried DELETE.
+    """
+    quiet, ignore_404 = _ignoring_404(client)
+    if not await client.exists(index=COLLECTIONS_INDEX, id=collection_id):
+        return
+    if not await client.indices.exists(index=SHARED_ITEMS_INDEX):
+        return
+    shared_name = _shared_alias_by_collection_id(collection_id)
+    names = [shared_name]
+    if ":" not in collection_id:
+        cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+        names.append(f"{ITEMS_ALIAS_PREFIX}{cleaned}")
+    for name in names:
+        resolved = await quiet.indices.resolve_index(name=name, **ignore_404)
+        if resolved.get("aliases") or resolved.get("indices"):
+            if name == shared_name and resolved.get("indices"):
+                logger.warning(
+                    "Not restoring the alias of collection %s: index %s exists",
+                    collection_id,
+                    name,
+                )
+            return
+    await reconcile_shared_alias(client, collection_id)
+
+
 def index_alias_by_collection_id(collection_id: str) -> str:
     """
     Translate a collection id into an Elasticsearch index alias.
@@ -48,11 +157,11 @@ def index_alias_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index alias derived from the collection id.
     """
-    cleaned = (
-        "*"
-        if collection_id == "*"
-        else collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-    )
+    if collection_id == "*":
+        return f"{ITEMS_ALIAS_PREFIX}*"
+    if items_index_strategy() == "shared":
+        return _shared_alias_by_collection_id(collection_id)
+    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
     return f"{ITEMS_ALIAS_PREFIX}{cleaned}"
 
 
@@ -300,37 +409,180 @@ async def create_index_templates_shared(settings: Any) -> None:
     await client.close()
 
 
-async def delete_item_index_shared(settings: Any, collection_id: str) -> None:
-    """Delete the index for items in a collection.
+async def delete_item_index_shared(
+    settings: Any,
+    collection_id: str,
+    expected: DocumentVersion | None = None,
+    generation: str | None = None,
+) -> None:
+    """Delete the items of a collection: its index, or its docs in the shared index.
+
+    The path follows what the collection alias resolves to, not the configured
+    strategy: a legacy alias on another index deletes that index, as before; an alias
+    on the shared index, or none at all (a retried delete), deletes the
+    collection's documents from the shared index and any stray index named
+    after the alias. The shared index itself is never deleted.
 
     Args:
-        settings (Any): The settings object containing the client configuration.
-            Must have a create_client attribute that returns an Elasticsearch/OpenSearch client.
-        collection_id (str): The ID of the collection whose items index will be deleted.
-
-    Returns:
-        None: This function doesn't return any value but deletes an item index in the database.
-
-    Notes:
-        This function deletes an item index and its alias. It first resolves the alias to find
-        the actual index name, then deletes both the alias and the index.
+        settings (Any): Settings whose `create_client` returns a new client.
+        collection_id (str): The ID of the collection whose items are deleted.
+        expected (DocumentVersion, optional): The collection version the delete
+            started from; any other version, or none, raises `ConflictError`
+            before each step that removes items.
+        generation (str, optional): The generation of the collection document
+            being deleted. Only its items are deleted, and only its alias is
+            accepted; without one, only items that have no generation.
     """
     client = settings.create_client
+    try:
+        quiet, ignore_404 = _ignoring_404(client)
+        shared_name = _shared_alias_by_collection_id(collection_id)
+        name = shared_name
+        resolved = await quiet.indices.resolve_index(name=name, **ignore_404)
+        if not (resolved.get("aliases") or resolved.get("indices")) and not (
+            items_index_strategy() == "shared" and ":" in collection_id
+        ):
+            cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+            name = f"{ITEMS_ALIAS_PREFIX}{'*' if collection_id == '*' else cleaned}"
+            resolved = await quiet.indices.resolve_index(name=name, **ignore_404)
+            if items_index_strategy() == "shared" and not (
+                resolved.get("aliases") or resolved.get("indices")
+            ):
+                name = shared_name
+        await _check_collection_version(client, collection_id, expected)
 
-    name = index_alias_by_collection_id(collection_id)
-    if hasattr(client, "options"):
-        resolved = await client.options(ignore_status=[404]).indices.resolve_index(
-            name=name
+        # Exact names only: the alias of collection "*" is the pattern `items_*`.
+        alias = next(
+            (a for a in resolved.get("aliases", []) if a["name"] == name), None
         )
-    else:
-        resolved = await client.indices.resolve_index(name=name, ignore=[404])
-    if "aliases" in resolved and resolved["aliases"]:
-        [alias] = resolved["aliases"]
-        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
-        await client.indices.delete(index=alias["indices"])
-    else:
-        await client.indices.delete(index=name, ignore=[404])
-    await client.close()
+        if alias:
+            if SHARED_ITEMS_INDEX in alias["indices"]:
+                aliases = await client.indices.get_alias(name=name)
+                alias_filter = aliases[SHARED_ITEMS_INDEX]["aliases"][name].get(
+                    "filter"
+                )
+                owned = shared_alias_filter(collection_id, generation)
+                if alias["indices"] != [SHARED_ITEMS_INDEX] or alias_filter != owned:
+                    raise ConflictError(
+                        f"Alias {name} does not belong to collection {collection_id}"
+                    )
+            elif name == shared_name:
+                raise ConflictError(
+                    f"Alias {name} does not target the shared items index"
+                )
+            await _check_collection_version(client, collection_id, expected)
+            if SHARED_ITEMS_INDEX not in alias["indices"]:
+                # Deleting the index drops its alias, so no request runs between
+                # the version check and the removal of the items.
+                await client.indices.delete(index=alias["indices"])
+                return
+            await client.indices.delete_alias(index=alias["indices"], name=name)
+
+        await _delete_shared_items(client, collection_id, expected, generation)
+        # A write to the removed alias, even one during the delete above,
+        # auto-creates an index under the alias name.
+        if "*" not in name and name != SHARED_ITEMS_INDEX:
+            resolved = await quiet.indices.resolve_index(name=name, **ignore_404)
+            # Put back by the 409 of an overlapping delete of the collection.
+            if any(a["name"] == name for a in resolved.get("aliases", [])):
+                raise ConflictError(
+                    f"Collection {collection_id} changed during deletion; retry DELETE"
+                )
+            if any(i["name"] == name for i in resolved.get("indices", [])):
+                await _check_collection_version(client, collection_id, expected)
+                lenient, ignore = _ignoring(client, [400, 404])
+                response = await lenient.indices.delete(index=name, **ignore)
+                # The name became an alias after it was resolved.
+                if response.get("status") == 400:
+                    raise ConflictError(
+                        f"Collection {collection_id} changed during deletion; "
+                        "retry DELETE"
+                    )
+    finally:
+        await client.close()
+
+
+def _ignoring(client: Any, statuses: list[int]) -> tuple[Any, dict[str, Any]]:
+    """Return the client and call arguments that make a request accept `statuses`."""
+    if hasattr(client, "options"):
+        return client.options(ignore_status=statuses), {}
+    return client, {"ignore": statuses}
+
+
+def _ignoring_404(client: Any) -> tuple[Any, dict[str, Any]]:
+    """Return the client and call arguments that make a request accept a 404."""
+    return _ignoring(client, [404])
+
+
+async def check_legacy_collection_delete(client: Any, collection_id: str) -> None:
+    """Keep canonical shared collection metadata until cleanup runs in shared mode."""
+    if ":" not in collection_id:
+        return
+    quiet, ignore_404 = _ignoring_404(client)
+    resolved = await quiet.indices.resolve_index(name=SHARED_ITEMS_INDEX, **ignore_404)
+    if any(
+        entry["name"] == SHARED_ITEMS_INDEX for entry in resolved.get("indices", [])
+    ):
+        raise ConflictError(
+            f"Collection {collection_id} may use the shared items index; "
+            "retry DELETE with ITEMS_INDEX_STRATEGY=shared"
+        )
+
+
+async def _check_collection_version(
+    client: Any, collection_id: str, expected: DocumentVersion | None
+) -> None:
+    if expected is None:
+        return
+    quiet, ignore_404 = _ignoring_404(client)
+    doc = await quiet.get(index=COLLECTIONS_INDEX, id=collection_id, **ignore_404)
+    if not doc.get("found") or DocumentVersion.from_hit(doc) != expected:
+        raise ConflictError(
+            f"Collection {collection_id} changed during deletion; retry DELETE"
+        )
+
+
+async def _delete_shared_items(
+    client: Any,
+    collection_id: str,
+    expected: DocumentVersion | None,
+    generation: str | None,
+) -> None:
+    quiet, ignore_404 = _ignoring_404(client)
+    query = (
+        shared_alias_filter(collection_id, generation)
+        if generation is not None
+        else {
+            "bool": {
+                "filter": [{"term": {"collection": collection_id}}],
+                "must_not": [{"exists": {"field": GENERATION_FIELD}}],
+            }
+        }
+    )
+    for _ in range(2):
+        # delete_by_query only sees refreshed documents.
+        await quiet.indices.refresh(index=SHARED_ITEMS_INDEX, **ignore_404)
+        await _check_collection_version(client, collection_id, expected)
+        result = await quiet.delete_by_query(
+            index=SHARED_ITEMS_INDEX,
+            body={"query": query},
+            conflicts="proceed",
+            refresh=True,
+            wait_for_completion=True,
+            slices="auto",
+            **ignore_404,
+        )
+        if result.get("status") == 404:
+            return
+        if result.get("failures") or result.get("timed_out"):
+            break
+        if not result.get("version_conflicts"):
+            return
+    raise HTTPException(
+        status_code=500,
+        detail=f"Deleting the items of collection {collection_id} did not finish; "
+        "retry DELETE",
+    )
 
 
 async def index_behind_alias(client: Any, alias: str, index: str) -> bool:
@@ -346,3 +598,43 @@ async def index_behind_alias(client: Any, alias: str, index: str) -> bool:
     for entry in resolved.get("aliases", []):
         behind.update(entry.get("indices", []))
     return index in behind
+
+
+# Keeps each resolve request line well under the 4 KB HTTP line limit.
+_RESOLVE_BATCH_CHARS = 3000
+
+
+async def resolve_aliases_shared(
+    client: Any, aliases: list[str]
+) -> dict[str, tuple[str, ...]]:
+    """Map each existing alias or index name to its sorted backing indices.
+
+    Names are resolved in comma-joined batches; missing names are left out.
+    """
+    # ES and OS clients pass ignore_unavailable differently.
+    if hasattr(client, "options"):
+        ignore_unavailable: dict[str, Any] = {"ignore_unavailable": True}
+    else:
+        ignore_unavailable = {"params": {"ignore_unavailable": "true"}}
+
+    batches: list[list[str]] = []
+    batch_chars = _RESOLVE_BATCH_CHARS
+    for name in dict.fromkeys(aliases):
+        # The client percent-encodes the names into the URL.
+        name_chars = len(quote(name, safe="")) + 1
+        if batch_chars + name_chars > _RESOLVE_BATCH_CHARS:
+            batches.append([])
+            batch_chars = 0
+        batches[-1].append(name)
+        batch_chars += name_chars
+
+    backing: dict[str, tuple[str, ...]] = {}
+    for batch in batches:
+        resolved = await client.indices.resolve_index(
+            name=",".join(batch), **ignore_unavailable
+        )
+        for entry in resolved.get("indices", []):
+            backing[entry["name"]] = (entry["name"],)
+        for entry in resolved.get("aliases", []):
+            backing[entry["name"]] = tuple(sorted(entry.get("indices", [])))
+    return backing

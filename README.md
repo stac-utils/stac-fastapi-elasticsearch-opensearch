@@ -11,7 +11,7 @@
   [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
    [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
-  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-7.0.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-7.1.1-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
 ## Sponsors & Supporters
 
@@ -134,6 +134,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [How Datetime-Based Indexing Works](#how-datetime-based-indexing-works)
     - [Index and Alias Naming Convention](#index-and-alias-naming-convention)
     - [Index Size Management](#index-size-management)
+  - [Shared Items Index](#shared-items-index)
   - [Interacting with the API](#interacting-with-the-api)
   - [Configure the API](#configure-the-api)
   - [Collection Pagination](#collection-pagination)
@@ -1566,8 +1567,10 @@ The datetime-based indexing strategy is particularly useful for large temporal d
 Enable datetime-based indexing by setting the following environment variable:
 
 ```bash
-ENABLE_DATETIME_INDEX_FILTERING=true
+ITEMS_INDEX_STRATEGY=datetime
 ```
+
+`ITEMS_INDEX_STRATEGY` accepts `simple` (the default, one index per collection), `datetime` or `shared` (see [Shared Items Index](#shared-items-index)). The older `ENABLE_DATETIME_INDEX_FILTERING=true` still selects `datetime` when `ITEMS_INDEX_STRATEGY` is unset, but it is deprecated and logs a warning at startup. If both are set and disagree (for example `ENABLE_DATETIME_INDEX_FILTERING=false` with `ITEMS_INDEX_STRATEGY=datetime`), the API fails at startup.
 
 > [!IMPORTANT]
 > **Redis is required** when datetime-based indexing is enabled. The system uses Redis to cache index alias mappings from Elasticsearch/OpenSearch, which significantly speeds up search queries by avoiding repeated alias lookups. Insert operations always fetch fresh aliases directly from ES/OS and then refresh the Redis cache, ensuring that search queries always see up-to-date alias data. Configure Redis using the connection variables described in the [Redis for Navigation](#redis-for-navigation-environment-variables) section (`REDIS_HOST`/`REDIS_PORT` or `REDIS_SENTINEL_HOSTS`).
@@ -1576,7 +1579,8 @@ ENABLE_DATETIME_INDEX_FILTERING=true
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `ENABLE_DATETIME_INDEX_FILTERING` | Enables time-based index partitioning | `false` | `true` |
+| `ITEMS_INDEX_STRATEGY` | How item indexes are laid out: `simple`, `datetime` (time-based index partitioning) or `shared` (one index for all collections) | `simple` | `datetime` |
+| `ENABLE_DATETIME_INDEX_FILTERING` | **Deprecated**, use `ITEMS_INDEX_STRATEGY=datetime`. Only read when `ITEMS_INDEX_STRATEGY` is unset | `false` | `true` |
 | `DATETIME_INDEX_MAX_SIZE_GB` | Maximum size limit for datetime indexes (GB) - note: add +20% to target size due to ES/OS compression | `25` | `50` |
 | `STAC_ITEMS_INDEX_PREFIX` | Prefix for item indexes | `items_` | `stac_items_` |
 | `STAC_ITEMS_ALIAS_PREFIX` | Prefix for item aliases | `STAC_ITEMS_INDEX_PREFIX` | `stac-items-` |
@@ -1599,6 +1603,10 @@ python scripts/item_queue_worker.py
 ```
 
 **Important:** Without the worker running, items will remain in the Redis queue and will not be indexed in Elasticsearch/OpenSearch.
+
+The worker reads `ITEMS_INDEX_STRATEGY` (and the deprecated `ENABLE_DATETIME_INDEX_FILTERING`) in its own process, so give it the same values as the API. Otherwise it writes queued items with a different index layout and duplicate handling than the API.
+
+With `ITEMS_INDEX_STRATEGY=shared`, pause ingestion and upgrade every API replica and the worker together when moving to a version that stores `collection_generation` (see [Shared Items Index](#shared-items-index)). An older writer stores items without a generation, and the alias of a collection created by the new version doesn't show them.
 
 ## How Datetime-Based Indexing Works
 
@@ -1635,6 +1643,66 @@ The system uses a precise naming convention:
 ### Index Size Management
 
 **Important - Data Compression:** Elasticsearch and OpenSearch automatically compress data. The configured `DATETIME_INDEX_MAX_SIZE_GB` limit refers to the compressed size on disk. It is recommended to add +20% to the target size to account for compression overhead and metadata.
+
+## Shared Items Index
+
+With `ITEMS_INDEX_STRATEGY=shared`, the items of every collection go into one index, `<STAC_ITEMS_INDEX_PREFIX>shared` (`items_shared` by default). Each collection gets a filtered alias named `<STAC_ITEMS_ALIAS_PREFIX>collection_<sha256>`, where `<sha256>` is the full SHA-256 hex digest of the original UTF-8 collection ID. Public IDs stay unchanged. Each time a collection is created it gets a random `collection_generation`, stored in the collection document and in each of its items, and the alias filter matches the original ID and that generation:
+
+```json
+{"bool": {"filter": [{"term": {"collection": "<collection id>"}}, {"term": {"collection_generation": "<generation>"}}]}}
+```
+
+A collection created by a version without generations keeps the filter `{"term": {"collection": "<collection id>"}}`, and its new items get no generation. The field is never returned in responses, queryables or sortables, and clients can't set it: creates and updates ignore it, a merge patch drops it, and a JSON Patch that addresses it returns `400`.
+
+Use it when a deployment has many small collections. Every index carries shards, mappings and cluster state, so with one index per collection, thousands of collections of a few items each cost far more than their data. On managed and serverless clusters that overhead shows up as slow index creation, long recoveries and a bill that grows with the index count. Large collections, or collections searched mostly by date, are better served by `simple` or `datetime`.
+
+Trade-offs:
+
+- All collections share one mapping and one field limit. Queryables and sortables list the fields of every collection, not only the requested one.
+- It cannot be combined with `datetime`, and a collection id cannot change (`update_collection` with a new id raises an error).
+- `STAC_ITEMS_ALIAS_PREFIX` must equal `STAC_ITEMS_INDEX_PREFIX`, and the items mappings of `collection` and `collection_generation` must stay plain indexed `keyword`s (no `normalizer`, `ignore_above` or `index: false`). Otherwise the API fails at startup. At startup the API adds `collection_generation` to the mappings of the collections index and of the shared index when they were created without it.
+- Colons are allowed in collection ids. The characters `\ / * ? " < > | , #` and spaces are rejected, and the id `shared` is reserved. In every strategy, an id that reads `collection_` followed by 64 lowercase hex digits (after those characters are removed) is reserved too, because its alias would match another collection's shared alias. Creating such a collection returns `400`.
+- The shared index uses the engine's default shard and replica counts. To use others, create `<prefix>shared` yourself before the first collection is created, and only after the API has started once, so that the items index template (mappings and sort settings) applies to it. An existing index is reused.
+
+### Deleting a collection
+
+`DELETE /collections/{collection_id}` is synchronous. It removes the collection alias, refreshes the shared index, deletes the collection's items with a delete-by-query, and deletes the collection document last. Until it finishes, searches across all collections still return the collection's items.
+
+If the delete-by-query reports failures, keeps hitting version conflicts or times out, the request returns `500`, the collection stays, and `DELETE` can be retried. Until then the collection has no alias, so item writes to it fail. A retry also removes any index that a direct write to the alias name created in the meantime.
+
+`If-Match` is checked when the delete starts (`412` if it does not match). If the collection changes after that, for example a `PUT` while its items are being deleted, the request returns `409` and `DELETE` can be retried. The delete-by-query matches only the generation read when the delete started, so when two deletes overlap and the id is created again, the late delete leaves the new collection's items alone. A delete that returns `409` after removing the alias puts the alias back if the collection still exists and neither of its alias names is in use. That restore is a separate request, so a search sent in between misses the collection's items.
+
+A few cases are not cleaned up:
+
+- Items with an old generation stay hidden from the collection created again under the same id, but searches across all collections still return them. They come from writes that land after the delete that should have removed them: an item prepared before the delete and written after the re-create, a Redis-queued item flushed after it, or a write the cleanup missed. If such an item has the same id as an item of the new collection, `GET`, `PUT` and `PATCH` of that id return `404` and `POST` returns `409`. A `DELETE` of the item without `If-Match` removes it, and `POST` then works. With `If-Match` or `REQUIRE_IF_MATCH=true`, the `DELETE` returns `404` (or `428`), so delete the document `<item id>|<collection id>` from the shared index directly.
+- Items without a generation under a collection that has one, written directly to the index or by an older version of the API, are hidden and never deleted.
+- A create that stalls before writing its alias while the collection is deleted, and not created again, leaves an alias without a collection. Creating that id again replaces the alias.
+
+Writes are not blocked while a delete runs, but item writes need the collection alias to exist. While a collection is being created or deleted, or after a delete that did not finish, creating an item returns `409` and a bulk write reports each item as failed, so the engine doesn't create an index named after the alias. With `ENABLE_REDIS_QUEUE=true` the request is still accepted with `202` and the worker's write fails later. The worker then moves the item to its dead-letter queue, or, with `RAISE_ON_BULK_ERROR=true`, leaves the batch queued and retries it. A direct write to the alias name, outside the API, still creates one. The delete removes such an index at its end, but one created after that keeps the collection id from being created again until an operator deletes it.
+
+Deleting a large collection can take longer than the client timeout. Raise `ES_TIMEOUT` for such deployments: a delete-by-query that times out on the client is sent again by the connection retries, up to 25 times on Elasticsearch and 5 times on OpenSearch with the default `RETRY_MAX_ATTEMPTS_CONNECTION_ERROR`.
+
+### Migrating
+
+Switching an existing deployment to `shared` needs either a fresh deployment or a manual reindex. Pause writes during migration. For `my-collection` with the default prefixes:
+
+```
+POST _reindex
+{"source": {"index": "items_my-collection"}, "dest": {"index": "items_shared"}}
+
+POST _aliases
+{"actions": [
+  {"remove": {"index": "<old items index>", "alias": "items_my-collection"}},
+  {"add": {"index": "items_shared", "alias": "items_collection_6f61c615337a3a7d8ca4ab4d73a6e1a0d42355da8ecc734bfda8deb51187c9a0",
+           "filter": {"term": {"collection": "my-collection"}}}}
+]}
+```
+
+After verifying the reindex and the new alias, delete the old per-collection index.
+
+If the data already lives in `items_shared` under legacy `items_<collection id>` aliases, run only the alias replacement, using `items_shared` as the `remove` action's index. Keep the shared index and its documents.
+
+Switching back from `shared` to `simple` or `datetime` while collections still live in the shared index is not supported. When a physical shared items index exists, deleting a collection whose ID contains `:` returns `409` before changing its metadata. Retry with `ITEMS_INDEX_STRATEGY=shared`. For other IDs, cleanup removes the collection's items when it succeeds, but simple and datetime delete the collection document first, so a cleanup that fails (on OpenSearch, a client timeout is enough) leaves items that only an operator can remove.
 
 ## Interacting with the API
 

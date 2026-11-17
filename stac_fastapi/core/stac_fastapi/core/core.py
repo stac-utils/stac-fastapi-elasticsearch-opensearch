@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -57,6 +58,8 @@ from stac_fastapi.core.utilities import (
     format_conflict_errors,
     get_bool_env,
     get_int_env,
+    items_index_is_partitioned,
+    items_index_strategy,
     json_merge_patch,
 )
 from stac_fastapi.core.validate import (
@@ -81,6 +84,7 @@ from stac_fastapi.extensions.transaction.request import (
 from stac_fastapi.sfeos_helpers.database import (
     BulkIndexError,
     ItemAlreadyExistsError,
+    bulk_item_id_map,
     separate_bulk_conflict_errors,
 )
 from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
@@ -146,6 +150,20 @@ def _targets_field(path: str, field: str) -> bool:
     return path.strip("/") == field
 
 
+def reject_invalid_pointer_escapes(patch: list) -> None:
+    """Answer 400 for a JSON Pointer "~" not followed by "0" or "1" (RFC 6901)."""
+    for op in patch:
+        for pointer in (
+            _op_member(op, "path"),
+            _op_member(op, "from") or _op_member(op, "from_"),
+        ):
+            if pointer and re.search(r"~(?![01])", pointer):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid JSON Patch: invalid escape in path '{pointer}'",
+                )
+
+
 def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
     """Return whether a patch changes an identity or type field."""
     if not isinstance(patch, list):
@@ -187,6 +205,23 @@ def patch_addresses_field(patch: list, field: str) -> bool:
         if field in (path.strip("/").split("/")[0], source.strip("/").split("/")[0]):
             return True
     return False
+
+
+def reject_generation_patch(patch: Any) -> None:
+    """Refuse a patch that addresses the backend-owned `collection_generation`.
+
+    A JSON Patch that reads or writes it answers 400; a merge patch drops it.
+    """
+    if isinstance(patch, list):
+        if patch_addresses_field(patch, "collection_generation"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not address collection_generation.",
+            )
+        return
+    extra = patch if isinstance(patch, dict) else getattr(patch, "model_extra", None)
+    if extra:
+        extra.pop("collection_generation", None)
 
 
 def parse_fields(fields: list[str]) -> tuple[set[str], set[str]]:
@@ -1764,6 +1799,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 raise QueuedSuccess(payload={"message": result, "status": "queued"})
 
         # 5. DATABASE INSERTION LAYER
+        item_ids = bulk_item_id_map(valid_items)
         success, errors = await self.database.bulk_async(
             collection_id=collection_id,
             processed_items=valid_items,
@@ -1777,7 +1813,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         for error in errors:
             doc_id = next(iter(error.values())).get("_id", "")
-            failed_item_ids.add(doc_id.split("|")[0] if "|" in doc_id else doc_id)
+            failed_item_ids.add(item_ids.get(doc_id, (doc_id, collection_id))[0])
 
         successfully_added_ids = [
             item.get("id")
@@ -1787,15 +1823,23 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         if conflict_errors and raise_on_error:
             doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
-            item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
+            item_id = item_ids.get(doc_id, (doc_id, collection_id))[0]
             raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
 
+        for error in other_errors:
+            detail = next(iter(error.values()))
+            doc_id = detail.get("_id", "")
+            detail["item_id"], detail["collection_id"] = item_ids.get(
+                doc_id, (doc_id, collection_id)
+            )
         if other_errors and raise_on_error:
             raise BulkIndexError(errors=other_errors, collection_id=collection_id)
 
         # Parse conflicts exactly ONCE and cache the result to avoid redundant generation
         formatted_conflicts = (
-            format_conflict_errors(conflict_errors) if conflict_errors else {}
+            format_conflict_errors(conflict_errors, item_ids, collection_id)
+            if conflict_errors
+            else {}
         )
 
         # Fix Spot 3: Database writes failed completely
@@ -1822,6 +1866,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     ),
                     "validation_errors": validation_errors,
                     "conflict_errors": formatted_conflicts,
+                    **({"database_errors": other_errors} if other_errors else {}),
                 },
             )
 
@@ -1898,7 +1943,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Queued writes bypass the datetime-index validation in create_item and
         # could create cross-index duplicates, so updates go straight to the
         # database when datetime index filtering is enabled.
-        if use_queue and get_bool_env("ENABLE_DATETIME_INDEX_FILTERING", default=False):
+        if use_queue and items_index_is_partitioned():
             use_queue = False
 
         # 1. UNIFIED PREPROCESSING LAYER
@@ -2003,6 +2048,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     detail=f"A patch may not change the item {field}.",
                 )
 
+        reject_generation_patch(patch)
+
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
             # Request checks come before the precondition (RFC 9110, section 13.2.1).
@@ -2021,6 +2068,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
                 )
+            if json_patch:
+                reject_invalid_pointer_escapes(patch)
             version = await check_if_match(
                 request,
                 resource,
@@ -2285,6 +2334,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 status_code=400,
                 detail="A patch may not address parent_ids; use /catalogs/{catalog_id}/collections.",
             )
+        reject_generation_patch(patch)
+
+        # A merge patch ignores fields the backend owns. The partial request
+        # models allow extra fields, so drop them before they become an
+        # operation: parent_ids is catalog membership (it changes through
+        # /catalogs/{catalog_id}/collections) and bbox_shape is derived from
+        # the extent for geospatial queries.
+        extra = (
+            patch if isinstance(patch, dict) else getattr(patch, "model_extra", None)
+        )
+        if extra:
+            for field in ("parent_ids", "bbox_shape"):
+                extra.pop(field, None)
 
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
@@ -2304,6 +2366,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     status_code=400,
                     detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
                 )
+            if json_patch:
+                reject_invalid_pointer_escapes(patch)
             _, current = await self.database.find_collection_with_version(collection_id)
             version = check_etag(if_match_header(request, resource), current, resource)
             if json_patch:
@@ -2414,6 +2478,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             f"Collection {collection_id}",
             lambda: self.database.find_collection_with_version(collection_id),
         )
+        if items_index_strategy() == "shared":
+            # The database retries the whole delete on connection errors; a pinned
+            # version keeps a replay from adopting a collection created meanwhile.
+            if version is None:
+                _, version = await self.database.find_collection_with_version(
+                    collection_id
+                )
+            await self.database.delete_collection(
+                collection_id=collection_id, pinned=version, **kwargs
+            )
+            return None
         await self.database.delete_collection(
             collection_id=collection_id, version=version, **kwargs
         )
@@ -2477,10 +2552,10 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """
         request = kwargs.get("request")
 
-        if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        if items_index_is_partitioned():
             raise HTTPException(
                 status_code=400,
-                detail="The /collections/{collection_id}/bulk_items endpoint is invalid when ENABLE_DATETIME_INDEX_FILTERING is set to true. Try using the /collections/{collection_id}/items endpoint.",
+                detail="The /collections/{collection_id}/bulk_items endpoint is invalid with the datetime items index strategy. Try using the /collections/{collection_id}/items endpoint.",
             )
         if items.method == BulkTransactionMethod.UPSERT and get_bool_env(
             "REQUIRE_IF_MATCH", default=False
@@ -2639,6 +2714,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         # 4. DATABASE INSERTION LAYER
         collection_id = collection_id or processed_items[0]["collection"]
+        item_ids = bulk_item_id_map(processed_items)
         success, errors = self.database.bulk_sync(
             collection_id,
             processed_items,
@@ -2650,9 +2726,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
             doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
-            item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
+            item_id = item_ids.get(doc_id, (doc_id, collection_id))[0]
             raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
 
+        for error in other_errors:
+            detail = next(iter(error.values()))
+            doc_id = detail.get("_id", "")
+            detail["item_id"], detail["collection_id"] = item_ids.get(
+                doc_id, (doc_id, collection_id)
+            )
         if other_errors:
             logger.error(f"Bulk sync operation encountered errors: {other_errors}")
             if get_bool_env("RAISE_ON_BULK_ERROR"):
@@ -2671,6 +2753,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": reported_errors + format_bulk_errors(all_errors),
+                "errors": reported_errors + format_bulk_errors(all_errors, item_ids),
             },
         )
