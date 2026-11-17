@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- `GET /catalogs/{catalog_id}/collections` accepts `bbox` and `datetime`, which match the collection extents as on `GET /collections`, whenever `GET /collections` accepts them (`ENABLE_COLLECTIONS_SEARCH` or `ENABLE_COLLECTIONS_SEARCH_ROUTE`). The route now takes every parameter of the base Collection Search class, which the scoped Collection Search binding in [multi-tenant-catalogs#20](https://github.com/StacLabs/multi-tenant-catalogs/pull/20) requires before `filter`, `sortby`, `q` or `fields` can be bound there. `BaseDatabaseLogic.get_catalog_collections` gains optional `bbox` and `datetime` parameters; the client passes them only when they are set, so an out-of-tree backend needs them only to serve those two parameters.
+- `GET /catalogs/{catalog_id}/collections` accepts `bbox` and `datetime`, which match the collection extents as on `GET /collections`, whenever `GET /collections` accepts them (`ENABLE_COLLECTIONS_SEARCH` or `ENABLE_COLLECTIONS_SEARCH_ROUTE`). The route now takes every parameter of the base Collection Search class, which the scoped Collection Search binding in [multi-tenant-catalogs#20](https://github.com/StacLabs/multi-tenant-catalogs/pull/20) requires before `filter`, `sortby`, `q` or `fields` can be bound there. `BaseDatabaseLogic.get_catalog_collections` gains optional `bbox` and `datetime` parameters; the client passes them only when they are set, so an out-of-tree backend needs them only to serve those two parameters. [#1036](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1036)
 
 ### Breaking Changes
 
