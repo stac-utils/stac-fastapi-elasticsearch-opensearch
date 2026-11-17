@@ -1,4 +1,5 @@
 import base64
+import copy
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
@@ -692,6 +693,78 @@ async def test_get_catalog_collections_free_text(
 
 
 @pytest.mark.asyncio
+async def test_get_catalog_collections_bbox_and_datetime(
+    catalogs_app_client, load_test_data, ctx
+):
+    """`bbox` and `datetime` match collection extents within the catalog only."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    def with_extent(bbox, interval):
+        collection = copy.deepcopy(ctx.collection)
+        collection["id"] = f"test-collection-{uuid.uuid4()}"
+        collection["extent"] = {
+            "spatial": {"bbox": [bbox]},
+            "temporal": {"interval": [interval]},
+        }
+        return collection
+
+    keep = with_extent(
+        [10, 10, 20, 20], ["2020-01-01T00:00:00Z", "2020-12-31T00:00:00Z"]
+    )
+    drop = with_extent(
+        [-50, -50, -40, -40], ["2010-01-01T00:00:00Z", "2010-12-31T00:00:00Z"]
+    )
+    for collection in (keep, drop):
+        add_resp = await catalogs_app_client.post(
+            f"/catalogs/{test_catalog['id']}/collections", json=collection
+        )
+        assert add_resp.status_code == 201
+
+    outside = with_extent(
+        [10, 10, 20, 20], ["2020-01-01T00:00:00Z", "2020-12-31T00:00:00Z"]
+    )
+    assert (
+        await catalogs_app_client.post("/collections", json=outside)
+    ).status_code == 201
+
+    for params in (
+        {"bbox": "12,12,14,14"},
+        {"datetime": "2020-06-01T00:00:00Z/2020-07-01T00:00:00Z"},
+    ):
+        resp = await catalogs_app_client.get(
+            f"/catalogs/{test_catalog['id']}/collections", params=params
+        )
+        assert resp.status_code == 200, params
+        body = resp.json()
+        assert [col["id"] for col in body["collections"]] == [keep["id"]], params
+        assert body["numberMatched"] == 1, params
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_omits_unset_extent_arguments():
+    """Backends without `bbox`/`datetime` keep serving listings that don't use them."""
+
+    async def get_catalog_collections(
+        catalog_id, limit, token, request=None, filter=None, sort=None, q=None
+    ):
+        return [], 0, None
+
+    database = MagicMock()
+    database.find_catalog = AsyncMock(return_value={"id": "c"})
+    database.get_catalog_collections = AsyncMock(side_effect=get_catalog_collections)
+    client = CatalogsClient(database=database)
+
+    resp = await client.get_catalog_collections("c", request=MagicMock())
+
+    assert resp.status_code == 200
+    assert "bbox" not in database.get_catalog_collections.await_args.kwargs
+
+
+@pytest.mark.asyncio
 async def test_get_catalog_collections_filter_and_sort(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -736,7 +809,15 @@ async def test_openapi_lists_catalog_collections_params(catalogs_app_client):
             "parameters"
         ]
     }
-    assert {"fields", "sortby", "q", "filter", "filter-lang"} <= params
+    assert {
+        "fields",
+        "sortby",
+        "q",
+        "filter",
+        "filter-lang",
+        "bbox",
+        "datetime",
+    } <= params
 
 
 @pytest.mark.asyncio

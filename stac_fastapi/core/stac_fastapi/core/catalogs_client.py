@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.core import parse_fields, parse_sortby
+from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.etag import check_if_match, record_etag
 from stac_fastapi.core.extensions.filter import (
     CQL2FilterError,
@@ -606,13 +607,16 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         fields: list[str] | None = None,
         sortby: list[str] | None = None,
         q: str | list[str] | None = None,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
         **kwargs,
     ) -> Collections | Response:
         """Get collections linked from a specific catalog.
 
-        `fields`, `sortby`, and `q` are bound only when the extension is given
-        a `catalog_collections_get_request_model` that includes them (the
-        Fields, Sort, and FreeText collection-search extensions).
+        `fields`, `sortby`, `q`, `bbox`, and `datetime` are bound only when the
+        extension is given a `catalog_collections_get_request_model` that
+        includes them (the Fields, Sort, and FreeText collection-search
+        extensions, and the base Collection Search parameters).
         """
         # Validate catalog exists
         catalog = await self.database.find_catalog(catalog_id)
@@ -637,6 +641,14 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         sort = parse_sortby(sortby)
 
+        # Passed only when set, so out-of-tree backends without these
+        # parameters keep serving requests that don't use them.
+        extent_kwargs: dict[str, Any] = {}
+        if bbox:
+            extent_kwargs["bbox"] = bbox
+        if datetime:
+            extent_kwargs["datetime"] = format_datetime_range(date_str=datetime)
+
         (
             collections_list,
             total_hits,
@@ -649,6 +661,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             filter=_parse_cql2_filter(filter_expr, filter_lang),
             sort=sort,
             q=[q] if isinstance(q, str) else q,
+            **extent_kwargs,
         )
 
         collections = [

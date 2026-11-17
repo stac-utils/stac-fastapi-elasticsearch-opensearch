@@ -383,7 +383,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 **Children & Collections:**
 
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
-- **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
+- **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog. When collection search is enabled, `bbox` and `datetime` match the collection extents as on `/collections`
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a catalog OR link an existing collection by posting its ID
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
 - **PUT `/catalogs/{catalog_id}/collections/{collection_id}`**: Update a collection within a catalog context (updates the collection globally)
