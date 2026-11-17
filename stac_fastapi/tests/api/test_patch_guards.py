@@ -189,11 +189,18 @@ async def test_collection_metadata_is_not_a_rename(
     url, document = _target(ctx, "collection")
     _, item_document = _target(ctx, "item")
     before = await txn_client.database.client.get(**item_document)
-    for operation, value in [("add", "custom metadata"), ("replace", "new metadata")]:
+    for operation, value in [
+        ("add", "custom metadata"),
+        ("replace", "new metadata"),
+        ("merge", "merged metadata"),
+    ]:
+        if operation == "merge":
+            body, media_type = {"collection": value}, "merge-patch"
+        else:
+            body = [{"op": operation, "path": "/collection", "value": value}]
+            media_type = "json-patch"
         response = await app_client.patch(
-            url,
-            json=[{"op": operation, "path": "/collection", "value": value}],
-            headers={"Content-Type": "application/json-patch+json"},
+            url, json=body, headers={"Content-Type": f"application/{media_type}+json"}
         )
         assert response.status_code == 200, response.text
         stored = (await txn_client.database.client.get(**document))["_source"]

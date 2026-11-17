@@ -4,7 +4,10 @@ import uuid
 from typing import Any, Dict, List, Literal
 
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
+from stac_fastapi.sfeos_helpers.database import (
+    index_alias_by_collection_id,
+    reconcile_shared_alias,
+)
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
     ES_ITEMS_MAPPINGS,
@@ -89,12 +92,7 @@ class IndexOperations:
         if error and "resource_already_exists_exception" not in str(error):
             raise RuntimeError(f"Could not create index {SHARED_ITEMS_INDEX}: {error}")
 
-        # Idempotent: putting the same alias and filter again changes nothing.
-        await client.indices.put_alias(
-            index=SHARED_ITEMS_INDEX,
-            name=index_alias_by_collection_id(collection_id),
-            body={"filter": {"term": {"collection": collection_id}}},
-        )
+        await reconcile_shared_alias(client, collection_id)
         return SHARED_ITEMS_INDEX
 
     async def create_datetime_index(
