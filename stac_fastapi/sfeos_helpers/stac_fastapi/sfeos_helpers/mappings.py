@@ -247,7 +247,7 @@ def apply_custom_aggregations(
     try:
         custom = json.loads(custom_json)
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse STAC_FASTAPI_ES8CUSTOM_AGGREGATIONS JSON: {e}")
+        logger.error(f"Failed to parse STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS JSON: {e}")
         return
     if not isinstance(custom, dict):
         logger.error(
