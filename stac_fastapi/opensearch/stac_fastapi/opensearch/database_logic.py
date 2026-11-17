@@ -64,6 +64,7 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_actions,
     mk_item_id,
     populate_sort_shared,
+    resolve_aliases_shared,
     restore_shared_alias,
     retry_on_connection_error,
     retry_on_datetime_not_found,
@@ -601,19 +602,56 @@ class DatabaseLogic(BaseDatabaseLogic):
                 except Exception as e:
                     logger.debug(f"Failed to clear scroll context: {e}")
 
-        # Initialize the filters client
         filters_client = filter_module.EsAsyncBaseFiltersClient(
             database=self, settings=self.async_settings
         )
-
-        # 2. Add a Semaphore
         sem = asyncio.Semaphore(50)  # Only allow 50 concurrent DB requests
+
+        # 2. Group collections by backing indices, so collections sharing an
+        # index have its mapping fetched and parsed once.
+        aliases = {cid: index_alias_by_collection_id(cid) for cid in collection_ids}
+        backing = await resolve_aliases_shared(self.client, list(aliases.values()))
+        collections_by_indices: dict[tuple[str, ...], list[str]] = {}
+        for cid, alias in aliases.items():
+            if alias in backing:
+                collections_by_indices.setdefault(backing[alias], []).append(cid)
+            else:
+                logger.warning(
+                    f"Failed to retrieve queryables for collection {cid}: "
+                    f"Mapping for index {alias} not found"
+                )
+
+        async def parse_mapping_safely(
+            indices: tuple[str, ...], cids: list[str]
+        ) -> tuple | None:
+            # An alias over many datetime partitions is shorter than their names.
+            index = indices[0] if len(indices) == 1 else aliases[cids[0]]
+            async with sem:
+                try:
+                    mapping = await self.client.indices.get_mapping(index=index)
+                    return filters_client.queryables_from_mapping(mapping)
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve mapping for {index}: {e}")
+                    return None
+
+        parsed_mappings = await asyncio.gather(
+            *[
+                parse_mapping_safely(indices, cids)
+                for indices, cids in collections_by_indices.items()
+            ]
+        )
+        parsed_by_collection = {
+            cid: parsed
+            for cids, parsed in zip(collections_by_indices.values(), parsed_mappings)
+            if parsed
+            for cid in cids
+        }
 
         async def fetch_queryables_safely(collection_id: str) -> dict | None:
             async with sem:
                 try:
-                    return await filters_client.get_queryables(
-                        collection_id=collection_id
+                    return await filters_client.collection_queryables(
+                        collection_id, parsed_by_collection[collection_id]
                     )
                 except Exception as e:
                     logger.warning(
@@ -621,9 +659,13 @@ class DatabaseLogic(BaseDatabaseLogic):
                     )
                     return None
 
-        # 3. Gather results. The semaphore ensures we only process 50 at a time.
+        # 3. Keep collection order: merge_queryables keeps the first definition.
         results = await asyncio.gather(
-            *[fetch_queryables_safely(cid) for cid in collection_ids]
+            *[
+                fetch_queryables_safely(cid)
+                for cid in collection_ids
+                if cid in parsed_by_collection
+            ]
         )
 
         return [q for q in results if q]

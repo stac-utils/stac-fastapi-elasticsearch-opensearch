@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- With `ROOT_QUERYABLES_UNION=true`, rebuilding the root `/queryables` fetches and parses each items index mapping once, instead of once per collection. Collections that share an index (`ITEMS_INDEX_STRATEGY=shared`) now cost one mapping request in total. Their aliases are resolved in batches, and each collection still gets its own enum values. [#1014](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1014)
+
 ### Fixed
 
 - With `ITEMS_INDEX_STRATEGY=shared`, two overlapping deletes of a collection followed by a create of the same id no longer let the late delete remove the new collection's items or its alias. Each created collection stores a random `collection_generation` in its document and its items, its alias filters on it, and a delete removes only the items of the generation it started from. A delete that returns `409` after removing the alias puts it back while the collection exists. Collections created by earlier versions keep their term-only alias. Item writes to a collection that has no alias (while it is being created or deleted, or after a delete that did not finish) now return `409`, or fail per item in a bulk response, where they used to create an index named after the alias. With `ENABLE_REDIS_QUEUE=true` such a write is still accepted with `202`, and the worker moves the item to its dead-letter queue (with `RAISE_ON_BULK_ERROR=true` it leaves the batch queued and retries it). `collection_generation` is reserved in every strategy: clients can't set it, and a JSON Patch that addresses it returns `400`. A database-level `update_collection` with `preserve_parent_ids=False` keeps the stored generation, and its write is now conditional on the document it read, so a concurrent change returns `409` (`412` with a version). Upgrade every API replica and the Redis queue worker together, with ingestion paused. [#1010](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1010)
