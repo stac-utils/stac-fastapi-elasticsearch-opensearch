@@ -1,7 +1,15 @@
+import json
 import os
 from urllib.parse import urlparse
 
 import pytest
+
+from stac_fastapi.sfeos_helpers.mappings import (
+    AGGREGATION_MAPPING,
+    apply_custom_aggregations,
+)
+
+from ..conftest import create_item
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -972,3 +980,58 @@ async def test_root_aggregate_answers_400_when_the_licence_refuses(
     else:
         assert resp.status_code == 200
         assert resp.json()["aggregations"][0]["name"] == aggregation
+
+
+@pytest.mark.asyncio
+async def test_aggregation_added_by_configuration_runs_on_a_collection(
+    app, app_client, txn_client, ctx, load_test_data, monkeypatch
+):
+    """An aggregation declared through STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS is added
+    to the mapping and, advertised on a collection, runs on its sub-resource route."""
+
+    mapping = dict(AGGREGATION_MAPPING)
+    apply_custom_aggregations(
+        mapping,
+        json.dumps(
+            {
+                "custom_collection_frequency": {
+                    "terms": {"field": "collection", "size": 100}
+                },
+                "custom_item_count": {"value_count": {"field": "id"}},
+            }
+        ),
+    )
+    monkeypatch.setattr(app.state.database_logic, "aggregation_mapping", mapping)
+
+    collection_id = "with-configured-aggregations"
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = collection_id
+    test_collection["aggregations"] = [
+        {
+            "name": "custom_collection_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {"name": "custom_item_count", "data_type": "integer"},
+    ]
+    resp = await app_client.post("/collections", json=test_collection)
+    assert resp.status_code == 201
+
+    try:
+        test_item = load_test_data("test_item.json")
+        test_item["id"] = "configured-aggregations-item"
+        test_item["collection"] = collection_id
+        await create_item(txn_client, test_item)
+
+        resp = await app_client.post(
+            f"/collections/{collection_id}/aggregate",
+            json={"aggregations": ["custom_collection_frequency", "custom_item_count"]},
+        )
+        assert resp.status_code == 200
+        aggs = {agg["name"]: agg for agg in resp.json()["aggregations"]}
+
+        buckets = aggs["custom_collection_frequency"]["buckets"]
+        assert [(b["key"], b["frequency"]) for b in buckets] == [(collection_id, 1)]
+        assert aggs["custom_item_count"]["value"] == 1
+    finally:
+        await app_client.delete(f"/collections/{collection_id}")

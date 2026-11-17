@@ -231,6 +231,60 @@ def get_custom_config(
     return custom_config
 
 
+def apply_custom_aggregations(
+    aggregations: dict[str, dict[str, Any]], custom_json: str | None
+) -> None:
+    """Apply custom aggregation definitions to an aggregation mapping, in place.
+
+    ``custom_json`` is a JSON object mapping an aggregation name to an
+    Elasticsearch/OpenSearch aggregation body made of a single aggregation type,
+    e.g. ``{"asset_file_size_sum": {"sum": {"field": "assets.file:size"}}}``.
+    Custom entries overwrite built-in ones with the same name. Invalid JSON is
+    logged and ignored; an invalid entry is logged and skipped.
+    """
+    if not custom_json:
+        return
+    try:
+        custom = json.loads(custom_json)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse STAC_FASTAPI_ES8CUSTOM_AGGREGATIONS JSON: {e}")
+        return
+    if not isinstance(custom, dict):
+        logger.error(
+            "STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS must be a JSON object "
+            "mapping aggregation names to aggregation bodies"
+        )
+        return
+    for name, body in custom.items():
+        if not (
+            isinstance(body, dict)
+            and len(body) == 1
+            and isinstance(next(iter(body.values())), dict)
+        ):
+            logger.error(
+                f"Ignoring custom aggregation'{name}': it must contain exactly "
+                "one aggregation type with an object body"
+            )
+            continue
+        aggregations[name] = body
+
+
+def load_custom_aggregations(
+    aggregations: dict[str, dict[str, Any]], custom_aggregations: str | None = None
+) -> None:
+    """Read the custom aggregations configuration and apply it, in place.
+
+    The JSON in STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS takes precedence, otherwise
+    the file named by STAC_FASTAPI_ES_AGGREGATIONS_FILE is read.
+    """
+    custom_config = get_custom_config(
+        "STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS",
+        "STAC_FASTAPI_ES_AGGREGATIONS_FILE",
+        custom_aggregations,
+    )
+    apply_custom_aggregations(aggregations, custom_config)
+
+
 def get_dynamic_template(
     ENV_VAR_CUSTOM_MAPPINGS: str,
     ENV_VAR_CUSTOM_MAPPINGS_FILE: str,
@@ -513,6 +567,8 @@ AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
         }
     },
 }
+
+load_custom_aggregations(AGGREGATION_MAPPING)
 
 ES_MAPPING_TYPE_TO_JSON: dict[
     str, Literal["string", "number", "boolean", "object", "array", "null", "integer"]

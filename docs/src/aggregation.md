@@ -27,83 +27,24 @@ Available aggregations are:
 - geometry_geohash_grid_frequency ([geohash grid](https://opensearch.org/docs/latest/aggregations/bucket/geohash-grid/) on Item.geometry)
 - geometry_geotile_grid_frequency ([geotile grid](https://opensearch.org/docs/latest/aggregations/bucket/geotile-grid/) on Item.geometry)
 
-Support for additional fields and new aggregations can be added in the [OpenSearch database_logic.py](../../stac_fastapi/opensearch/stac_fastapi/opensearch/database_logic.py) and [ElasticSearch database_logic.py](../../stac_fastapi/elasticsearch/stac_fastapi/elasticsearch/database_logic.py) files.
+**Adding aggregations through configuration**
 
+The aggregations the server can run are defined in AGGREGATION_MAPPING. Additional ones can be declared without changing the code:
+
+`STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS`: a JSON object mapping an aggregation name to an Elasticsearch/OpenSearch aggregation body.
+`STAC_FASTAPI_ES_AGGREGATIONS_FILE`: path to a JSON file with the same content, used when the variable above is not set.
 ```json
-"aggregations": [
-    {
-      "name": "total_count",
-      "data_type": "integer"
-    },
-    {
-      "name": "datetime_max",
-      "data_type": "datetime"
-    },
-    {
-      "name": "datetime_min",
-      "data_type": "datetime"
-    },
-    {
-      "name": "datetime_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "datetime"
-    },
-    {
-      "name": "sun_elevation_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "platform_frequency", 
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    },
-    {
-      "name": "sun_azimuth_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "off_nadir_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "cloud_cover_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "grid_code_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    },
-    {
-      "name": "centroid_geohash_grid_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    },
-    {
-        "name": "centroid_geohex_grid_frequency",
-        "data_type": "frequency_distribution",
-        "frequency_distribution_data_type": "string"
-    },
-    {
-        "name": "centroid_geotile_grid_frequency",
-        "data_type": "frequency_distribution",
-        "frequency_distribution_data_type": "string"
-    },
-    {
-      "name": "geometry_geohash_grid_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "geometry_geotile_grid_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    }
-]
-  ```
+{
+  "asset_file_size_sum": {"sum": {"field": "assets.file:size"}},
+  "platform_family_frequency": {"terms": {"field": "properties.platform", "size": 100}}
+}
+```
+
+Each entry must hold exactly one aggregation type. An invalid entry is logged and ignored.
+An entry with the name of a built-in aggregation replaces it.
+The aggregation must be listed in the aggregations field of each collection that uses it (name, data_type and, for a distribution, frequency_distribution_data_type). It is not listed by the root /aggregations.
+A name ending with `_frequency` is returned as a frequency distribution (buckets); any other name is returned as a single value.
+For a `date_histogram`, the interval comes from the `datetime_frequency_interval` request parameter.
+These definitions come from the server configuration, never from a request; they can use any feature the backend supports, including scripts, so only trusted operators should set them.
 
 
