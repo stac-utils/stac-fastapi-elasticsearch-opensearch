@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- With `ENABLE_STAC_VALIDATOR=false`, a merge patch that sets `collection` on a collection (for example `{"collection": "b"}` sent to `PATCH /collections/a`) now stores it as a member of collection `a`, as it already did with the validator on and as JSON Patch `add /collection` does. It used to rename the collection to `b` and answer `404`. [#1011](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1011)
+- Renaming a collection with `DatabaseLogic.update_collection` keeps every item's ID. The reindex replaced every occurrence of the old collection ID in each document ID, so an item whose ID contained it got the wrong document ID: fetching it returned `404`, and it could overwrite another item. A collection ID containing `'` no longer fails the reindex with a Painless compile error. [#1011](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1011)
+
 ## [v8.2.0] - 2026-11-15
 
 ### Added
