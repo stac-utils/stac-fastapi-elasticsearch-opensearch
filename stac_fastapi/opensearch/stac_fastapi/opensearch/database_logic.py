@@ -87,7 +87,9 @@ from stac_fastapi.sfeos_helpers.database.query import (
     format_collection_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
+    BBOX_SHAPE_SCRIPT,
     add_hidden_filter,
+    bbox_shape_enabled,
     is_hidden,
     merge_to_operations,
     operations_to_script,
@@ -1926,9 +1928,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         else:
             collection.pop(GENERATION_FIELD, None)
 
-        if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
-            "ENABLE_COLLECTIONS_SEARCH_ROUTE"
-        ):
+        if bbox_shape_enabled():
             # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
             add_bbox_shape_to_collection(collection)
 
@@ -2108,9 +2108,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             return None
 
         else:
-            if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
-                "ENABLE_COLLECTIONS_SEARCH_ROUTE"
-            ):
+            if bbox_shape_enabled():
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
                 add_bbox_shape_to_collection(collection_dict)
 
@@ -2301,6 +2299,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             patched collection.
         """
         script = operations_to_script(operations, create_nest=create_nest)
+        if bbox_shape_enabled():
+            script["source"] += BBOX_SHAPE_SCRIPT
 
         if version is not None and not await index_behind_alias(
             self.client, COLLECTIONS_INDEX, version.index
