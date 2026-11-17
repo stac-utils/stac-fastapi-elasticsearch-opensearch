@@ -234,7 +234,7 @@ These endpoints support advanced collection discovery features including:
   - Example: `/collections?bbox=-180,-90,180,90` (finds all collections with global coverage)
   - Supports both 2D bounding boxes `[minx, miny, maxx, maxy]` and 3D bounding boxes `[minx, miny, minz, maxx, maxy, maxz]` (altitude values are ignored for spatial queries)
   - Collections are matched if their spatial extent (stored in the `extent.spatial.bbox` field) intersects with the provided bbox parameter
-  - **Implementation Note**: When collections are created or updated, a `bbox_shape` field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries
+  - **Implementation Note**: When collections are created, updated or patched, a `bbox_shape` field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries. Create, update and merge patch ignore a client-supplied `bbox_shape`; a JSON Patch operation that addresses it returns `400`
   - **Migrating Legacy Collections**: Collections created before this feature was added will not be discoverable via bbox search until they have the `bbox_shape` field added. You can either:
     - Update each collection via the API (PUT `/collections/{collection_id}` with the existing collection data)
     - Use the [SFEOS Tools CLI](https://github.com/Healy-Hyperspatial/sfeos-tools) (install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`):

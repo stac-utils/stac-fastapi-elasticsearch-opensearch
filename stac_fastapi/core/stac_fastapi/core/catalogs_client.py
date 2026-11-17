@@ -994,6 +994,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 if isinstance(link, dict)
                 and link.get("rel") not in ("parent", "child", "children")
             ]
+        col_dict = self.collection_serializer.stac_to_db(col_dict, request)
 
         try:
             version = await self.database.create_collection(col_dict, refresh=True)
