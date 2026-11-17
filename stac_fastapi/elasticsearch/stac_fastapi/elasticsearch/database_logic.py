@@ -6,6 +6,7 @@ import os
 from base64 import urlsafe_b64encode
 from copy import deepcopy
 from typing import Any, Iterable, Type
+from uuid import uuid4
 
 import attr
 import elasticsearch.helpers as helpers
@@ -27,7 +28,12 @@ from stac_fastapi.core.serializers import (
     CollectionSerializer,
     ItemSerializer,
 )
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
+from stac_fastapi.core.utilities import (
+    MAX_LIMIT,
+    bbox2polygon,
+    get_bool_env,
+    items_index_strategy,
+)
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -38,6 +44,7 @@ from stac_fastapi.extensions.transaction.request import (
     PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
+    GENERATION_FIELD,
     PARENT_ID_SCRIPT,
     ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
@@ -51,6 +58,7 @@ from stac_fastapi.sfeos_helpers.database import (
     create_index_templates_shared,
     decode_search_after_token_shared,
     delete_item_index_shared,
+    ensure_generation_mappings,
     find_existing_item_ids,
     find_item_in_alias,
     find_item_indexes_in_alias,
@@ -60,12 +68,15 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_actions,
     mk_item_id,
     populate_sort_shared,
+    resolve_aliases_shared,
+    restore_shared_alias,
     retry_on_connection_error,
     retry_on_datetime_not_found,
     return_date,
     search_children_with_pagination_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
+    stamp_collection_generation,
     unlink_catalog_children_shared,
     validate_refresh,
 )
@@ -80,7 +91,9 @@ from stac_fastapi.sfeos_helpers.database.query import (
     format_collection_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
+    BBOX_SHAPE_SCRIPT,
     add_hidden_filter,
+    bbox_shape_enabled,
     is_hidden,
     merge_to_operations,
     operations_to_script,
@@ -104,7 +117,6 @@ from stac_fastapi.sfeos_helpers.search_engine import (
     SharedIndexInserter,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -178,12 +190,16 @@ async def create_collection_index() -> None:
         index=f"{COLLECTIONS_INDEX}-000001",
         body={"aliases": {COLLECTIONS_INDEX: {}}},
     )
+    if items_index_strategy() == "shared":
+        await ensure_generation_mappings(client)
     await client.close()
 
 
 @retry_on_connection_error
 async def delete_item_index(
-    collection_id: str, expected: DocumentVersion | None = None
+    collection_id: str,
+    expected: DocumentVersion | None = None,
+    generation: str | None = None,
 ) -> None:
     """Delete the index for items in a collection.
 
@@ -197,6 +213,7 @@ async def delete_item_index(
         settings=AsyncElasticsearchSettings(),
         collection_id=collection_id,
         expected=expected,
+        generation=generation,
     )
 
 
@@ -607,19 +624,56 @@ class DatabaseLogic(BaseDatabaseLogic):
                 except Exception as e:
                     logger.debug(f"Failed to clear scroll context: {e}")
 
-        # Initialize the filters client
         filters_client = filter_module.EsAsyncBaseFiltersClient(
             database=self, settings=self.async_settings
         )
-
-        # 2. Add a Semaphore
         sem = asyncio.Semaphore(50)  # Only allow 50 concurrent DB requests
+
+        # 2. Group collections by backing indices, so collections sharing an
+        # index have its mapping fetched and parsed once.
+        aliases = {cid: index_alias_by_collection_id(cid) for cid in collection_ids}
+        backing = await resolve_aliases_shared(self.client, list(aliases.values()))
+        collections_by_indices: dict[tuple[str, ...], list[str]] = {}
+        for cid, alias in aliases.items():
+            if alias in backing:
+                collections_by_indices.setdefault(backing[alias], []).append(cid)
+            else:
+                logger.warning(
+                    f"Failed to retrieve queryables for collection {cid}: "
+                    f"Mapping for index {alias} not found"
+                )
+
+        async def parse_mapping_safely(
+            indices: tuple[str, ...], cids: list[str]
+        ) -> tuple | None:
+            # An alias over many datetime partitions is shorter than their names.
+            index = indices[0] if len(indices) == 1 else aliases[cids[0]]
+            async with sem:
+                try:
+                    mapping = (await self.client.indices.get_mapping(index=index)).body
+                    return filters_client.queryables_from_mapping(mapping)
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve mapping for {index}: {e}")
+                    return None
+
+        parsed_mappings = await asyncio.gather(
+            *[
+                parse_mapping_safely(indices, cids)
+                for indices, cids in collections_by_indices.items()
+            ]
+        )
+        parsed_by_collection = {
+            cid: parsed
+            for cids, parsed in zip(collections_by_indices.values(), parsed_mappings)
+            if parsed
+            for cid in cids
+        }
 
         async def fetch_queryables_safely(collection_id: str) -> dict | None:
             async with sem:
                 try:
-                    return await filters_client.get_queryables(
-                        collection_id=collection_id
+                    return await filters_client.collection_queryables(
+                        collection_id, parsed_by_collection[collection_id]
                     )
                 except Exception as e:
                     logger.warning(
@@ -627,9 +681,13 @@ class DatabaseLogic(BaseDatabaseLogic):
                     )
                     return None
 
-        # 3. Gather results. The semaphore ensures we only process 50 at a time.
+        # 3. Keep collection order: merge_queryables keeps the first definition.
         results = await asyncio.gather(
-            *[fetch_queryables_safely(cid) for cid in collection_ids]
+            *[
+                fetch_queryables_safely(cid)
+                for cid in collection_ids
+                if cid in parsed_by_collection
+            ]
         )
 
         return [q for q in results if q]
@@ -1253,6 +1311,44 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
+    def _shared_write_kwargs(self) -> dict[str, Any]:
+        """Refuse a shared item write whose collection alias is missing.
+
+        The engine would otherwise create an index named after the alias, which
+        a late delete of the collection removes with whatever it holds.
+        """
+        if isinstance(self.async_index_inserter, SharedIndexInserter):
+            return {"require_alias": True}
+        return {}
+
+    async def get_collection_generation(self, collection_id: str) -> str | None:
+        """Return the collection's generation, None if it has none.
+
+        Raises:
+            NotFoundError: If the collection does not exist.
+        """
+        try:
+            doc = await self.client.get(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                _source_includes=[GENERATION_FIELD],
+            )
+        except ESNotFoundError:
+            raise NotFoundError(f"Collection {collection_id} does not exist")
+        return doc.get("_source", {}).get(GENERATION_FIELD)
+
+    def get_collection_generation_sync(self, collection_id: str) -> str | None:
+        """Return the collection's generation using the sync client."""
+        try:
+            doc = self.sync_client.get(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                _source_includes=[GENERATION_FIELD],
+            )
+        except ESNotFoundError:
+            raise NotFoundError(f"Collection {collection_id} does not exist")
+        return doc.get("_source", {}).get(GENERATION_FIELD)
+
     async def _check_item_exists_in_collection(
         self, collection_id: str, item_id: str
     ) -> bool:
@@ -1303,9 +1399,11 @@ class DatabaseLogic(BaseDatabaseLogic):
             Item: The prepped item.
 
         """
-        await self.check_collection_exists(collection_id=item["collection"])
+        generation = await self.get_collection_generation(item["collection"])
 
-        return self.item_serializer.stac_to_db(item, base_url)
+        return stamp_collection_generation(
+            self.item_serializer.stac_to_db(item, base_url), generation
+        )
 
     async def bulk_async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
@@ -1332,10 +1430,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
         # Check if the collection exists
-        await self.check_collection_exists(collection_id=item["collection"])
+        generation = await self.get_collection_generation(item["collection"])
 
         # Serialize the item into a database-compatible format
-        prepped_item = self.item_serializer.stac_to_db(item, base_url)
+        prepped_item = stamp_collection_generation(
+            self.item_serializer.stac_to_db(item, base_url), generation
+        )
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
@@ -1363,10 +1463,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
-        self.check_collection_exists_sync(item["collection"])
+        generation = self.get_collection_generation_sync(item["collection"])
 
         # Serialize the item into a database-compatible format
-        prepped_item = self.item_serializer.stac_to_db(item, base_url)
+        prepped_item = stamp_collection_generation(
+            self.item_serializer.stac_to_db(item, base_url), generation
+        )
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
@@ -1477,6 +1579,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         # lives, since re-routing by datetime could send it to a newer physical
         # index after a rollover and leave the original copy behind (#571);
         # a new item goes to the index the inserter picks.
+        alias_kwargs: dict[str, Any] = {}
         if version:
             target_index = version.index
         elif upsert and existing_index:
@@ -1485,6 +1588,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             target_index = await self.async_index_inserter.get_target_index(
                 collection_id, item
             )
+            alias_kwargs = self._shared_write_kwargs()
         if version and not await self.client.indices.exists(index=version.index):
             # The index is gone, so the version's document is too; writing would
             # create an empty index under the old name. A deletion in the moment
@@ -1500,11 +1604,19 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
                 **({} if upsert else {"op_type": "create"}),
                 **(version.write_kwargs() if version else {}),
+                **alias_kwargs,
             )
         except ESConflictError:
             if version:
                 raise precondition_failed(f"Item {item_id}")
             raise ItemAlreadyExistsError(item_id, collection_id)
+        except ESNotFoundError:
+            if not alias_kwargs:
+                raise
+            raise ConflictError(
+                f"Collection {collection_id} has no items alias: it is being created "
+                "or deleted, or its delete did not finish; retry"
+            )
         except BadRequestError as e:
             # e.g. a date outside the date_nanos range; caused_by names the bound.
             reason = _search_error_reason(e)
@@ -1847,9 +1959,14 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         self.async_index_inserter.validate_collection_id(collection_id)
 
-        if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
-            "ENABLE_COLLECTIONS_SEARCH_ROUTE"
-        ):
+        # Tells this creation's items apart from those of an earlier collection
+        # with the same id in the shared items index.
+        if isinstance(self.async_index_inserter, SharedIndexInserter):
+            collection[GENERATION_FIELD] = uuid4().hex
+        else:
+            collection.pop(GENERATION_FIELD, None)
+
+        if bbox_shape_enabled():
             # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
             add_bbox_shape_to_collection(collection)
 
@@ -2005,10 +2122,12 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # A create, a reindex and a delete: no one conditional write covers
                 # it. No route renames (PUT and PATCH refuse an id change).
                 raise ValueError("A conditional update cannot change the collection id")
-            if isinstance(self.async_index_inserter, SharedIndexInserter):
+            if isinstance(
+                self.async_index_inserter, (SharedIndexInserter, DatetimeIndexInserter)
+            ):
                 raise HTTPException(
                     status_code=400,
-                    detail="ITEMS_INDEX_STRATEGY=shared cannot change a collection id",
+                    detail="Only ITEMS_INDEX_STRATEGY=simple can change a collection id",
                 )
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
@@ -2017,6 +2136,10 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Create the new collection
             await self.create_collection(collection_dict, refresh=refresh)
 
+            # Reindex reads a search snapshot, so unrefreshed items would be lost.
+            await self.client.indices.refresh(
+                index=index_alias_by_collection_id(collection_id)
+            )
             # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
@@ -2026,7 +2149,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "source": {"index": index_alias_by_collection_id(collection_id)},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
+                        "source": "ctx._source.collection = params.collection; ctx._id = ctx._source.id + '|' + params.collection;",
+                        "params": {"collection": collection_dict.get("id")},
                     },
                 },
                 wait_for_completion=True,
@@ -2038,9 +2162,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             return None
 
         else:
-            if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
-                "ENABLE_COLLECTIONS_SEARCH_ROUTE"
-            ):
+            if bbox_shape_enabled():
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
                 add_bbox_shape_to_collection(collection_dict)
 
@@ -2049,16 +2171,39 @@ class DatabaseLogic(BaseDatabaseLogic):
                     self.client, COLLECTIONS_INDEX, version.index
                 ):
                     raise precondition_failed(f"Collection {collection_id}")
+                # The stored generation is backend-owned, so the write is
+                # conditional on the read it comes from.
+                try:
+                    existing = await self.client.get(
+                        index=version.index if version else COLLECTIONS_INDEX,
+                        id=collection_id,
+                    )
+                except ESNotFoundError:
+                    if version:
+                        raise precondition_failed(f"Collection {collection_id}")
+                    raise NotFoundError(f"Collection {collection_id} not found")
+                if version and DocumentVersion.from_hit(existing).etag != version.etag:
+                    raise precondition_failed(f"Collection {collection_id}")
+                collection_dict.pop(GENERATION_FIELD, None)
+                if GENERATION_FIELD in existing["_source"]:
+                    collection_dict[GENERATION_FIELD] = existing["_source"][
+                        GENERATION_FIELD
+                    ]
                 try:
                     response = await self.client.index(
-                        index=version.index if version else COLLECTIONS_INDEX,
+                        index=existing["_index"],
                         id=collection_id,
                         document=collection_dict,
                         refresh=refresh,
-                        **(version.write_kwargs() if version else {}),
+                        if_seq_no=existing["_seq_no"],
+                        if_primary_term=existing["_primary_term"],
                     )
                 except ESConflictError:
-                    raise precondition_failed(f"Collection {collection_id}")
+                    if version:
+                        raise precondition_failed(f"Collection {collection_id}")
+                    raise ConflictError(
+                        f"Collection {collection_id} was modified concurrently; retry the update"
+                    )
                 return DocumentVersion.from_hit(response)
 
             # parent_ids is backend-owned; a concurrent link/unlink must not be lost.
@@ -2075,9 +2220,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 if version and DocumentVersion.from_hit(existing).etag != version.etag:
                     raise precondition_failed(f"Collection {collection_id}")
 
-                collection_dict.pop("parent_ids", None)
-                if "parent_ids" in existing["_source"]:
-                    collection_dict["parent_ids"] = existing["_source"]["parent_ids"]
+                for field in ("parent_ids", GENERATION_FIELD):
+                    collection_dict.pop(field, None)
+                    if field in existing["_source"]:
+                        collection_dict[field] = existing["_source"][field]
                 try:
                     response = await self.client.index(
                         index=existing["_index"],
@@ -2204,21 +2350,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched collection.
         """
-        new_collection_id = None
-        script_operations = []
-
-        for operation in operations:
-            if (
-                operation.op in ["add", "replace"]
-                and operation.path == "collection"
-                and collection_id != operation.value
-            ):
-                new_collection_id = operation.value
-
-            else:
-                script_operations.append(operation)
-
-        script = operations_to_script(script_operations, create_nest=create_nest)
+        script = operations_to_script(operations, create_nest=create_nest)
+        if bbox_shape_enabled():
+            script["source"] += BBOX_SHAPE_SCRIPT
 
         if version is not None and not await index_behind_alias(
             self.client, COLLECTIONS_INDEX, version.index
@@ -2242,19 +2376,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
 
-        collection = await self.find_collection(collection_id)
-
-        if new_collection_id:
-            collection["id"] = new_collection_id
-            collection["links"] = resolve_links([], base_url)
-
-            await self.update_collection(
-                collection_id=collection_id,
-                collection=collection,
-                refresh=refresh,
-            )
-
-        return collection
+        return await self.find_collection(collection_id)
 
     @retry_on_connection_error
     async def delete_collection(
@@ -2300,8 +2422,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
             return
 
-        # Verify that the collection exists
-        await self.find_collection(collection_id=collection_id)
+        collection = await self.find_collection(collection_id=collection_id)
         if version is not None and not await index_behind_alias(
             self.client, COLLECTIONS_INDEX, version.index
         ):
@@ -2316,7 +2437,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
         except ESConflictError:
             raise precondition_failed(f"Collection {collection_id}")
-        await delete_item_index(collection_id)
+        await delete_item_index(
+            collection_id, generation=collection.get(GENERATION_FIELD)
+        )
         await self.async_index_inserter.refresh_cache()
 
     async def _delete_shared_index_collection(
@@ -2331,29 +2454,38 @@ class DatabaseLogic(BaseDatabaseLogic):
         The collection document goes last, so a failed cleanup leaves it in place
         and DELETE can be retried. Every step is conditional on the version the
         request started from: `version` (If-Match) answers 412 when it is
-        already stale, and any change from `pinned` answers 409.
+        already stale, and any change from `pinned` answers 409. A 409 puts
+        back the alias of a collection that is still there.
         """
-        _, current = await self.find_collection_with_version(collection_id)
-        if version is not None and current != version:
-            raise precondition_failed(f"Collection {collection_id}")
-        if pinned is not None and current != pinned:
-            raise ConflictError(
-                f"Collection {collection_id} changed during deletion; retry DELETE"
-            )
-        start = pinned or version or current
-
-        await delete_item_index(collection_id, expected=start)
         try:
-            await self.client.delete(
-                index=start.index,
-                id=collection_id,
-                refresh=refresh,
-                **start.write_kwargs(),
+            collection, current = await self.find_collection_with_version(collection_id)
+            if version is not None and current != version:
+                raise precondition_failed(f"Collection {collection_id}")
+            if pinned is not None and current != pinned:
+                raise ConflictError(
+                    f"Collection {collection_id} changed during deletion; retry DELETE"
+                )
+            start = pinned or version or current
+
+            await delete_item_index(
+                collection_id,
+                expected=start,
+                generation=collection.get(GENERATION_FIELD),
             )
-        except (ESConflictError, ESNotFoundError):
-            raise ConflictError(
-                f"Collection {collection_id} changed during deletion; retry DELETE"
-            )
+            try:
+                await self.client.delete(
+                    index=start.index,
+                    id=collection_id,
+                    refresh=refresh,
+                    **start.write_kwargs(),
+                )
+            except (ESConflictError, ESNotFoundError):
+                raise ConflictError(
+                    f"Collection {collection_id} changed during deletion; retry DELETE"
+                )
+        except ConflictError:
+            await restore_shared_alias(self.client, collection_id)
+            raise
         await self.async_index_inserter.refresh_cache()
 
     @retry_on_connection_error
@@ -2478,6 +2610,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 actions,
                 refresh=refresh,
                 raise_on_error=raise_on_error,
+                **self._shared_write_kwargs(),
             )
         else:
             success, errors = 0, []
@@ -2555,6 +2688,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             mk_actions(collection_id, processed_items, op_type=op_type),
             refresh=refresh,
             raise_on_error=raise_on_error,
+            **self._shared_write_kwargs(),
         )
 
         # Log the result

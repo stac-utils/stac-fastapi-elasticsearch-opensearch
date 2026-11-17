@@ -383,6 +383,8 @@ class CollectionSerializer(Serializer):
             A dictionary representation of the collection for the database.
         """
         collection = deepcopy(collection)
+        # The backend derives bbox_shape from the extent.
+        collection.pop("bbox_shape", None)
         collection["links"] = resolve_links(
             collection.get("links", []), str(request.base_url)
         )
@@ -390,7 +392,7 @@ class CollectionSerializer(Serializer):
             for key in ["assets", "item_assets"]:
                 if key in collection:
                     collection[key] = [
-                        {"es_key": k, **v} for k, v in collection.get(key, {}).items()
+                        {"es_key": k, **v} for k, v in (collection[key] or {}).items()
                     ]
         return collection
 
@@ -412,6 +414,7 @@ class CollectionSerializer(Serializer):
         collection = deepcopy(collection)
         parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
+        collection.pop("collection_generation", None)
 
         # Set default values for required STAC Collection fields
         cls._set_collection_defaults(collection)
@@ -484,6 +487,7 @@ class CollectionSerializer(Serializer):
         collection = deepcopy(collection)
         parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
+        collection.pop("collection_generation", None)
 
         # Set default values for required STAC Collection fields
         cls._set_collection_defaults(collection)

@@ -4,13 +4,16 @@ import asyncio
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from stac_fastapi.core.etag import DocumentVersion
+from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX, ITEMS_INDEX_PREFIX
 from stac_fastapi.sfeos_helpers.search_engine.selection.selectors import (
     DatetimeBasedIndexSelector,
@@ -49,6 +52,8 @@ async def owned_collection_app(request, monkeypatch):
                 )
         finally:
             # Delete only this fixture's resources, even when an assertion fails.
+            # delete_by_query only sees refreshed documents (DATABASE_REFRESH=false tests).
+            await database.client.indices.refresh(index=COLLECTIONS_INDEX)
             await database.client.delete_by_query(
                 index=COLLECTIONS_INDEX,
                 body={"query": {"prefix": {"id": prefix}}},
@@ -299,3 +304,105 @@ async def test_rename(
         )
         assert response.status_code == 200, response.text
         assert response.json()["collection"] == destination["id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ["-b", "-b'c"])
+async def test_rename_keeps_item_ids(
+    owned_collection_app, test_collection, test_item, suffix
+):
+    app = owned_collection_app
+    source = f"{app.prefix}-a"
+    destination = f"{app.prefix}{suffix}"
+    response = await app.client.post(
+        "/collections", json=dict(deepcopy(test_collection), id=source)
+    )
+    assert response.status_code == 201, response.text
+    # Each id contains a collection id, so rewriting it inside _id would misplace or collide items.
+    item_ids = [source, f"{destination}{source}", f"{destination}{destination}"]
+    for item_id in item_ids:
+        item = dict(deepcopy(test_item), id=item_id, collection=source)
+        response = await app.client.post(f"/collections/{source}/items", json=item)
+        assert response.status_code == 201, response.text
+
+    await app.database.update_collection(
+        source, dict(deepcopy(test_collection), id=destination), refresh=True
+    )
+
+    for item_id in item_ids:
+        response = await app.client.get(
+            f"/collections/{quote(destination, safe='')}/items/{quote(item_id, safe='')}"
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["id"] == item_id
+        assert response.json()["collection"] == destination
+
+
+@pytest.mark.asyncio
+async def test_rename_keeps_unrefreshed_items(
+    owned_collection_app, test_collection, test_item, monkeypatch
+):
+    app = owned_collection_app
+    # validate_refresh lets DATABASE_REFRESH (true in conftest) override refresh=False.
+    monkeypatch.setenv("DATABASE_REFRESH", "false")
+    source = dict(deepcopy(test_collection), id=f"{app.prefix}-a")
+    destination = dict(deepcopy(test_collection), id=f"{app.prefix}-b")
+    response = await app.client.post("/collections", json=source)
+    assert response.status_code == 201, response.text
+    # Stop background refreshes, so only the rename itself can make the items visible.
+    await app.database.client.indices.put_settings(
+        index=index_alias_by_collection_id(source["id"]),
+        body={"refresh_interval": "-1"},
+    )
+    item_ids = [f"unrefreshed-{i}" for i in range(3)]
+    for item_id in item_ids:
+        item = dict(deepcopy(test_item), id=item_id, collection=source["id"])
+        item = await app.database.async_prep_create_item(item, "http://test-server")
+        await app.database.create_item(item, refresh=False)
+
+    await app.database.update_collection(source["id"], destination, refresh=False)
+    await app.database.client.indices.refresh(
+        index=index_alias_by_collection_id(destination["id"])
+    )
+
+    for item_id in item_ids:
+        response = await app.client.get(
+            f"/collections/{destination['id']}/items/{item_id}"
+        )
+        assert response.status_code == 200, response.text
+    response = await app.client.get(f"/collections/{destination['id']}/items")
+    assert response.status_code == 200, response.text
+    assert len(response.json()["features"]) == len(item_ids)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owned_collection_app", [True], indirect=True)
+async def test_rename_is_refused_under_datetime_strategy(
+    owned_collection_app, test_collection, test_item
+):
+    app = owned_collection_app
+    source = dict(deepcopy(test_collection), id=f"{app.prefix}-a")
+    destination = dict(deepcopy(test_collection), id=f"{app.prefix}-b")
+    response = await app.client.post("/collections", json=source)
+    assert response.status_code == 201, response.text
+    item = dict(deepcopy(test_item), collection=source["id"])
+    response = await app.client.post(f"/collections/{source['id']}/items", json=item)
+    assert response.status_code == 201, response.text
+
+    with pytest.raises(HTTPException) as caught:
+        await app.database.update_collection(source["id"], destination, refresh=True)
+    assert caught.value.status_code == 400
+
+    response = await app.client.get(f"/collections/{source['id']}")
+    assert response.status_code == 200, response.text
+    response = await app.client.get(
+        f"/collections/{source['id']}/items/{test_item['id']}"
+    )
+    assert response.status_code == 200, response.text
+    assert not await app.database.client.exists(
+        index=COLLECTIONS_INDEX, id=destination["id"]
+    )
+    indices = await app.database.client.indices.get(
+        index=f"{ITEMS_INDEX_PREFIX}{destination['id']}*", allow_no_indices=True
+    )
+    assert not list(indices)
