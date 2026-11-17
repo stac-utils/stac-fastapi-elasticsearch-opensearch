@@ -412,6 +412,7 @@ class CollectionSerializer(Serializer):
         collection = deepcopy(collection)
         parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
+        collection.pop("collection_generation", None)
 
         # Set default values for required STAC Collection fields
         cls._set_collection_defaults(collection)
@@ -484,6 +485,7 @@ class CollectionSerializer(Serializer):
         collection = deepcopy(collection)
         parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
+        collection.pop("collection_generation", None)
 
         # Set default values for required STAC Collection fields
         cls._set_collection_defaults(collection)

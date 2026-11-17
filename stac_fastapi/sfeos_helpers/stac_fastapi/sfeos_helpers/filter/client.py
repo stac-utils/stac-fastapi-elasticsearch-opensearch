@@ -32,7 +32,8 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         """Get fields to exclude from queryables endpoint and filtering.
 
         Reads from EXCLUDED_FROM_QUERYABLES environment variable.
-        Supports comma-separated list of field names.
+        Supports comma-separated list of field names. `collection_generation`
+        is always excluded.
 
         For each exclusion pattern, both the original and the version with/without
         'properties.' prefix are included. This ensures fields are excluded regardless
@@ -44,11 +45,8 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Set[str]: Set of field names to exclude from queryables
         """
+        result = {"collection_generation"}
         excluded = os.getenv("EXCLUDED_FROM_QUERYABLES", "")
-        if not excluded:
-            return set()
-
-        result = set()
         for field in excluded.split(","):
             field = field.strip()
             if not field:
