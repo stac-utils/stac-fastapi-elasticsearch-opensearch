@@ -107,6 +107,7 @@ async def search_collections_by_parent_id_with_pagination_shared(
     filter_query: dict[str, Any] | None = None,
     free_text_query: dict[str, Any] | None = None,
     sort: list[dict[str, Any]] | None = None,
+    extent_queries: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], int, list | None]:
     """Search for collections with a specific parent catalog using OpenSearch pagination.
 
@@ -121,6 +122,8 @@ async def search_collections_by_parent_id_with_pagination_shared(
             `q` free-text search translated with apply_collections_free_text_filter_shared.
         sort: Sort clauses such as [{"title.keyword": {"order": "asc"}}]. Defaults
             to id ascending; the caller should include id so pages stay aligned.
+        extent_queries: Extra query clauses every result must match, such as the
+            `bbox` and `datetime` extent filters of Collection Search.
 
     Returns:
         Tuple of (collections_list, total_hits_count, next_search_after_list).
@@ -136,6 +139,7 @@ async def search_collections_by_parent_id_with_pagination_shared(
         must.append(filter_query)
     if free_text_query:
         must.append(free_text_query)
+    must.extend(extent_queries or [])
     query = {"bool": {"must": must}}
 
     sort_clause = sort or [{"id": {"order": "asc"}}]
