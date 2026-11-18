@@ -14,7 +14,10 @@ from starlette.requests import Request
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.extensions.sort.client import AsyncBaseSortablesClient
-from stac_fastapi.sfeos_helpers.database.mapping import get_excluded_from_queryables
+from stac_fastapi.sfeos_helpers.database.mapping import (
+    COLLECTION_SORT_HIDDEN_FIELDS,
+    get_excluded_from_queryables,
+)
 from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     ES_MAPPING_TYPE_TO_JSON,
@@ -447,6 +450,7 @@ class EsAsyncBaseSortablesClient(AsyncBaseSortablesClient):
                 f"Mapping for index {COLLECTIONS_INDEX} not found"
             ) from e
         properties = get_sortable_properties_shared(
-            _mapping_properties(getattr(response, "body", response))
+            _mapping_properties(getattr(response, "body", response)),
+            excluded=get_excluded_from_queryables() | COLLECTION_SORT_HIDDEN_FIELDS,
         )
         return self._sortables_schema(request, properties, additional_properties=False)

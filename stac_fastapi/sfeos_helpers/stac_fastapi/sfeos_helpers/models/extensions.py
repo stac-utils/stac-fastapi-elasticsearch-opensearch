@@ -36,6 +36,7 @@ from stac_fastapi.extensions import (
     TokenPaginationExtension,
     TransactionExtension,
 )
+from stac_fastapi.extensions.collection_search import CollectionSearchConformanceClasses
 from stac_fastapi.extensions.collection_search.request import (
     BaseCollectionSearchGetRequest,
 )
@@ -57,6 +58,10 @@ from stac_fastapi.sfeos_helpers.sort.request import SortExtensionPostRequest
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
+
+CATALOGS_COLLECTION_SEARCH_MARKER = (
+    "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs#collection-search"
+)
 
 
 def get_default_extensions_map(
@@ -369,6 +374,7 @@ class Extensions:
 
         try:
             from stac_fastapi_catalogs_extension import (
+                CATALOGS_CORE_CONFORMANCE,
                 CATALOGS_SEARCH_CONFORMANCE,
                 CatalogsExtension,
                 CatalogsSearchExtension,
@@ -437,19 +443,46 @@ class Extensions:
             if key in ("fields", "sort", "free_text", "filter")
             and (enabled_keys is None or key in enabled_keys)
         ]
+        # The marker binds the scoped listing to the root's Collection Search
+        # class. Only GET /collections with collection search on registers it
+        # (the rc.1 base plus simple-query), so route-only mode gets no marker.
+        # The library's CATALOGS_COLLECTION_SEARCH_CONFORMANCE is not used: it
+        # would add a second, v1.0.0 base class next to rc.1.
+        is_scoped_collection_search = self.collections_search_enabled
+        scoped_collection_search_classes = (
+            [
+                CATALOGS_COLLECTION_SEARCH_MARKER,
+                CollectionSearchConformanceClasses.COLLECTIONSEARCH.value,
+                CollectionSearchConformanceClasses.BASIS.value,
+                *(
+                    uri
+                    for ext in catalog_collections_extensions
+                    for uri in ext.conformance_classes
+                ),
+            ]
+            if is_scoped_collection_search
+            else []
+        )
         # Scoped search, scoped collections and scoped items accept these, so
-        # sub-catalog conformance declares them. Sortables has no scoped route.
+        # sub-catalog conformance declares them. The scoped listing links the
+        # global /collections-sortables, so collection-search#sortables comes
+        # only with the marker; item and features sortables have no scoped route.
         scoped_conformance_classes = list(
             dict.fromkeys(
-                uri
-                for ext in [
-                    *self.search,
-                    *catalog_collections_extensions,
-                    *item_filter,
+                [
+                    *(
+                        uri
+                        for ext in [
+                            *self.search,
+                            *catalog_collections_extensions,
+                            *item_filter,
+                        ]
+                        if isinstance(ext, (FilterExtension, SortExtension))
+                        for uri in ext.conformance_classes
+                        if uri not in SORTABLES_CONFORMANCE_URIS
+                    ),
+                    *scoped_collection_search_classes,
                 ]
-                if isinstance(ext, (FilterExtension, SortExtension))
-                for uri in ext.conformance_classes
-                if uri not in SORTABLES_CONFORMANCE_URIS
             )
         )
         catalogs_client = CatalogsClient(
@@ -481,6 +514,14 @@ class Extensions:
             CatalogsExtension(
                 client=catalogs_client,
                 settings=self.settings.model_dump(),
+                conformance_classes=[
+                    *CATALOGS_CORE_CONFORMANCE,
+                    *(
+                        [CATALOGS_COLLECTION_SEARCH_MARKER]
+                        if is_scoped_collection_search
+                        else []
+                    ),
+                ],
                 hide_alternate_parents=hide_parents,
                 catalogs_get_request_model=with_filter(
                     CatalogsGetRequest, collection_filter

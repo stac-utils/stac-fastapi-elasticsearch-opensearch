@@ -7,6 +7,11 @@ import os
 from collections import defaultdict, deque
 from typing import Any
 
+# Backend-owned catalog links on collection documents: hidden from
+# /collections-sortables and rejected as a collection sortby field. Items keep
+# sorting on it, so it is not in get_excluded_from_queryables().
+COLLECTION_SORT_HIDDEN_FIELDS = frozenset({"parent_ids"})
+
 
 def get_excluded_from_queryables() -> set[str]:
     """Get fields to exclude from queryables endpoint and filtering.

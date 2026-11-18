@@ -9,7 +9,10 @@ from httpx import ASGITransport, AsyncClient
 
 from stac_fastapi.core.catalogs_client import CatalogsClient
 from stac_fastapi.core.models.links import SORTABLES_REL
+from stac_fastapi.extensions.collection_search import CollectionSearchConformanceClasses
+from stac_fastapi.extensions.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.filter import FilterConformanceClasses
+from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.sort import SortConformanceClasses
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
@@ -620,6 +623,23 @@ async def test_get_catalog_collections_sortby_excluded_field(
 
 
 @pytest.mark.asyncio
+async def test_get_catalog_collections_sortby_parent_ids(
+    catalogs_app_client, load_test_data
+):
+    """`parent_ids` is not a collection sortable, so sorting on it is a 400."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections", params={"sortby": "parent_ids"}
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Field 'parent_ids' is not sortable on collections."
+
+
+@pytest.mark.asyncio
 async def test_get_catalog_collections_fields(catalogs_app_client, load_test_data, ctx):
     """Test that `fields` on /catalogs/{catalog_id}/projects the response."""
     test_catalog = load_test_data("test_catalog.json")
@@ -733,6 +753,7 @@ async def test_get_catalog_collections_bbox_and_datetime(
 
     for params in (
         {"bbox": "12,12,14,14"},
+        {"bbox": "12,12,0,14,14,100"},
         {"datetime": "2020-06-01T00:00:00Z/2020-07-01T00:00:00Z"},
     ):
         resp = await catalogs_app_client.get(
@@ -4859,6 +4880,77 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
     assert "https://api.stacspec.org/v1.0.0/item-search" in conforms_to
 
 
+COLLECTION_SEARCH_MARKER = (
+    "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs#collection-search"
+)
+NON_SCOPED_SORTABLES = {
+    SortConformanceClasses.ITEM_SEARCH_SORTABLES,
+    SortConformanceClasses.FEATURES_SORTABLES,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "collections_search, collections_search_route",
+    [(True, True), (True, False), (False, True), (False, False)],
+)
+async def test_collection_search_marker_follows_collection_search(
+    catalogs_app_client, load_test_data, collections_search, collections_search_route
+):
+    """The marker and scoped #sortables need ENABLE_COLLECTIONS_SEARCH; the
+    sortables link needs a registered /collections-sortables route."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    app = build_test_app_with_catalogs(
+        enable_collections_search=collections_search,
+        enable_collections_search_route=collections_search_route,
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test-server"
+    ) as client:
+        root = set((await client.get("/")).json()["conformsTo"])
+        scoped = set(
+            (await client.get(f"/catalogs/{test_catalog['id']}/conformance")).json()[
+                "conformsTo"
+            ]
+        )
+        listing = (
+            await client.get(f"/catalogs/{test_catalog['id']}/collections")
+        ).json()
+        sortables_links = [
+            link for link in listing["links"] if link["rel"] == SORTABLES_REL
+        ]
+
+        assert "https://api.stacspec.org/v1.0.0/collection-search" not in root
+        assert (COLLECTION_SEARCH_MARKER in root) is collections_search
+        assert (COLLECTION_SEARCH_MARKER in scoped) is collections_search
+        assert (
+            SortConformanceClasses.COLLECTION_SEARCH_SORTABLES in scoped
+        ) is collections_search
+        if collections_search:
+            assert CollectionSearchConformanceClasses.COLLECTIONSEARCH in root
+            assert {
+                CollectionSearchConformanceClasses.COLLECTIONSEARCH,
+                CollectionSearchConformanceClasses.BASIS,
+            } <= scoped
+
+        if collections_search or collections_search_route:
+            assert sortables_links == [
+                {
+                    "rel": SORTABLES_REL,
+                    "type": "application/schema+json",
+                    "href": "http://test-server/collections-sortables",
+                    "title": "Sortables",
+                }
+            ]
+            assert (await client.get(sortables_links[0]["href"])).status_code == 200
+        else:
+            assert sortables_links == []
+
+
 SCOPED_FILTER_SORT_CONFORMANCE = {
     FilterConformanceClasses.FILTER,
     FilterConformanceClasses.SEARCH,
@@ -4896,7 +4988,17 @@ async def test_catalog_conformance_declares_scoped_filter_and_sort(
         assert SCOPED_FILTER_SORT_CONFORMANCE <= conforms_to
     else:
         assert not SCOPED_FILTER_SORT_CONFORMANCE & conforms_to
-    assert not any("sortables" in uri for uri in conforms_to)
+    assert (
+        SortConformanceClasses.COLLECTION_SEARCH_SORTABLES in conforms_to
+    ) is is_filter_sort_declared
+    assert not NON_SCOPED_SORTABLES & conforms_to
+    assert {
+        COLLECTION_SEARCH_MARKER,
+        CollectionSearchConformanceClasses.COLLECTIONSEARCH,
+        CollectionSearchConformanceClasses.BASIS,
+        FieldsConformanceClasses.COLLECTIONS,
+        FreeTextConformanceClasses.COLLECTIONS,
+    } <= conforms_to
     assert not any("aggregation" in uri for uri in conforms_to)
 
 
