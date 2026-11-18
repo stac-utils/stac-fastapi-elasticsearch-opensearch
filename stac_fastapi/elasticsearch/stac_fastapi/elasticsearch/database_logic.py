@@ -3025,6 +3025,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         filter: dict[str, Any] | None = None,
         sort: list[dict[str, Any]] | None = None,
         q: list[str] | None = None,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog.
 
@@ -3036,6 +3038,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
             sort (list[dict[str, Any]] | None): Field/direction pairs from `sortby`.
             q (list[str] | None): Free text search terms.
+            bbox (list[float] | None): Bounding box the collection extent must intersect.
+            datetime (str | None): Datetime or interval the collection extent must intersect.
 
         Returns:
             Tuple containing list of collections, next token, and total count.
@@ -3058,6 +3062,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query=await self._collections_filter_query(filter),
                 free_text_query=apply_collections_free_text_filter_shared(q),
                 sort=formatted_sort,
+                extent_queries=[
+                    query
+                    for query in (
+                        apply_collections_bbox_filter_shared(bbox),
+                        apply_collections_datetime_filter_shared(datetime),
+                    )
+                    if query
+                ],
             )
         except BadRequestError as e:
             raise HTTPException(

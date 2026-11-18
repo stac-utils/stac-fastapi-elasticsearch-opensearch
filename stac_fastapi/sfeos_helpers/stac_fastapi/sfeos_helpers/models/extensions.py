@@ -36,6 +36,9 @@ from stac_fastapi.extensions import (
     TokenPaginationExtension,
     TransactionExtension,
 )
+from stac_fastapi.extensions.collection_search.request import (
+    BaseCollectionSearchGetRequest,
+)
 from stac_fastapi.extensions.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.filter import FilterConformanceClasses
 from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
@@ -460,10 +463,17 @@ class Extensions:
             extension_conformance_classes=scoped_conformance_classes,
         )
 
+        # bbox and datetime come with the base Collection Search class, so they
+        # are bound exactly when GET /collections binds them.
         catalog_collections_get_request_model = create_request_model(
             model_name="CatalogCollectionsRequestWithParams",
             base_model=CatalogCollectionsRequest,
             extensions=catalog_collections_extensions,
+            mixins=(
+                [BaseCollectionSearchGetRequest]
+                if self.collection_search_extension is not None
+                else None
+            ),
             request_type="GET",
         )
 
