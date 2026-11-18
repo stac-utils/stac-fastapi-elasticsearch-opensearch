@@ -44,7 +44,9 @@ from stac_fastapi.extensions.sort import (
     CollectionSearchSortExtension,
     ItemCollectionSortExtension,
     SearchSortExtension,
+    SortExtension,
 )
+from stac_fastapi.extensions.sort.sort import SORTABLES_CONFORMANCE_URIS
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 from stac_fastapi.sfeos_helpers.sort import EsAsyncBaseSortablesClient
@@ -395,16 +397,6 @@ class Extensions:
             post_request_model=search_post_request_model,
             landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
         )
-        catalogs_client = CatalogsClient(
-            database=self.database_logic,
-            core_client=core_client,
-            transactions_client=TransactionsClient(
-                database=self.database_logic,
-                session=self.session,
-                settings=self.settings,
-            ),
-        )
-
         hide_parents = self._flag(
             "hide_alternate_parents", "HIDE_ALTERNATE_PARENTS", False
         )
@@ -442,6 +434,32 @@ class Extensions:
             if key in ("fields", "sort", "free_text", "filter")
             and (enabled_keys is None or key in enabled_keys)
         ]
+        # Scoped search, scoped collections and scoped items accept these, so
+        # sub-catalog conformance declares them. Sortables has no scoped route.
+        scoped_conformance_classes = list(
+            dict.fromkeys(
+                uri
+                for ext in [
+                    *self.search,
+                    *catalog_collections_extensions,
+                    *item_filter,
+                ]
+                if isinstance(ext, (FilterExtension, SortExtension))
+                for uri in ext.conformance_classes
+                if uri not in SORTABLES_CONFORMANCE_URIS
+            )
+        )
+        catalogs_client = CatalogsClient(
+            database=self.database_logic,
+            core_client=core_client,
+            transactions_client=TransactionsClient(
+                database=self.database_logic,
+                session=self.session,
+                settings=self.settings,
+            ),
+            extension_conformance_classes=scoped_conformance_classes,
+        )
+
         catalog_collections_get_request_model = create_request_model(
             model_name="CatalogCollectionsRequestWithParams",
             base_model=CatalogCollectionsRequest,
