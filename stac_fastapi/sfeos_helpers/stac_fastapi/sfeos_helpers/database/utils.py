@@ -412,6 +412,37 @@ def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:
     return True
 
 
+def bbox_shape_enabled() -> bool:
+    """Whether collections store bbox_shape; collection search is on unless disabled."""
+    return get_bool_env("ENABLE_COLLECTIONS_SEARCH", default=True) or get_bool_env(
+        "ENABLE_COLLECTIONS_SEARCH_ROUTE"
+    )
+
+
+# Painless twin of add_bbox_shape_to_collection, appended to scripted collection
+# patches so the shape follows the patched extent in the same conditional write.
+BBOX_SHAPE_SCRIPT = """
+    ctx._source.remove('bbox_shape');
+    def shapeExtent = ctx._source.extent;
+    def shapeBoxes = shapeExtent instanceof Map && shapeExtent.spatial instanceof Map
+        ? shapeExtent.spatial.bbox : null;
+    if (shapeBoxes instanceof List && !shapeBoxes.isEmpty()) {
+        def shapeBox = shapeBoxes[0] instanceof List ? shapeBoxes[0] : shapeBoxes;
+        if (shapeBox.size() >= 4) {
+            int shapeMax = shapeBox.size() == 4 ? 2 : 3;
+            def shapeX0 = shapeBox[0];
+            def shapeY0 = shapeBox[1];
+            def shapeX1 = shapeBox[shapeMax];
+            def shapeY1 = shapeBox[shapeMax + 1];
+            ctx._source.bbox_shape = ['type': 'Polygon', 'coordinates': [[
+                [shapeX0, shapeY0], [shapeX1, shapeY0], [shapeX1, shapeY1],
+                [shapeX0, shapeY1], [shapeX0, shapeY0]
+            ]]];
+        }
+    }
+"""
+
+
 def validate_refresh(value: str | bool) -> str:
     """
     Validate the `refresh` parameter value.
