@@ -87,7 +87,9 @@ from stac_fastapi.sfeos_helpers.database.query import (
     format_collection_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
+    BBOX_SHAPE_SCRIPT,
     add_hidden_filter,
+    bbox_shape_enabled,
     is_hidden,
     merge_to_operations,
     operations_to_script,
@@ -1110,9 +1112,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
             )
-            # No matching item index; an empty index would search all indexes (#883).
-            if not index_param:
-                return [], 0, None
+        # No matching item index; an empty index would search all indexes (#883, #990).
+        if not index_param:
+            return [], 0, None
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
@@ -1926,9 +1928,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         else:
             collection.pop(GENERATION_FIELD, None)
 
-        if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
-            "ENABLE_COLLECTIONS_SEARCH_ROUTE"
-        ):
+        if bbox_shape_enabled():
             # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
             add_bbox_shape_to_collection(collection)
 
@@ -2075,10 +2075,12 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # A create, a reindex and a delete: no one conditional write covers
                 # it. No route renames (PUT and PATCH refuse an id change).
                 raise ValueError("A conditional update cannot change the collection id")
-            if isinstance(self.async_index_inserter, SharedIndexInserter):
+            if isinstance(
+                self.async_index_inserter, (SharedIndexInserter, DatetimeIndexInserter)
+            ):
                 raise HTTPException(
                     status_code=400,
-                    detail="ITEMS_INDEX_STRATEGY=shared cannot change a collection id",
+                    detail="Only ITEMS_INDEX_STRATEGY=simple can change a collection id",
                 )
             logger.info(
                 f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
@@ -2089,6 +2091,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             source_alias = index_alias_by_collection_id(collection_id)
             destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
 
+            # Reindex reads a search snapshot, so unrefreshed items would be lost.
+            await self.client.indices.refresh(index=source_alias)
             # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
@@ -2108,9 +2112,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             return None
 
         else:
-            if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
-                "ENABLE_COLLECTIONS_SEARCH_ROUTE"
-            ):
+            if bbox_shape_enabled():
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
                 add_bbox_shape_to_collection(collection_dict)
 
@@ -2301,6 +2303,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             patched collection.
         """
         script = operations_to_script(operations, create_nest=create_nest)
+        if bbox_shape_enabled():
+            script["source"] += BBOX_SHAPE_SCRIPT
 
         if version is not None and not await index_behind_alias(
             self.client, COLLECTIONS_INDEX, version.index
@@ -2957,6 +2961,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         filter: dict[str, Any] | None = None,
         sort: list[dict[str, Any]] | None = None,
         q: list[str] | None = None,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog.
 
@@ -2968,6 +2974,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             filter (dict[str, Any] | None): A CQL2 JSON filter the results must match.
             sort (list[dict[str, Any]] | None): Field/direction pairs from `sortby`.
             q (list[str] | None): Free text search terms.
+            bbox (list[float] | None): Bounding box the collection extent must intersect.
+            datetime (str | None): Datetime or interval the collection extent must intersect.
 
         Returns:
             Tuple containing list of collections, next token, and total count.
@@ -2990,6 +2998,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query=await self._collections_filter_query(filter),
                 free_text_query=apply_collections_free_text_filter_shared(q),
                 sort=formatted_sort,
+                extent_queries=[
+                    query
+                    for query in (
+                        apply_collections_bbox_filter_shared(bbox),
+                        apply_collections_datetime_filter_shared(datetime),
+                    )
+                    if query
+                ],
             )
         except RequestError as e:
             raise HTTPException(
