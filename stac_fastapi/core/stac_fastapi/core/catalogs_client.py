@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.core import parse_fields, parse_sortby
+from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.etag import check_if_match, record_etag
 from stac_fastapi.core.extensions.filter import (
     CQL2FilterError,
@@ -93,6 +94,12 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     item_serializer: ItemSerializer = attr.ib(default=ItemSerializer)
     core_client: Any = attr.ib(default=None)
     transactions_client: Any = attr.ib(default=None)
+    extension_conformance_classes: list[str] = attr.ib(factory=list)
+
+    @property
+    def _extension_names(self) -> list[str]:
+        """Application extensions plus CatalogsExtension, for serializer link gating."""
+        return [*self.database.extensions, "CatalogsExtension"]
 
     def _get_base_url(self, request: Request | None) -> str:
         """Extract base URL from request with sensible default.
@@ -179,7 +186,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         base_url = self._get_base_url(request)
         catalogs = [
             self.catalog_serializer.db_to_stac(
-                cat, request, extensions=["CatalogsExtension"]
+                cat, request, extensions=self._extension_names
             )
             for cat in catalogs_list
         ]
@@ -360,7 +367,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             raise
         record_etag(request, version)
         created_obj = self.catalog_serializer.db_to_stac(
-            db_catalog_dict, request, extensions=["CatalogsExtension"]
+            db_catalog_dict, request, extensions=self._extension_names
         )
         created_dict = self._to_dict(created_obj)
         created_dict["links"] = [
@@ -380,7 +387,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         # 2. Serialize database record to STAC object
         catalog_obj = self.catalog_serializer.db_to_stac(
-            catalog_dict, request, extensions=["CatalogsExtension"]
+            catalog_dict, request, extensions=self._extension_names
         )
 
         # Ensure we have a clean working dictionary for dynamic link building
@@ -551,7 +558,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         updated, new_version = await self.database.find_catalog_with_version(catalog_id)
         record_etag(request, new_version)
         updated_obj = self.catalog_serializer.db_to_stac(
-            updated, request, extensions=["CatalogsExtension"]
+            updated, request, extensions=self._extension_names
         )
 
         updated_dict = self._to_dict(updated_obj)
@@ -600,13 +607,16 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         fields: list[str] | None = None,
         sortby: list[str] | None = None,
         q: str | list[str] | None = None,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
         **kwargs,
     ) -> Collections | Response:
         """Get collections linked from a specific catalog.
 
-        `fields`, `sortby`, and `q` are bound only when the extension is given
-        a `catalog_collections_get_request_model` that includes them (the
-        Fields, Sort, and FreeText collection-search extensions).
+        `fields`, `sortby`, `q`, `bbox`, and `datetime` are bound only when the
+        extension is given a `catalog_collections_get_request_model` that
+        includes them (the Fields, Sort, and FreeText collection-search
+        extensions, and the base Collection Search parameters).
         """
         # Validate catalog exists
         catalog = await self.database.find_catalog(catalog_id)
@@ -631,6 +641,14 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         sort = parse_sortby(sortby)
 
+        # Passed only when set, so out-of-tree backends without these
+        # parameters keep serving requests that don't use them.
+        extent_kwargs: dict[str, Any] = {}
+        if bbox:
+            extent_kwargs["bbox"] = bbox
+        if datetime:
+            extent_kwargs["datetime"] = format_datetime_range(date_str=datetime)
+
         (
             collections_list,
             total_hits,
@@ -643,11 +661,12 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             filter=_parse_cql2_filter(filter_expr, filter_lang),
             sort=sort,
             q=[q] if isinstance(q, str) else q,
+            **extent_kwargs,
         )
 
         collections = [
             self.collection_serializer.db_to_stac_in_catalog(
-                col, request, catalog_id=catalog_id, extensions=["CatalogsExtension"]
+                col, request, catalog_id=catalog_id, extensions=self._extension_names
             )
             for col in collections_list
         ]
@@ -736,7 +755,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         for cat in catalogs_list:
             catalog_obj = self.catalog_serializer.db_to_stac(
-                cat, request, extensions=["CatalogsExtension"]
+                cat, request, extensions=self._extension_names
             )
             catalog_dict = self._to_dict(catalog_obj)
             catalog_links = list(catalog_dict.get("links", []))
@@ -881,7 +900,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 raise
             record_etag(request, version)
             new_obj = self.catalog_serializer.db_to_stac(
-                db_catalog_dict, request, extensions=["CatalogsExtension"]
+                db_catalog_dict, request, extensions=self._extension_names
             )
             new_dict = self._to_dict(new_obj)
             new_dict["links"] = [
@@ -910,7 +929,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             )
             raise
         existing_obj = self.catalog_serializer.db_to_stac(
-            existing, request, extensions=["CatalogsExtension"]
+            existing, request, extensions=self._extension_names
         )
         existing_dict = self._to_dict(existing_obj)
         existing_dict["links"] = [
@@ -961,7 +980,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 existing,
                 request,
                 catalog_id=catalog_id,
-                extensions=["CatalogsExtension"],
+                extensions=self._extension_names,
             )
             # Linking an existing collection returns 200 OK (Mode B);
             # 201 Created is reserved for newly created collections
@@ -994,6 +1013,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 if isinstance(link, dict)
                 and link.get("rel") not in ("parent", "child", "children")
             ]
+        col_dict = self.collection_serializer.stac_to_db(col_dict, request)
 
         try:
             version = await self.database.create_collection(col_dict, refresh=True)
@@ -1008,7 +1028,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             col_dict,
             request,
             catalog_id=catalog_id,
-            extensions=["CatalogsExtension"],
+            extensions=self._extension_names,
         )
         # Return 201 Created for new collection
         content = self._to_dict(collection_obj)
@@ -1045,7 +1065,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             collection_dict,
             request,
             catalog_id=catalog_id,
-            extensions=["CatalogsExtension"],
+            extensions=self._extension_names,
         )
         collection_dict_out = self._to_dict(collection_obj)
         collection_dict_out["links"] = [
@@ -1128,7 +1148,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             updated_collection,
             request,
             catalog_id=catalog_id,
-            extensions=["CatalogsExtension"],
+            extensions=self._extension_names,
         )
         collection_dict_out = self._to_dict(collection_obj)
         collection_dict_out["links"] = [
@@ -1482,7 +1502,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             if child.get("type") == "Catalog":
                 children.append(
                     self.catalog_serializer.db_to_stac(
-                        child, request, extensions=["CatalogsExtension"]
+                        child, request, extensions=self._extension_names
                     )
                 )
             else:
@@ -1491,7 +1511,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                         child,
                         request,
                         catalog_id=catalog_id,
-                        extensions=["CatalogsExtension"],
+                        extensions=self._extension_names,
                     )
                 )
 
@@ -1588,6 +1608,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         conformance classes of registered catalog extensions via
         ``app.state.catalogs_conformance_classes``, and the transaction
         extension is only registered when transactions are enabled.
+
+        Filter and sort classes come from the extensions the scoped routes
+        use. Aggregation is not declared: no scoped aggregate endpoint exists.
         """
         await self.database.find_catalog(catalog_id)
         return {
@@ -1598,6 +1621,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 "https://api.stacspec.org/v1.0.0/children",
                 "https://api.stacspec.org/v1.0.0/children#type-filter",
                 "https://api.stacspec.org/v1.0.0/item-search",
+                *self.extension_conformance_classes,
             ]
         }
 
