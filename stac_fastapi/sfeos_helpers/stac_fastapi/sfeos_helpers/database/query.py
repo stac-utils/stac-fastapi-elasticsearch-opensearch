@@ -583,11 +583,11 @@ def add_collections_to_body(
 
     Args:
         collection_ids (List[str] | None): A list of collections ids.
-        query (dict[str, Any] | None): The query to add collections to. If none, create a query that filters
+        query (dict[str, Any] | None): The query to restrict to the collections. If none, create a query that filters
         the collection ids.
 
     Returns:
-        Dict[str, Any]: A query that contains a filter on the given collection ids.
+        Dict[str, Any]: A query that requires the given query and filters on the given collection ids.
 
     Notes:
         This function is needed in the execute_search function when the size of the URL path will exceed the maximum of ES.
@@ -595,15 +595,8 @@ def add_collections_to_body(
     if not collection_ids:
         return query
 
-    index_filter = {"terms": {"collection": collection_ids}}
-    if query is None:
-        query = {"query": {}}
-    if "bool" not in query:
-        query["bool"] = {}
-    if "filter" not in query["bool"]:
-        query["bool"]["filter"] = []
-
-    filters = query["bool"]["filter"]
-    if index_filter not in filters:
-        filters.append(index_filter)
-    return query
+    collection_filter = {"terms": {"collection": collection_ids}}
+    if not query:
+        return {"bool": {"filter": [collection_filter]}}
+    # Wrap, not merge: a filter beside root `should` clauses makes them optional (#1029).
+    return {"bool": {"must": [query], "filter": [collection_filter]}}

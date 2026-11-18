@@ -1,14 +1,23 @@
 import base64
+import copy
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from stac_fastapi.core.catalogs_client import CatalogsClient
+from stac_fastapi.core.models.links import SORTABLES_REL
+from stac_fastapi.extensions.filter import FilterConformanceClasses
+from stac_fastapi.extensions.sort import SortConformanceClasses
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
-from ..conftest import build_test_app_with_catalogs, get_flattened_routes
+from ..conftest import (
+    build_test_app_with_catalogs,
+    get_flattened_routes,
+    refresh_indices,
+)
 
 
 @pytest.mark.asyncio
@@ -166,6 +175,104 @@ async def test_create_collection_ignores_parent_ids_in_body(
     assert list_resp.status_code == 200
     listed_ids = [c["id"] for c in list_resp.json()["collections"]]
     assert collection["id"] not in listed_ids
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_collection_ignores_bbox_shape_in_body(
+    catalogs_app_client, txn_client, load_test_data
+):
+    """POST /catalogs/{catalog_id}/collections derives bbox_shape from the extent (#1017)."""
+    catalog_id = await _create_catalog(catalogs_app_client, load_test_data)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    collection["bbox_shape"] = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+    }
+
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=collection
+    )
+    assert resp.status_code == 201, resp.text
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection["id"]
+    )
+    assert stored["_source"]["bbox_shape"]["coordinates"] == [
+        [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]
+    ]
+    await refresh_indices(txn_client)
+    resp = await catalogs_app_client.get(
+        "/collections", params={"bbox": "100,10,110,20"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert collection["id"] in {c["id"] for c in resp.json()["collections"]}
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_collection_indexes_assets(
+    catalogs_app_client, txn_client, load_test_data, monkeypatch
+):
+    """POST /catalogs/{catalog_id}/collections stores assets as STAC_INDEX_ASSETS expects."""
+    monkeypatch.setenv("STAC_INDEX_ASSETS", "true")
+    catalog_id = await _create_catalog(catalogs_app_client, load_test_data)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    thumbnail = {"href": "https://example.com/thumbnail.png", "type": "image/png"}
+    collection["assets"] = {"thumbnail": thumbnail}
+
+    # Delete while the flag is on: later tests read the indexed form without it.
+    try:
+        resp = await catalogs_app_client.post(
+            f"/catalogs/{catalog_id}/collections", json=collection
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["assets"] == {"thumbnail": thumbnail}
+
+        stored = await txn_client.database.client.get(
+            index=COLLECTIONS_INDEX, id=collection["id"]
+        )
+        assert stored["_source"]["assets"] == [{"es_key": "thumbnail", **thumbnail}]
+
+        for path in (
+            f"/collections/{collection['id']}",
+            f"/catalogs/{catalog_id}/collections/{collection['id']}",
+        ):
+            resp = await catalogs_app_client.get(path)
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["assets"] == {"thumbnail": thumbnail}
+    finally:
+        await catalogs_app_client.delete(f"/collections/{collection['id']}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scoped", [False, True])
+async def test_create_collection_with_null_assets_when_indexing_assets(
+    catalogs_app_client, load_test_data, monkeypatch, scoped
+):
+    """With STAC_INDEX_ASSETS on, null assets and item_assets are stored as empty."""
+    monkeypatch.setenv("STAC_INDEX_ASSETS", "true")
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    collection["assets"] = None
+    collection["item_assets"] = None
+    path = "/collections"
+    if scoped:
+        catalog_id = await _create_catalog(catalogs_app_client, load_test_data)
+        path = f"/catalogs/{catalog_id}/collections"
+
+    try:
+        resp = await catalogs_app_client.post(path, json=collection)
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["assets"] == {}
+        assert resp.json()["item_assets"] == {}
+
+        resp = await catalogs_app_client.get(f"/collections/{collection['id']}")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["assets"] == {}
+        assert resp.json()["item_assets"] == {}
+    finally:
+        await catalogs_app_client.delete(f"/collections/{collection['id']}")
 
 
 @pytest.mark.asyncio
@@ -586,6 +693,78 @@ async def test_get_catalog_collections_free_text(
 
 
 @pytest.mark.asyncio
+async def test_get_catalog_collections_bbox_and_datetime(
+    catalogs_app_client, load_test_data, ctx
+):
+    """`bbox` and `datetime` match collection extents within the catalog only."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    def with_extent(bbox, interval):
+        collection = copy.deepcopy(ctx.collection)
+        collection["id"] = f"test-collection-{uuid.uuid4()}"
+        collection["extent"] = {
+            "spatial": {"bbox": [bbox]},
+            "temporal": {"interval": [interval]},
+        }
+        return collection
+
+    keep = with_extent(
+        [10, 10, 20, 20], ["2020-01-01T00:00:00Z", "2020-12-31T00:00:00Z"]
+    )
+    drop = with_extent(
+        [-50, -50, -40, -40], ["2010-01-01T00:00:00Z", "2010-12-31T00:00:00Z"]
+    )
+    for collection in (keep, drop):
+        add_resp = await catalogs_app_client.post(
+            f"/catalogs/{test_catalog['id']}/collections", json=collection
+        )
+        assert add_resp.status_code == 201
+
+    outside = with_extent(
+        [10, 10, 20, 20], ["2020-01-01T00:00:00Z", "2020-12-31T00:00:00Z"]
+    )
+    assert (
+        await catalogs_app_client.post("/collections", json=outside)
+    ).status_code == 201
+
+    for params in (
+        {"bbox": "12,12,14,14"},
+        {"datetime": "2020-06-01T00:00:00Z/2020-07-01T00:00:00Z"},
+    ):
+        resp = await catalogs_app_client.get(
+            f"/catalogs/{test_catalog['id']}/collections", params=params
+        )
+        assert resp.status_code == 200, params
+        body = resp.json()
+        assert [col["id"] for col in body["collections"]] == [keep["id"]], params
+        assert body["numberMatched"] == 1, params
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_omits_unset_extent_arguments():
+    """Backends without `bbox`/`datetime` keep serving listings that don't use them."""
+
+    async def get_catalog_collections(
+        catalog_id, limit, token, request=None, filter=None, sort=None, q=None
+    ):
+        return [], 0, None
+
+    database = MagicMock()
+    database.find_catalog = AsyncMock(return_value={"id": "c"})
+    database.get_catalog_collections = AsyncMock(side_effect=get_catalog_collections)
+    client = CatalogsClient(database=database)
+
+    resp = await client.get_catalog_collections("c", request=MagicMock())
+
+    assert resp.status_code == 200
+    assert "bbox" not in database.get_catalog_collections.await_args.kwargs
+
+
+@pytest.mark.asyncio
 async def test_get_catalog_collections_filter_and_sort(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -630,7 +809,15 @@ async def test_openapi_lists_catalog_collections_params(catalogs_app_client):
             "parameters"
         ]
     }
-    assert {"fields", "sortby", "q", "filter", "filter-lang"} <= params
+    assert {
+        "fields",
+        "sortby",
+        "q",
+        "filter",
+        "filter-lang",
+        "bbox",
+        "datetime",
+    } <= params
 
 
 @pytest.mark.asyncio
@@ -4672,6 +4859,47 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
     assert "https://api.stacspec.org/v1.0.0/item-search" in conforms_to
 
 
+SCOPED_FILTER_SORT_CONFORMANCE = {
+    FilterConformanceClasses.FILTER,
+    FilterConformanceClasses.SEARCH,
+    FilterConformanceClasses.COLLECTIONS,
+    FilterConformanceClasses.CQL2_TEXT,
+    FilterConformanceClasses.CQL2_JSON,
+    SortConformanceClasses.ITEM_SEARCH_SORT,
+    SortConformanceClasses.COLLECTION_SEARCH_SORT,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "enabled_extensions, is_filter_sort_declared",
+    [(None, True), (["fields", "query", "free_text", "pagination"], False)],
+)
+async def test_catalog_conformance_declares_scoped_filter_and_sort(
+    catalogs_app_client, load_test_data, enabled_extensions, is_filter_sort_declared
+):
+    """Sub-catalog conformance lists filter and sort only when the scoped routes accept them."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    app = build_test_app_with_catalogs(enabled_extensions=enabled_extensions)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test-server"
+    ) as client:
+        resp = await client.get(f"/catalogs/{test_catalog['id']}/conformance")
+    assert resp.status_code == 200
+    conforms_to = set(resp.json()["conformsTo"])
+
+    if is_filter_sort_declared:
+        assert SCOPED_FILTER_SORT_CONFORMANCE <= conforms_to
+    else:
+        assert not SCOPED_FILTER_SORT_CONFORMANCE & conforms_to
+    assert not any("sortables" in uri for uri in conforms_to)
+    assert not any("aggregation" in uri for uri in conforms_to)
+
+
 # ============================================================================
 # Database Error Handling & Observability Tests
 # ============================================================================
@@ -5571,6 +5799,67 @@ async def test_core_post_collection_response_links_match_get(
     assert _links(post.json()) == _links(get.json())
     assert "queryables" in {link["rel"] for link in post.json()["links"]}
     assert _related_hrefs(post.json()) == []
+
+
+def _extension_links(body):
+    rels = {"queryables", "aggregate", "aggregations", SORTABLES_REL}
+    return sorted(
+        (link["rel"], link["href"]) for link in body["links"] if link["rel"] in rels
+    )
+
+
+@pytest.mark.asyncio
+async def test_scoped_collection_responses_carry_global_extension_links(
+    catalogs_app_client, load_test_data
+):
+    """Catalog-scoped collection responses carry the global extension links."""
+    created_in = await _create_catalog(catalogs_app_client, load_test_data)
+    linked_in = await _create_catalog(catalogs_app_client, load_test_data)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    scoped_path = f"/catalogs/{created_in}/collections/{collection['id']}"
+
+    create = await catalogs_app_client.post(
+        f"/catalogs/{created_in}/collections", json=collection
+    )
+    assert create.status_code == 201
+    link = await catalogs_app_client.post(
+        f"/catalogs/{linked_in}/collections", json={"id": collection["id"]}
+    )
+    assert link.status_code == 200
+    collection["title"] = "Updated via scoped PUT"
+    put = await catalogs_app_client.put(scoped_path, json=collection)
+    assert put.status_code == 200
+
+    expected = _extension_links(
+        (await catalogs_app_client.get(f"/collections/{collection['id']}")).json()
+    )
+    assert {rel for rel, _ in expected} == {
+        "queryables",
+        "aggregate",
+        "aggregations",
+        SORTABLES_REL,
+    }
+
+    scoped = await catalogs_app_client.get(scoped_path)
+    listing = await catalogs_app_client.get(f"/catalogs/{created_in}/collections")
+    children = await catalogs_app_client.get(f"/catalogs/{linked_in}/children")
+    listed = next(
+        c for c in listing.json()["collections"] if c["id"] == collection["id"]
+    )
+    child = next(c for c in children.json()["children"] if c["id"] == collection["id"])
+
+    responses = {
+        "create": create.json(),
+        "link": link.json(),
+        "put": put.json(),
+        "get": scoped.json(),
+        "listing": listed,
+        "children": child,
+    }
+    assert {name: _extension_links(body) for name, body in responses.items()} == {
+        name: expected for name in responses
+    }
 
 
 @pytest.mark.asyncio
