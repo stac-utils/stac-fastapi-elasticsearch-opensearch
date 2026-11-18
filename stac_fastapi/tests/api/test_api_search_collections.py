@@ -5,6 +5,8 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+
 from ..conftest import create_collection, refresh_indices
 
 
@@ -1513,3 +1515,213 @@ async def test_merge_patch_ignores_bbox_shape(
     resp = await app_client.get("/collections", params={"bbox": "100,10,110,20"})
     assert resp.status_code == 200, resp.text
     assert collection_id in {c["id"] for c in resp.json()["collections"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "shape", ["add", "replace", "remove", "copy-from", "move-to", "test", "root"]
+)
+async def test_json_patch_rejects_bbox_shape_operations(
+    app_client, txn_client, ctx, monkeypatch, validator, shape
+):
+    """JSON Patch may not read or write the derived bbox_shape (#1017)."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    collection_id = ctx.collection["id"]
+    tiny = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+    }
+    op = {
+        "add": {"op": "add", "path": "/bbox_shape", "value": tiny},
+        "replace": {"op": "replace", "path": "/bbox_shape", "value": tiny},
+        "remove": {"op": "remove", "path": "/bbox_shape"},
+        "copy-from": {"op": "copy", "from": "/bbox_shape", "path": "/keywords"},
+        "move-to": {"op": "move", "from": "/keywords", "path": "/bbox_shape"},
+        "test": {"op": "test", "path": "/bbox_shape", "value": tiny},
+        "root": {
+            "op": "replace",
+            "path": "",
+            "value": {**ctx.collection, "bbox_shape": tiny},
+        },
+    }[shape]
+    document = dict(index=COLLECTIONS_INDEX, id=collection_id)
+    before = await txn_client.database.client.get(**document)
+
+    resp = await app_client.patch(
+        f"/collections/{collection_id}",
+        json=[op],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 400, resp.text
+    assert "A patch may not address bbox_shape" in resp.json()["detail"]
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+    await refresh_indices(txn_client)
+    resp = await app_client.get("/collections", params={"bbox": "100,10,110,20"})
+    assert resp.status_code == 200, resp.text
+    assert collection_id in {c["id"] for c in resp.json()["collections"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["post", "put"])
+async def test_collection_body_bbox_shape_is_ignored(
+    app_client, txn_client, ctx, load_test_data, method
+):
+    """Create and update derive bbox_shape from the extent and drop a body value (#1017)."""
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"bbox-shape-body-{uuid.uuid4()}"
+    body = {
+        **collection,
+        "bbox_shape": {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+        },
+    }
+
+    if method == "post":
+        resp = await app_client.post("/collections", json=body)
+        assert resp.status_code == 201, resp.text
+    else:
+        resp = await app_client.post("/collections", json=collection)
+        assert resp.status_code == 201, resp.text
+        resp = await app_client.put(f"/collections/{collection['id']}", json=body)
+        assert resp.status_code == 200, resp.text
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection["id"]
+    )
+    assert stored["_source"]["bbox_shape"]["coordinates"] == [
+        [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]
+    ]
+    await refresh_indices(txn_client)
+    resp = await app_client.get("/collections", params={"bbox": "100,10,110,20"})
+    assert resp.status_code == 200, resp.text
+    assert collection["id"] in {c["id"] for c in resp.json()["collections"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_type, patch",
+    [
+        (
+            "application/json-patch+json",
+            [
+                {
+                    "op": "replace",
+                    "path": "/extent/spatial/bbox",
+                    "value": [[0, 0, 1, 1]],
+                }
+            ],
+        ),
+        (
+            "application/merge-patch+json",
+            {"extent": {"spatial": {"bbox": [[0, 0, 1, 1]]}}},
+        ),
+        (
+            "application/json-patch+json",
+            [
+                {
+                    "op": "replace",
+                    "path": "/extent/spatial/bbox",
+                    "value": [[0, 0, -10, 1, 1, 10]],
+                }
+            ],
+        ),
+    ],
+    ids=["json-patch", "merge-patch", "json-patch-3d"],
+)
+async def test_patch_without_validator_rebuilds_bbox_shape(
+    app_client, txn_client, ctx, monkeypatch, content_type, patch
+):
+    """A validator-off patch derives bbox_shape from the patched extent (#1017)."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    collection_id = ctx.collection["id"]
+
+    resp = await app_client.patch(
+        f"/collections/{collection_id}",
+        json=patch,
+        headers={"Content-Type": content_type},
+    )
+    assert resp.status_code == 200, resp.text
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection_id
+    )
+    assert stored["_source"]["bbox_shape"] == {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+    }
+    await refresh_indices(txn_client)
+    for bbox, is_listed in (("100,10,110,20", False), ("0.2,0.2,0.8,0.8", True)):
+        resp = await app_client.get("/collections", params={"bbox": bbox})
+        assert resp.status_code == 200, resp.text
+        assert (
+            collection_id in {c["id"] for c in resp.json()["collections"]}
+        ) is is_listed
+
+
+@pytest.mark.asyncio
+async def test_patch_without_validator_drops_bbox_shape_with_extent_bbox(
+    app_client, txn_client, ctx, monkeypatch
+):
+    """Removing the extent bbox removes the derived shape instead of keeping it stale (#1017)."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    collection_id = ctx.collection["id"]
+
+    resp = await app_client.patch(
+        f"/collections/{collection_id}",
+        json=[{"op": "remove", "path": "/extent/spatial/bbox"}],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection_id
+    )
+    assert "bbox_shape" not in stored["_source"]
+
+
+@pytest.mark.asyncio
+async def test_patch_without_validator_rejects_extent_the_index_rejects(
+    app_client, txn_client, ctx, monkeypatch
+):
+    """A derived shape the index rejects fails the patch as a whole (#1017)."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    collection_id = ctx.collection["id"]
+    document = dict(index=COLLECTIONS_INDEX, id=collection_id)
+    before = await txn_client.database.client.get(**document)
+
+    resp = await app_client.patch(
+        f"/collections/{collection_id}",
+        json=[
+            {"op": "replace", "path": "/extent/spatial/bbox", "value": [[5, 5, 5, 5]]}
+        ],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 400, resp.text
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+
+
+@pytest.mark.asyncio
+async def test_create_collection_stores_bbox_shape_by_default(
+    app_client, txn_client, ctx, load_test_data, monkeypatch
+):
+    """Collection search is on by default, so bbox_shape is derived without either flag (#1017)."""
+    monkeypatch.delenv("ENABLE_COLLECTIONS_SEARCH", raising=False)
+    monkeypatch.delenv("ENABLE_COLLECTIONS_SEARCH_ROUTE", raising=False)
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"bbox-shape-default-{uuid.uuid4()}"
+
+    resp = await app_client.post("/collections", json=collection)
+    assert resp.status_code == 201, resp.text
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection["id"]
+    )
+    assert "bbox_shape" in stored["_source"]

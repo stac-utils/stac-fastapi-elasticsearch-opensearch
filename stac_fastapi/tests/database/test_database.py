@@ -47,12 +47,24 @@ from ..conftest import (
 )
 
 
+def _cql2(op, *args):
+    return {"op": op, "args": list(args)}
+
+
+def _cql2_cmp(op, field, value):
+    return _cql2(op, {"property": field}, value)
+
+
+_CQL2_T = "2020-01-01T00:00:00Z"
+
+
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def setup_database_indexes():
     await create_collection_index()
     await create_index_templates()
 
 
+@pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("cql2_filter", "collection_ids", "expected_metadata"),
@@ -822,6 +834,120 @@ async def setup_database_indexes():
             [([], "2023-01-01T00:00:00Z/.."), ([], "../2023-12-31T23:59:59Z")],
             id="start-and-end-datetime-combined",
         ),
+        # Branches the extractor cannot bound must widen index selection (#990).
+        pytest.param(
+            _cql2("or", _cql2_cmp("=", "collection", "e"), _cql2_cmp("=", "id", "x")),
+            ["a", "b", "c"],
+            [],
+            id="collection-or-id-unrestricted",
+        ),
+        pytest.param(
+            _cql2(
+                "or",
+                _cql2_cmp("=", "collection", "e"),
+                _cql2_cmp(">", "datetime", _CQL2_T),
+            ),
+            ["a", "b", "c"],
+            [(["e"], ""), ([], f"{_CQL2_T}/..")],
+            id="collection-or-datetime-keeps-datetime-branch",
+        ),
+        pytest.param(
+            _cql2(
+                "or",
+                _cql2("not", _cql2_cmp("=", "collection", "a")),
+                _cql2("not", _cql2_cmp("=", "collection", "b")),
+            ),
+            ["a", "b", "c"],
+            [],
+            id="or-of-not-collections-disjoint-exclusions",
+        ),
+        pytest.param(
+            _cql2(
+                "or",
+                _cql2("not", _cql2_cmp("=", "collection", "a")),
+                _cql2("not", _cql2_cmp("=", "id", "x")),
+            ),
+            ["a", "b", "c"],
+            [],
+            id="or-of-not-collection-and-not-id",
+        ),
+        pytest.param(
+            _cql2_cmp("<>", "collection", "e"),
+            ["a", "b", "c"],
+            [],
+            id="collection-not-equal-unrestricted",
+        ),
+        pytest.param(
+            _cql2_cmp(">", "collection", "e"),
+            ["a", "b", "c"],
+            [],
+            id="collection-greater-than-unrestricted",
+        ),
+        pytest.param(
+            _cql2("isNull", {"property": "collection"}),
+            ["a", "b", "c"],
+            [],
+            id="collection-isnull-unrestricted",
+        ),
+        pytest.param(
+            _cql2(
+                "or",
+                _cql2("not", _cql2_cmp("=", "collection", "a")),
+                _cql2("not", _cql2_cmp("=", "collection", "b")),
+                _cql2("not", _cql2_cmp(">", "datetime", _CQL2_T)),
+            ),
+            ["a", "b", "c"],
+            [],
+            id="or-of-not-collections-and-not-datetime",
+        ),
+        pytest.param(
+            _cql2(
+                "or",
+                _cql2("not", _cql2_cmp("=", "collection", "a")),
+                _cql2("not", _cql2_cmp("<>", "datetime", _CQL2_T)),
+            ),
+            ["a", "b", "c"],
+            [],
+            id="or-of-not-collection-and-not-datetime-not-equal",
+        ),
+        pytest.param(
+            _cql2("not", _cql2("not", _cql2_cmp("=", "collection", "a"))),
+            ["a", "b", "c"],
+            [],
+            id="double-not-collection",
+        ),
+        pytest.param(
+            _cql2(
+                "not",
+                _cql2(
+                    "not",
+                    _cql2(
+                        "or",
+                        _cql2_cmp("=", "collection", "a"),
+                        _cql2_cmp(">", "datetime", _CQL2_T),
+                    ),
+                ),
+            ),
+            ["a", "b", "c"],
+            [],
+            id="double-not-collection-or-datetime",
+        ),
+        pytest.param(
+            _cql2(
+                "not",
+                _cql2(
+                    "not",
+                    _cql2(
+                        "or",
+                        _cql2_cmp(">", "datetime", _CQL2_T),
+                        _cql2_cmp("=", "id", "x"),
+                    ),
+                ),
+            ),
+            ["a", "b", "c"],
+            [],
+            id="double-not-datetime-or-id",
+        ),
     ],
 )
 async def test_apply_cql2_filter_checks_search_and_metadata(
@@ -913,6 +1039,18 @@ async def test_apply_cql2_filter_checks_search_and_metadata(
             "",
             set(),
             id="test-disjoint-range-after-all-indexes",
+        ),
+        pytest.param(
+            [([], "")],
+            ITEM_INDICES,
+            set(),
+            id="test-unrestricted-entry-searches-item-indices",
+        ),
+        pytest.param(
+            [(["col-a"], ""), ([], "2020-02-15T00:00:00Z")],
+            "items_start_datetime_col-a_2020-02-08-2020-02-09,items_start_datetime_col-a_2020-02-10-2020-06-09,items_start_datetime_col-a_2020-06-10,items_start_datetime_col-b_2020-02-15",
+            set(),
+            id="test-collection-less-entry-drops-collection-filter",
         ),
     ],
 )

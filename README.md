@@ -234,7 +234,7 @@ These endpoints support advanced collection discovery features including:
   - Example: `/collections?bbox=-180,-90,180,90` (finds all collections with global coverage)
   - Supports both 2D bounding boxes `[minx, miny, maxx, maxy]` and 3D bounding boxes `[minx, miny, minz, maxx, maxy, maxz]` (altitude values are ignored for spatial queries)
   - Collections are matched if their spatial extent (stored in the `extent.spatial.bbox` field) intersects with the provided bbox parameter
-  - **Implementation Note**: When collections are created or updated, a `bbox_shape` field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries
+  - **Implementation Note**: When collections are created, updated or patched, a `bbox_shape` field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries. Create, update and merge patch ignore a client-supplied `bbox_shape`; a JSON Patch operation that addresses it returns `400`
   - **Migrating Legacy Collections**: Collections created before this feature was added will not be discoverable via bbox search until they have the `bbox_shape` field added. You can either:
     - Update each collection via the API (PUT `/collections/{collection_id}` with the existing collection data)
     - Use the [SFEOS Tools CLI](https://github.com/Healy-Hyperspatial/sfeos-tools) (install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`):
@@ -383,7 +383,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 **Children & Collections:**
 
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
-- **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
+- **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog. When collection search is enabled, `bbox` and `datetime` match the collection extents as on `/collections`
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a catalog OR link an existing collection by posting its ID
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
 - **PUT `/catalogs/{catalog_id}/collections/{collection_id}`**: Update a collection within a catalog context (updates the collection globally)
@@ -1569,6 +1569,8 @@ ITEMS_INDEX_STRATEGY=datetime
 ```
 
 `ITEMS_INDEX_STRATEGY` accepts `simple` (the default, one index per collection), `datetime` or `shared` (see [Shared Items Index](#shared-items-index)). The older `ENABLE_DATETIME_INDEX_FILTERING=true` still selects `datetime` when `ITEMS_INDEX_STRATEGY` is unset, but it is deprecated and logs a warning at startup. If both are set and disagree (for example `ENABLE_DATETIME_INDEX_FILTERING=false` with `ITEMS_INDEX_STRATEGY=datetime`), the API fails at startup.
+
+With `datetime`, a collection id cannot change (`update_collection` with a new id raises an error).
 
 > [!IMPORTANT]
 > **Redis is required** when datetime-based indexing is enabled. The system uses Redis to cache index alias mappings from Elasticsearch/OpenSearch, which significantly speeds up search queries by avoiding repeated alias lookups. Insert operations always fetch fresh aliases directly from ES/OS and then refresh the Redis cache, ensuring that search queries always see up-to-date alias data. Configure Redis using the connection variables described in the [Redis for Navigation](#redis-for-navigation-environment-variables) section (`REDIS_HOST`/`REDIS_PORT` or `REDIS_SENTINEL_HOSTS`).
