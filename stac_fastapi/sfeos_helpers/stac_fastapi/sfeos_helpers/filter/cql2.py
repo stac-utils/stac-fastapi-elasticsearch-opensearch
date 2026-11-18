@@ -64,6 +64,7 @@ async def resolve_cql2_indexes(
     """
     all_collections = []
     all_indexes_set = set()
+    has_collectionless_entry = False
 
     for collection_item, date_range in cql2_metadata:
         collections = (
@@ -78,10 +79,14 @@ async def resolve_cql2_indexes(
         )
 
         if not collections or (len(collections) == 1 and not collections[0]):
-            if collection_datetime:
-                indexes = await index_selector.select_indexes([], collection_datetime)
-                index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
-                all_indexes_set.update(index_list)
+            has_collectionless_entry = True
+            if not date_range:
+                # format_datetime_range("") is "../..", which selects every alias;
+                # None selects ITEM_INDICES.
+                collection_datetime = None
+            indexes = await index_selector.select_indexes([], collection_datetime)
+            index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
+            all_indexes_set.update(index_list)
             continue
 
         for collection in collections:
@@ -91,6 +96,11 @@ async def resolve_cql2_indexes(
             index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
 
             all_indexes_set.update(index_list)
+
+    # A collection-less entry can match any collection, so the URL-length
+    # fallback must not filter by the named ones.
+    if has_collectionless_entry:
+        all_collections = []
 
     if not all_indexes_set:
         return "", list(set(all_collections))
