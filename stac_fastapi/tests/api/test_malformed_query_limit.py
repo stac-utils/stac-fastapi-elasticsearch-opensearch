@@ -36,6 +36,9 @@ async def limit_scope(catalogs_app_client, load_test_data):
         "global": "/search",
         "catalog": f"{catalog_path}/search",
         "collections": "/collections-search",
+        "catalogs": "/catalogs",
+        "catalog_collections": f"{catalog_path}/collections",
+        "catalog_items": f"{catalog_path}/collections/{collection['id']}/items",
     }
     try:
         for _ in range(50):
@@ -77,14 +80,21 @@ def forwarded_limit(txn_client, monkeypatch):
     mocks = {
         "execute_search": AsyncMock(return_value=([], 0, None)),
         "get_all_collections": AsyncMock(return_value=([], None, 0)),
+        "get_all_catalogs": AsyncMock(return_value=([], None, 0)),
+        "get_catalog_collections": AsyncMock(return_value=([], 0, None)),
+        "get_catalog_collection_items": AsyncMock(return_value=([], 0, None)),
     }
     for name, mock in mocks.items():
         monkeypatch.setattr(database, name, mock)
+    route_methods = {
+        "collections": "get_all_collections",
+        "catalogs": "get_all_catalogs",
+        "catalog_collections": "get_catalog_collections",
+        "catalog_items": "get_catalog_collection_items",
+    }
 
     def limit_for(route):
-        mock = mocks[
-            "get_all_collections" if route == "collections" else "execute_search"
-        ]
+        mock = mocks[route_methods.get(route, "execute_search")]
         mock.assert_called_once()
         return mock.call_args.kwargs["limit"]
 
@@ -157,6 +167,22 @@ async def test_get_limit_above_maximum_is_cropped(
     response = await client.get(path, params={"limit": "20000"})
     assert response.status_code == 200, response.text
     assert forwarded_limit(route) == 10000
+
+
+@pytest.mark.parametrize(
+    "route,value,expected",
+    [
+        ("catalogs", "1001", 1000),
+        ("catalog_collections", "1001", 1000),
+        ("catalog_items", "10001", 10000),
+    ],
+)
+async def test_catalog_route_limit_above_maximum_is_cropped(
+    client, limit_scope, forwarded_limit, route, value, expected
+):
+    response = await client.get(limit_scope[route], params={"limit": value})
+    assert response.status_code == 200, response.text
+    assert forwarded_limit(route) == expected
 
 
 async def test_catalog_scope_precedes_limit_parsing(client, load_test_data):

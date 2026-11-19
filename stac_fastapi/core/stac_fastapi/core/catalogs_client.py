@@ -29,6 +29,7 @@ from stac_fastapi.core.extensions.filter import (
     check_cql2_literals,
     cql2_text_to_json,
 )
+from stac_fastapi.core.models.links import SORTABLES_REL
 from stac_fastapi.core.queryables import get_properties_from_cql2_filter
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
@@ -692,6 +693,17 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 "title": "Collections",
             },
         ]
+
+        # No scoped sortables route exists; the global one lists the same fields.
+        if "CollectionSearchSortExtension" in self.database.extensions:
+            links.append(
+                {
+                    "rel": SORTABLES_REL,
+                    "type": "application/schema+json",
+                    "href": f"{base_url}/collections-sortables",
+                    "title": "Sortables",
+                }
+            )
 
         if next_token:
             links.append(

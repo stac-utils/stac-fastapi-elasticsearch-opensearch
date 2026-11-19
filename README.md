@@ -838,6 +838,8 @@ When the catalogs search extension is enabled, SFEOS advertises the following co
 
 This conformance class is automatically advertised in the API's `/conformance` endpoint when `ENABLE_CATALOGS_ROUTE=true`.
 
+With `ENABLE_COLLECTIONS_SEARCH` also on (the default), SFEOS declares `https://api.stacspec.org/v1.0.0/multi-tenant-catalogs#collection-search`, which binds the Collection Search parameters to `GET /catalogs/{catalog_id}/collections`. The scoped listing does not link a collection-queryables endpoint yet.
+
 ### Configuration
 
 The catalogs search extension is automatically enabled when the catalogs route is enabled:
@@ -1526,7 +1528,7 @@ The sortables endpoints provide a JSON Schema detailing which fields can be used
 
 Only fields the backend can actually sort on are advertised: keyword, numeric, boolean, date, IP and wildcard fields, and `text` fields that have a `keyword` sub-field. A `text` field with a keyword sub-field is advertised under its public name — `sortby=-title` is internally mapped to `title.keyword`. Geo fields, nested objects and unindexed fields are not advertised, and fields listed in `EXCLUDED_FROM_QUERYABLES` (and their children) are excluded here as well.
 
-Each sortables endpoint is advertised on the resource it describes with a link of relation `http://www.opengis.net/def/rel/ogc/1.0/sortables`: on the landing page for `/sortables`, on each collection for its per-collection sortables, and on the `GET /collections` response for `/collections-sortables`.
+Each sortables endpoint is advertised on the resource it describes with a link of relation `http://www.opengis.net/def/rel/ogc/1.0/sortables`: on the landing page for `/sortables`, on each collection for its per-collection sortables, and on the `GET /collections` and `GET /catalogs/{catalog_id}/collections` responses for `/collections-sortables`.
 
 The per-collection and collection-search schemas set `additionalProperties: false`, so sorting on a field they do not declare returns `400 Bad Request`; `sortby` fields on `GET /collections/{collection_id}/items` are checked against that collection's schema. `GET /sortables` sets `additionalProperties: true` when only the non-exhaustive core fields are listed — any name is then valid in `sortby`, and items missing the property sort it as null — and `false` when `ROOT_QUERYABLES_UNION=true`, in which case `sortby` fields are validated against the union schema. Sort clauses set `unmapped_type` so item indexes that do not map a field contribute their documents as null rather than failing. Fields listed in `EXCLUDED_FROM_QUERYABLES` return `400` under every schema even though the engine could sort on them, keeping the `false` contract. See the [STAC API Sort extension](https://github.com/stac-api-extensions/sort) for the full specification.
 
