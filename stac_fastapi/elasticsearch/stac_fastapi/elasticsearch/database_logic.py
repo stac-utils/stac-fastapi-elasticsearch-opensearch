@@ -644,29 +644,35 @@ class DatabaseLogic(BaseDatabaseLogic):
                 )
 
         async def parse_mapping_safely(
-            indices: tuple[str, ...], cids: list[str]
-        ) -> tuple | None:
-            # An alias over many datetime partitions is shorter than their names.
-            index = indices[0] if len(indices) == 1 else aliases[cids[0]]
+            cids: list[str],
+        ) -> tuple[list[str], tuple | None]:
+            # Read through an alias: credentials may grant metadata access on
+            # aliases only, and an alias is shorter than many partition names.
+            # Collections whose alias failed before the read are left out.
             async with sem:
-                try:
-                    mapping = (await self.client.indices.get_mapping(index=index)).body
-                    return filters_client.queryables_from_mapping(mapping)
-                except Exception as e:
-                    logger.warning(f"Failed to retrieve mapping for {index}: {e}")
-                    return None
+                for i, cid in enumerate(cids):
+                    index = aliases[cid]
+                    try:
+                        mapping = (
+                            await self.client.indices.get_mapping(index=index)
+                        ).body
+                        return cids[i:], filters_client.queryables_from_mapping(mapping)
+                    except ESNotFoundError:
+                        # Its collection was deleted after the aliases resolved.
+                        continue
+                    except AuthorizationException as e:
+                        logger.warning(f"Failed to retrieve mapping for {index}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Failed to retrieve mapping for {index}: {e}")
+                        return [], None
+            return [], None
 
         parsed_mappings = await asyncio.gather(
-            *[
-                parse_mapping_safely(indices, cids)
-                for indices, cids in collections_by_indices.items()
-            ]
+            *[parse_mapping_safely(cids) for cids in collections_by_indices.values()]
         )
         parsed_by_collection = {
-            cid: parsed
-            for cids, parsed in zip(collections_by_indices.values(), parsed_mappings)
-            if parsed
-            for cid in cids
+            cid: parsed for cids, parsed in parsed_mappings if parsed for cid in cids
         }
 
         async def fetch_queryables_safely(collection_id: str) -> dict | None:
