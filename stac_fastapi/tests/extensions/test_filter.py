@@ -9,42 +9,73 @@ from typing import Callable, Dict
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 
-from ..conftest import create_collection, create_item, refresh_indices
+from ..conftest import (
+    build_test_app_with_catalogs,
+    create_collection,
+    create_item,
+    refresh_indices,
+)
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+QUERYABLES_RELS = {"http://www.opengis.net/def/rel/ogc/1.0/queryables", "queryables"}
+
+
+def _assert_queryables_links(response, href):
+    assert response.status_code == 200
+    links = response.json()["links"]
+    for rel in QUERYABLES_RELS:
+        assert [
+            (link["href"], link["type"]) for link in links if link["rel"] == rel
+        ] == [(href, "application/schema+json")]
 
 
 @pytest.mark.asyncio
-async def test_filter_extension_landing_page_link(app_client, ctx):
-    resp = await app_client.get("/")
-    assert resp.status_code == 200
+async def test_filter_extension_landing_page_link(app_client):
+    _assert_queryables_links(await app_client.get("/"), "http://test-server/queryables")
 
-    resp_json = resp.json()
-    keys = [link["rel"] for link in resp_json["links"]]
 
-    assert "queryables" in keys
+@pytest_asyncio.fixture
+async def collection_path(app_client, test_collection):
+    test_collection["id"] = f"queryables-{uuid.uuid4()}"
+    path = f"/collections/{test_collection['id']}"
+    assert (
+        await app_client.post("/collections", json=test_collection)
+    ).status_code == 201
+    try:
+        yield path
+    finally:
+        assert (await app_client.delete(path)).status_code == 204
 
 
 @pytest.mark.asyncio
-async def test_filter_extension_collection_link(app_client, load_test_data):
-    """Test creation and deletion of a collection"""
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = "test"
+async def test_filter_extension_collection_link(app_client, collection_path):
+    _assert_queryables_links(
+        await app_client.get(collection_path),
+        f"http://test-server{collection_path}/queryables",
+    )
 
-    resp = await app_client.post("/collections", json=test_collection)
-    assert resp.status_code == 201
 
-    resp = await app_client.get(f"/collections/{test_collection['id']}")
-    resp_json = resp.json()
-    keys = [link["rel"] for link in resp_json["links"]]
-    assert "queryables" in keys
-
-    resp = await app_client.delete(f"/collections/{test_collection['id']}")
-    assert resp.status_code == 204
+@pytest.mark.asyncio
+async def test_no_queryables_links_without_filter(collection_path):
+    app = build_test_app_with_catalogs(enabled_extensions=["pagination"])
+    database = app.state.app_config["client"].database
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test-server"
+        ) as client:
+            for path in ("/", collection_path):
+                response = await client.get(path)
+                assert response.status_code == 200
+                assert QUERYABLES_RELS.isdisjoint(
+                    link["rel"] for link in response.json()["links"]
+                )
+    finally:
+        await database.client.close()
+        database.sync_client.close()
 
 
 @pytest.mark.asyncio

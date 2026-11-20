@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from stac_pydantic.links import Relations
 
 from stac_fastapi.core.catalogs_client import CatalogsClient
 from stac_fastapi.core.models.links import SORTABLES_REL
@@ -5904,7 +5905,13 @@ async def test_core_post_collection_response_links_match_get(
 
 
 def _extension_links(body):
-    rels = {"queryables", "aggregate", "aggregations", SORTABLES_REL}
+    rels = {
+        Relations.queryables.value,
+        "queryables",
+        "aggregate",
+        "aggregations",
+        SORTABLES_REL,
+    }
     return sorted(
         (link["rel"], link["href"]) for link in body["links"] if link["rel"] in rels
     )
@@ -5937,6 +5944,7 @@ async def test_scoped_collection_responses_carry_global_extension_links(
         (await catalogs_app_client.get(f"/collections/{collection['id']}")).json()
     )
     assert {rel for rel, _ in expected} == {
+        Relations.queryables.value,
         "queryables",
         "aggregate",
         "aggregations",
@@ -5944,6 +5952,13 @@ async def test_scoped_collection_responses_carry_global_extension_links(
     }
 
     scoped = await catalogs_app_client.get(scoped_path)
+    queryables = next(
+        link["href"]
+        for link in scoped.json()["links"]
+        if link["rel"] == Relations.queryables.value
+    )
+    assert queryables == f"http://test-server/collections/{collection['id']}/queryables"
+    assert (await catalogs_app_client.get(queryables)).status_code == 200
     listing = await catalogs_app_client.get(f"/catalogs/{created_in}/collections")
     children = await catalogs_app_client.get(f"/catalogs/{linked_in}/children")
     listed = next(

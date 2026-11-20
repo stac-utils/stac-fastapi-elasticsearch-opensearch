@@ -164,18 +164,22 @@ class CollectionLinks(BaseLinks):
             href=urljoin(self.base_url, f"collections/{self.collection_id}/items"),
         )
 
-    def link_queryables(self) -> dict[str, Any]:
+    def link_queryables(self) -> dict[str, Any] | None:
         """Create the `queryables` link."""
         if "FilterExtension" in self.extensions:
             return dict(
-                rel="queryables",
+                rel=Relations.queryables.value,
                 type=MimeTypes.jsonschema.value,
                 href=urljoin(
                     self.base_url, f"collections/{self.collection_id}/queryables"
                 ),
             )
-        else:
-            return None
+        return None
+
+    def link_queryables_legacy(self) -> dict[str, Any] | None:
+        """Create the deprecated short-relation link."""
+        link = self.link_queryables()
+        return {**link, "rel": "queryables"} if link is not None else None
 
     def link_aggregate(self) -> dict[str, Any]:
         """Create the `aggregate` link."""
