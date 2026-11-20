@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import uuid
 from copy import deepcopy
@@ -222,6 +223,22 @@ def canonical(schemas):
     return sorted(json.dumps(s, sort_keys=True) for s in schemas)
 
 
+def platforms(queryables):
+    return sorted(q["properties"]["platform"]["enum"][0] for q in queryables)
+
+
+def collection_aliases(collection_ids):
+    return {index_alias_by_collection_id(cid) for cid in collection_ids}
+
+
+def platforms_except(collection_ids, alias):
+    return sorted(
+        f"platform-{n}"
+        for n, cid in enumerate(collection_ids)
+        if index_alias_by_collection_id(cid) != alias
+    )
+
+
 @pytest.mark.asyncio
 async def test_shared_rebuild_reads_the_shared_mapping_once(
     app_client, txn_client, shared_index_env, test_collection, test_item, monkeypatch
@@ -236,7 +253,9 @@ async def test_shared_rebuild_reads_the_shared_mapping_once(
     queryables = await database.get_all_collection_queryables()
 
     assert len(get_mapping) == 1
-    assert get_mapping[0]["index"] == SHARED_ITEMS_INDEX
+    assert get_mapping[0]["index"] in {
+        index_alias_by_collection_id(cid) for cid in collection_ids
+    }
     assert len(resolve) == 1
     # One collection-ID scroll, then one enum aggregation per collection.
     assert len(search) == 1 + len(collection_ids)
@@ -324,6 +343,71 @@ async def test_rebuild_skips_a_collection_without_its_alias(
         "platform-1",
         "platform-2",
     ]
+
+
+@pytest.mark.asyncio
+async def test_rebuild_reads_the_next_alias_when_one_is_deleted_mid_rebuild(
+    app_client, txn_client, shared_index_env, test_collection, test_item, monkeypatch
+):
+    collection_ids = await add_collections(app_client, test_collection, test_item)
+    await refresh_indices(txn_client)
+    indices = txn_client.database.client.indices
+    get_mapping = indices.get_mapping
+    requested = []
+
+    async def delete_alias_then_get_mapping(**kwargs):
+        if not requested:
+            await indices.delete_alias(index=SHARED_ITEMS_INDEX, name=kwargs["index"])
+        requested.append(kwargs["index"])
+        return await get_mapping(**kwargs)
+
+    monkeypatch.setattr(indices, "get_mapping", delete_alias_then_get_mapping)
+
+    queryables = await txn_client.database.get_all_collection_queryables()
+
+    assert len(requested) == 2
+    assert requested[1] in collection_aliases(collection_ids) - {requested[0]}
+    assert platforms(queryables) == platforms_except(collection_ids, requested[0])
+
+
+def forbidden_error():
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from opensearchpy.exceptions import AuthorizationException
+
+        return AuthorizationException(403, "security_exception", {})
+    from elastic_transport import ApiResponseMeta, HttpHeaders, NodeConfig
+
+    from elasticsearch import AuthorizationException
+
+    meta = ApiResponseMeta(
+        403, "1.1", HttpHeaders(), 0.0, NodeConfig("http", "localhost", 9200)
+    )
+    return AuthorizationException("security_exception", meta=meta, body={})
+
+
+@pytest.mark.asyncio
+async def test_rebuild_reads_the_next_alias_when_one_is_forbidden(
+    app_client, txn_client, shared_index_env, test_collection, test_item, monkeypatch
+):
+    collection_ids = await add_collections(app_client, test_collection, test_item)
+    await refresh_indices(txn_client)
+    indices = txn_client.database.client.indices
+    get_mapping = indices.get_mapping
+    requested = []
+
+    async def forbid_first_alias(**kwargs):
+        requested.append(kwargs["index"])
+        if kwargs["index"] in (requested[0], SHARED_ITEMS_INDEX):
+            raise forbidden_error()
+        return await get_mapping(**kwargs)
+
+    monkeypatch.setattr(indices, "get_mapping", forbid_first_alias)
+
+    queryables = await txn_client.database.get_all_collection_queryables()
+
+    assert len(requested) == 2
+    assert requested[1] in collection_aliases(collection_ids) - {requested[0]}
+    assert platforms(queryables) == platforms_except(collection_ids, requested[0])
 
 
 @pytest.mark.asyncio
