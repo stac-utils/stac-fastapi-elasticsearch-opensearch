@@ -1,16 +1,20 @@
-"""Tests for custom mappings configuration.
+"""Tests for custom mappings and custom aggregations configuration.
 
 These tests verify the STAC_FASTAPI_ES_CUSTOM_MAPPINGS and
-STAC_FASTAPI_ES_DYNAMIC_MAPPING environment variable functionality.
+STAC_FASTAPI_ES_DYNAMIC_MAPPING environment variable functionality, and the
+STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS and STAC_FASTAPI_ES_AGGREGATIONS_FILE ones.
 """
 
+import copy
 import json
 
 import pytest
 
 from stac_fastapi.sfeos_helpers.mappings import (
+    apply_custom_aggregations,
     apply_custom_mappings,
     get_mappings,
+    load_custom_aggregations,
     merge_dynamic_templates,
     merge_mappings,
     parse_dynamic_mapping_config,
@@ -413,3 +417,151 @@ class TestSTACExtensionUseCases:
         props = mappings["properties"]["properties"]["properties"]
         assert props["platform"] == {"type": "keyword"}
         assert props["eo:cloud_cover"] == {"type": "float"}
+
+
+SUM_AGGREGATION = {"sum": {"field": "assets.file:size"}}
+
+
+class TestApplyCustomAggregations:
+    """Tests for the apply_custom_aggregations function."""
+
+    @pytest.mark.parametrize(
+        "custom_json",
+        [None, ""],
+        ids=["none", "empty_string"],
+    )
+    def test_no_op_for_empty_input(self, custom_json):
+        """Test that None or empty string leaves aggregations unchanged."""
+        aggregations = {"total_count": {"value_count": {"field": "id"}}}
+        original = copy.deepcopy(aggregations)
+        apply_custom_aggregations(aggregations, custom_json)
+        assert aggregations == original
+
+    def test_adds_new_aggregation(self):
+        """Test that a custom aggregation is added next to the existing ones."""
+        aggregations = {"total_count": {"value_count": {"field": "id"}}}
+        custom_json = json.dumps({"asset_file_size_sum": SUM_AGGREGATION})
+        apply_custom_aggregations(aggregations, custom_json)
+        assert aggregations["asset_file_size_sum"] == SUM_AGGREGATION
+        assert aggregations["total_count"] == {"value_count": {"field": "id"}}
+
+    def test_custom_overwrites_builtin_on_name_collision(self):
+        """Test that a custom aggregation overwrites a built-in one with the same name."""
+        aggregations = {"total_count": {"value_count": {"field": "id"}}}
+        custom_json = json.dumps({"total_count": {"cardinality": {"field": "id"}}})
+        apply_custom_aggregations(aggregations, custom_json)
+        assert aggregations["total_count"] == {"cardinality": {"field": "id"}}
+
+    @pytest.mark.parametrize(
+        "custom_json",
+        ["not valid json", "[]", '"text"'],
+        ids=["invalid_json", "json_array", "json_string"],
+    )
+    def test_invalid_configuration_logs_error_and_preserves_aggregations(
+        self, caplog, custom_json
+    ):
+        """Test that an invalid configuration logs an error and changes nothing."""
+        aggregations = {"total_count": {"value_count": {"field": "id"}}}
+        original = copy.deepcopy(aggregations)
+        apply_custom_aggregations(aggregations, custom_json)
+        assert aggregations == original
+        assert "STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS" in caplog.text
+
+    @pytest.mark.parametrize(
+        "name,entry",
+        [
+            ("bad_aggregation", 1),
+            ("bad_aggregation", {}),
+            ("bad_aggregation", {"sum": {"field": "x"}, "avg": {"field": "x"}}),
+            ("bad_aggregation", {"sum": 1}),
+            ("plain_stats", {"stats": {"field": "x"}}),
+            ("plain_terms", {"terms": {"field": "x"}}),
+            ("sum_frequency", {"sum": {"field": "x"}}),
+            ("day_frequency", {"date_histogram": {"field": "x"}}),
+            (
+                "day_frequency",
+                {
+                    "date_histogram": {
+                        "field": "x",
+                        "calendar_interval": "day",
+                        "fixed_interval": "1d",
+                    }
+                },
+            ),
+        ],
+        ids=[
+            "not_an_object",
+            "empty_body",
+            "two_types",
+            "type_without_object",
+            "stats_under_plain_name",
+            "terms_under_plain_name",
+            "sum_under_frequency_name",
+            "histogram_without_interval",
+            "histogram_with_two_intervals",
+        ],
+    )
+    def test_invalid_entry_is_skipped_and_logged(self, caplog, name, entry):
+        """Test that an invalid entry is skipped while valid ones are still added."""
+        aggregations = {}
+        custom_json = json.dumps({name: entry, "asset_file_size_sum": SUM_AGGREGATION})
+        apply_custom_aggregations(aggregations, custom_json)
+        assert name not in aggregations
+        assert aggregations["asset_file_size_sum"] == SUM_AGGREGATION
+        assert f"Ignoring custom aggregation '{name}'" in caplog.text
+
+    def test_date_histogram_with_a_fixed_interval_is_valid(self):
+        """Test that a configured date_histogram interval is accepted."""
+        aggregations = {}
+        entry = {
+            "date_histogram": {"field": "properties.datetime", "fixed_interval": "1d"}
+        }
+        apply_custom_aggregations(
+            aggregations, json.dumps({"per_day_frequency": entry})
+        )
+        assert aggregations["per_day_frequency"] == entry
+
+
+class TestLoadCustomAggregations:
+    """Tests for the load_custom_aggregations function."""
+
+    ENV = "STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS"
+    FILE = "STAC_FASTAPI_ES_AGGREGATIONS_FILE"
+
+    @pytest.fixture(autouse=True)
+    def clean_environment(self, monkeypatch):
+        """Make sure no aggregation configuration leaks between tests."""
+        monkeypatch.delenv(self.ENV, raising=False)
+        monkeypatch.delenv(self.FILE, raising=False)
+
+    def test_no_configuration_leaves_aggregations_unchanged(self):
+        """Test that nothing happens when no variable is set."""
+        aggregations = {}
+        load_custom_aggregations(aggregations)
+        assert aggregations == {}
+
+    def test_reads_json_from_environment(self, monkeypatch):
+        """Test that the JSON string variable is applied."""
+        monkeypatch.setenv(self.ENV, json.dumps({"a_sum": SUM_AGGREGATION}))
+        aggregations = {}
+        load_custom_aggregations(aggregations)
+        assert aggregations == {"a_sum": SUM_AGGREGATION}
+
+    def test_reads_json_from_file(self, monkeypatch, tmp_path):
+        """Test that the file variable is applied when the JSON variable is unset."""
+        path = tmp_path / "aggregations.json"
+        path.write_text(json.dumps({"a_sum": SUM_AGGREGATION}))
+        monkeypatch.setenv(self.FILE, str(path))
+        aggregations = {}
+        load_custom_aggregations(aggregations)
+        assert aggregations == {"a_sum": SUM_AGGREGATION}
+
+    def test_environment_takes_precedence_over_file(self, monkeypatch, tmp_path):
+        """Test that the JSON variable wins when both variables are set."""
+        path = tmp_path / "aggregations.json"
+        path.write_text(json.dumps({"from_file": SUM_AGGREGATION}))
+        monkeypatch.setenv(self.FILE, str(path))
+        monkeypatch.setenv(self.ENV, json.dumps({"from_env": SUM_AGGREGATION}))
+        aggregations = {}
+        load_custom_aggregations(aggregations)
+        assert set(aggregations) == {"from_env"}

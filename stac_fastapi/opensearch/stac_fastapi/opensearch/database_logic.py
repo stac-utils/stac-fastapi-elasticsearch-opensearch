@@ -103,6 +103,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
+    GRID_AGGREGATION_TYPES,
     ITEM_INDICES,
     Geometry,
 )
@@ -1218,7 +1219,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
-        datetime_frequency_interval: str,
+        datetime_frequency_interval: str | None,
         datetime_search: str,
         ignore_unavailable: bool | None = True,
     ):
@@ -1237,10 +1238,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "geometry_geohash_grid_frequency": geometry_geohash_grid_precision,
                 "geometry_geotile_grid_frequency": geometry_geotile_grid_precision,
             }
-            if name in agg_precision:
+            if name in agg_precision and key in GRID_AGGREGATION_TYPES:
                 agg[key]["precision"] = agg_precision[name]
 
-            if key == "date_histogram":
+            if key == "date_histogram" and datetime_frequency_interval:
+                agg[key].pop("fixed_interval", None)
                 agg[key]["calendar_interval"] = datetime_frequency_interval
 
             return agg
