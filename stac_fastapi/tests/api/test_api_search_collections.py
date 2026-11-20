@@ -1,4 +1,5 @@
 import base64
+import copy
 import json
 import uuid
 from urllib.parse import parse_qs, urlparse
@@ -1725,3 +1726,35 @@ async def test_create_collection_stores_bbox_shape_by_default(
         index=COLLECTIONS_INDEX, id=collection["id"]
     )
     assert "bbox_shape" in stored["_source"]
+
+
+@pytest.mark.asyncio
+async def test_collections_3d_bbox_filters_by_horizontal_bounds(
+    app_client, txn_client, ctx
+):
+    """A 6-value bbox filters collections by its horizontal bounds."""
+    test_prefix = f"bbox3d-{uuid.uuid4().hex[:8]}"
+    for suffix, bbox in (("keep", [10, 10, 20, 20]), ("drop", [-50, -50, -40, -40])):
+        collection = copy.deepcopy(ctx.collection)
+        collection["id"] = f"{test_prefix}-{suffix}"
+        collection["extent"] = {
+            "spatial": {"bbox": [bbox]},
+            "temporal": {"interval": [[None, None]]},
+        }
+        await create_collection(txn_client, collection)
+    await refresh_indices(txn_client)
+
+    bbox = [12.0, 12.0, 0.0, 14.0, 14.0, 100.0]
+    for method, path, kwargs in (
+        ("GET", "/collections", {"params": {"bbox": ",".join(map(str, bbox))}}),
+        ("GET", "/collections-search", {"params": {"bbox": ",".join(map(str, bbox))}}),
+        ("POST", "/collections-search", {"json": {"bbox": bbox}}),
+    ):
+        resp = await app_client.request(method, path, **kwargs)
+        assert resp.status_code == 200, (method, path, resp.text)
+        found = [
+            c["id"]
+            for c in resp.json()["collections"]
+            if c["id"].startswith(test_prefix)
+        ]
+        assert found == [f"{test_prefix}-keep"], (method, path)

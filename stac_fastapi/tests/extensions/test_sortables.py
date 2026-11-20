@@ -91,8 +91,31 @@ async def test_collections_sortables(app_client: AsyncClient):
     assert "bbox_shape" not in properties  # geo_shape
     assert "providers" not in properties  # enabled: false
     assert "links" not in properties  # enabled: false
+    assert "parent_ids" not in properties  # backend-owned catalog links
 
     assert sortables["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,path,kwargs",
+    [
+        ("GET", "/collections", {"params": {"sortby": "parent_ids"}}),
+        ("GET", "/collections-search", {"params": {"sortby": "parent_ids"}}),
+        (
+            "POST",
+            "/collections-search",
+            {"json": {"sortby": [{"field": "parent_ids", "direction": "asc"}]}},
+        ),
+    ],
+)
+async def test_collections_sortby_parent_ids_returns_400(
+    app_client: AsyncClient, method, path, kwargs
+):
+    """`parent_ids` is hidden from /collections-sortables, so sorting on it is a 400."""
+    resp = await app_client.request(method, path, **kwargs)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Field 'parent_ids' is not sortable on collections."
 
 
 def test_collections_sortables_route_gated_on_collection_search():

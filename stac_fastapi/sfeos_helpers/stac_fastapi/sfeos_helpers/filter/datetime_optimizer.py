@@ -352,51 +352,64 @@ def extract_collection_datetime(
     # Check for OR of NOTs at the root level (De Morgan's law)
     if _is_or_of_nots(node):
         datetime_ranges = []
-        excluded_collections = set()
+        exclusion_sets = []
 
         for child in node.children:
-            if isinstance(child, LogicalNode) and child.op == LogicalOp.NOT:
-                for grandchild in child.children:
-                    if isinstance(grandchild, ComparisonNode):
-                        if (
-                            grandchild.field == "collection"
-                            and grandchild.op == ComparisonOp.EQ
-                        ):
-                            if isinstance(grandchild.value, list):
-                                excluded_collections.update(grandchild.value)
-                            else:
-                                excluded_collections.add(grandchild.value)
-                        elif grandchild.field in [
-                            "datetime",
-                            "start_datetime",
-                            "end_datetime",
-                        ]:
-                            datetime_ranges.extend(
-                                _negated_datetime_ranges(
-                                    grandchild.op,
-                                    grandchild.value,
-                                )
-                            )
-                    elif isinstance(grandchild, AdvancedComparisonNode):
-                        if (
-                            grandchild.field == "collection"
-                            and grandchild.op == AdvancedComparisonOp.IN
-                        ):
-                            if isinstance(grandchild.value, list):
-                                excluded_collections.update(grandchild.value)
-                        elif grandchild.field in [
-                            "datetime",
-                            "start_datetime",
-                            "end_datetime",
-                        ]:
-                            datetime_ranges.extend(
-                                _negated_advanced_datetime_ranges(
-                                    grandchild.op,
-                                    grandchild.value,
-                                )
-                            )
+            child_ranges: List[str] = []
+            child_exclusions: Optional[set] = None
+            for grandchild in child.children:
+                if isinstance(grandchild, ComparisonNode):
+                    if (
+                        grandchild.field == "collection"
+                        and grandchild.op == ComparisonOp.EQ
+                    ):
+                        child_exclusions = set(
+                            grandchild.value
+                            if isinstance(grandchild.value, list)
+                            else [grandchild.value]
+                        )
+                    elif grandchild.field in [
+                        "datetime",
+                        "start_datetime",
+                        "end_datetime",
+                    ]:
+                        child_ranges = _negated_datetime_ranges(
+                            grandchild.op,
+                            grandchild.value,
+                        )
+                elif isinstance(grandchild, AdvancedComparisonNode):
+                    if (
+                        grandchild.field == "collection"
+                        and grandchild.op == AdvancedComparisonOp.IN
+                        and isinstance(grandchild.value, list)
+                    ):
+                        child_exclusions = set(grandchild.value)
+                    elif grandchild.field in [
+                        "datetime",
+                        "start_datetime",
+                        "end_datetime",
+                    ]:
+                        child_ranges = _negated_advanced_datetime_ranges(
+                            grandchild.op,
+                            grandchild.value,
+                        )
 
-        if all_collection_ids and (datetime_ranges or excluded_collections):
+            # A branch the extractor cannot bound matches items anywhere.
+            if child_exclusions is None and not child_ranges:
+                return []
+            if child_exclusions is not None:
+                exclusion_sets.append(child_exclusions)
+            datetime_ranges.extend(child_ranges)
+
+        # Each collection branch matches every collection outside its own
+        # exclusions, so only collections excluded by all of them stay out.
+        excluded_collections = (
+            set.intersection(*exclusion_sets) if exclusion_sets else set()
+        )
+        if exclusion_sets and not excluded_collections:
+            return []
+
+        if all_collection_ids:
             results = []
 
             included_collections = [
@@ -429,6 +442,9 @@ def extract_collection_datetime(
 
                 for child in n.children:
                     child_results = extract_from_node(child, current_collections.copy())
+                    # An unconstrained branch (e.g. id = 'x') can match any index.
+                    if not child_results:
+                        return [([], "")]
                     all_or_results.extend(child_results)
 
                 for coll, rng in all_or_results:
@@ -575,37 +591,17 @@ def extract_collection_datetime(
                     ):
                         results.append((current_collections.copy(), ""))
 
-                    elif isinstance(child, LogicalNode):
-                        child_results = extract_from_node(
-                            child, current_collections.copy()
-                        )
-                        for coll, rng in child_results:
-                            if rng:
-                                if "/" in rng and ".." not in rng:
-                                    parts = rng.split("/")
-                                    if len(parts) == 2:
-                                        results.append((coll, f"../{parts[0]}"))
-                                        results.append((coll, f"{parts[1]}/.."))
-                                elif "/" in rng:
-                                    parts = rng.split("/")
-                                    if len(parts) == 2:
-                                        if parts[0] == "..":
-                                            results.append((coll, f"{parts[1]}/.."))
-                                        elif parts[1] == "..":
-                                            results.append((coll, f"../{parts[0]}"))
-                                        else:
-                                            results.append((coll, f"../{parts[0]}"))
-                                            results.append((coll, f"{parts[1]}/.."))
-                                else:
-                                    results.append((coll, f"../{rng}"))
-                                    results.append((coll, f"{rng}/.."))
-                            else:
-                                results.append((coll, ""))
                     else:
+                        # Also covers a LogicalNode child, reached only through double
+                        # negation after De Morgan: negating an over-approximated
+                        # bound would narrow it.
                         results.append((current_collections.copy(), ""))
 
         elif isinstance(n, ComparisonNode):
             if n.field == "collection":
+                # Only equality bounds the collections; <>, <, isNull, etc. do not.
+                if n.op != ComparisonOp.EQ:
+                    return results
                 new_collections = current_collections.copy()
                 if isinstance(n.value, list):
                     new_collections.extend(n.value)
@@ -668,9 +664,6 @@ def extract_collection_datetime(
         return [([], "")]
 
     for collections, date_range in all_results:
-        if not collections:
-            continue
-
         unique_collections = list(set(collections))
         unique_collections.sort()
 

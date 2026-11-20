@@ -395,11 +395,14 @@ class BaseDatabaseLogic(abc.ABC):
         filter: dict[str, Any] | None = None,
         sort: list[dict[str, Any]] | None = None,
         q: list[str] | None = None,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, str | None]:
         """Get collections of a catalog.
 
         Optionally matching a CQL2 JSON `filter`, ordered by `sort`
-        ({field, direction} pairs), and matching `q` free-text terms.
+        ({field, direction} pairs), matching `q` free-text terms, and
+        intersecting `bbox` and `datetime` with the collection extents.
 
         Returns:
             Tuple of (collections_list, total_count, next_token).

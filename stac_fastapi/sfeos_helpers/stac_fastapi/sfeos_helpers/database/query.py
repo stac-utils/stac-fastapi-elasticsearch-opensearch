@@ -14,7 +14,10 @@ import orjson
 from fastapi import HTTPException
 
 from stac_fastapi.core.utilities import bbox2polygon
-from stac_fastapi.sfeos_helpers.database.mapping import get_excluded_from_queryables
+from stac_fastapi.sfeos_helpers.database.mapping import (
+    COLLECTION_SORT_HIDDEN_FIELDS,
+    get_excluded_from_queryables,
+)
 from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
@@ -146,13 +149,20 @@ def format_collection_sort_shared(
 ) -> list[dict[str, Any]]:
     """Format collection `sortby` field/direction pairs for the engine.
 
-    Validates each field via `validate_sort_fields_shared`, remaps it via
-    `remap_sort_field_shared`, and appends an `id` tie-breaker so pages stay
-    aligned when earlier keys tie.
+    Validates each field via `validate_sort_fields_shared`, rejects
+    COLLECTION_SORT_HIDDEN_FIELDS, remaps it via `remap_sort_field_shared`, and
+    appends an `id` tie-breaker so pages stay aligned when earlier keys tie.
     """
-    validate_sort_fields_shared(
+    field_names = [
         item.get("field", "") for item in sort or [] if isinstance(item, dict)
-    )
+    ]
+    validate_sort_fields_shared(field_names)
+    for field in field_names:
+        if field in COLLECTION_SORT_HIDDEN_FIELDS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Field '{field}' is not sortable on collections.",
+            )
     formatted_sort = []
     for item in sort or []:
         field = remap_sort_field_shared(item.get("field", ""), is_collection=True)
@@ -421,7 +431,7 @@ def apply_collections_bbox_filter_shared(
     Notes:
         - This function is specifically for filtering collections by their spatial extent
         - It queries the bbox_shape field (not the geometry field used for items)
-        - The bbox is expected to be 2D (4 values) after any 3D to 2D conversion in the API layer
+        - A 3D bbox (6 values) is reduced to its horizontal bounds
     """
     logger = logging.getLogger(__name__)
 
@@ -435,6 +445,9 @@ def apply_collections_bbox_filter_shared(
         except (ValueError, AttributeError) as e:
             logger.error(f"Invalid bbox format: {bbox}, error: {e}")
             return None
+
+    if len(bbox) == 6:
+        bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
 
     if not bbox or len(bbox) != 4:
         if bbox:
@@ -583,11 +596,11 @@ def add_collections_to_body(
 
     Args:
         collection_ids (List[str] | None): A list of collections ids.
-        query (dict[str, Any] | None): The query to add collections to. If none, create a query that filters
+        query (dict[str, Any] | None): The query to restrict to the collections. If none, create a query that filters
         the collection ids.
 
     Returns:
-        Dict[str, Any]: A query that contains a filter on the given collection ids.
+        Dict[str, Any]: A query that requires the given query and filters on the given collection ids.
 
     Notes:
         This function is needed in the execute_search function when the size of the URL path will exceed the maximum of ES.
@@ -595,15 +608,8 @@ def add_collections_to_body(
     if not collection_ids:
         return query
 
-    index_filter = {"terms": {"collection": collection_ids}}
-    if query is None:
-        query = {"query": {}}
-    if "bool" not in query:
-        query["bool"] = {}
-    if "filter" not in query["bool"]:
-        query["bool"]["filter"] = []
-
-    filters = query["bool"]["filter"]
-    if index_filter not in filters:
-        filters.append(index_filter)
-    return query
+    collection_filter = {"terms": {"collection": collection_ids}}
+    if not query:
+        return {"bool": {"filter": [collection_filter]}}
+    # Wrap, not merge: a filter beside root `should` clauses makes them optional (#1029).
+    return {"bool": {"must": [query], "filter": [collection_filter]}}
