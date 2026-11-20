@@ -1054,6 +1054,8 @@ async def test_configured_date_histogram_interval_is_kept_unless_the_client_send
 ):
     """The interval written in the configuration applies by default; the request
     parameter replaces it, whether it is a calendar or a fixed interval."""
+    from datetime import datetime as dt
+
     _configured(
         app,
         monkeypatch,
@@ -1087,25 +1089,45 @@ async def test_configured_date_histogram_interval_is_kept_unless_the_client_send
             {"name": "per_day_frequency", **descriptor},
         ],
     )
-    day = item["properties"]["datetime"][:10]
+
+    # Two more items: another day of the same month, and another month of the same
+    # year. The number of non-empty buckets then tells the intervals apart, whatever
+    # the date of the test item: 1 per year, 2 per month, 3 per day.
+    base = dt.fromisoformat(item["properties"]["datetime"].replace("Z", "+00:00"))
+    other_day = base.replace(day=1 if base.day != 1 else 2)
+    other_month = base.replace(month=1 if base.month != 1 else 2, day=1)
+    for n, when in enumerate((other_day, other_month)):
+        extra = load_test_data("test_item.json")
+        extra["id"] = f"{collection_id}-extra-{n}"
+        extra["collection"] = collection_id
+        extra["properties"]["datetime"] = when.isoformat().replace("+00:00", "Z")
+        await create_item(txn_client, extra)
+
     try:
 
-        async def keys(name, **params):
+        async def non_empty_buckets(name, **params):
             resp = await app_client.post(
                 f"/collections/{collection_id}/aggregate",
                 json={"aggregations": [name], **params},
             )
             assert resp.status_code == 200
-            return [b["key"] for b in resp.json()["aggregations"][0]["buckets"]]
+            buckets = resp.json()["aggregations"][0]["buckets"]
+            return sum(1 for b in buckets if b["frequency"] > 0)
 
-        assert (await keys("per_year_frequency"))[0].startswith(f"{day[:4]}-01-01")
-        assert (await keys("per_year_frequency", datetime_frequency_interval="month"))[
-            0
-        ].startswith(f"{day[:7]}-01")
-        assert (await keys("per_day_frequency"))[0].startswith(day)
-        assert (await keys("per_day_frequency", datetime_frequency_interval="month"))[
-            0
-        ].startswith(f"{day[:7]}-01")
+        assert await non_empty_buckets("per_year_frequency") == 1
+        assert (
+            await non_empty_buckets(
+                "per_year_frequency", datetime_frequency_interval="month"
+            )
+            == 2
+        )
+        assert await non_empty_buckets("per_day_frequency") == 3
+        assert (
+            await non_empty_buckets(
+                "per_day_frequency", datetime_frequency_interval="month"
+            )
+            == 2
+        )
     finally:
         await app_client.delete(f"/collections/{collection_id}")
 
