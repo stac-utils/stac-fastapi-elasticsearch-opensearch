@@ -27,24 +27,29 @@ Available aggregations are:
 - geometry_geohash_grid_frequency ([geohash grid](https://opensearch.org/docs/latest/aggregations/bucket/geohash-grid/) on Item.geometry)
 - geometry_geotile_grid_frequency ([geotile grid](https://opensearch.org/docs/latest/aggregations/bucket/geotile-grid/) on Item.geometry)
 
-**Adding aggregations through configuration**
+### Adding aggregations through configuration
 
-The aggregations the server can run are defined in AGGREGATION_MAPPING. Additional ones can be declared without changing the code:
+The aggregations the server can run are defined in `AGGREGATION_MAPPING`. Additional ones can be declared without changing the code with two environment variables:
 
-`STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS`: a JSON object mapping an aggregation name to an Elasticsearch/OpenSearch aggregation body.
-`STAC_FASTAPI_ES_AGGREGATIONS_FILE`: path to a JSON file with the same content, used when the variable above is not set.
+- `STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS`: a JSON object mapping an aggregation name to an Elasticsearch/OpenSearch aggregation body.
+- `STAC_FASTAPI_ES_AGGREGATIONS_FILE`: path to a JSON file with the same content, used when the variable above is not set.
+
+For example:
+
 ```json
 {
   "asset_file_size_sum": {"sum": {"field": "assets.file:size"}},
-  "platform_family_frequency": {"terms": {"field": "properties.platform", "size": 100}}
+  "per_week_frequency": {"date_histogram": {"field": "properties.datetime", "calendar_interval": "week"}}
 }
 ```
 
-Each entry must hold exactly one aggregation type. An invalid entry is logged and ignored.
-An entry with the name of a built-in aggregation replaces it.
-The aggregation must be listed in the aggregations field of each collection that uses it (name, data_type and, for a distribution, frequency_distribution_data_type). It is not listed by the root /aggregations.
-A name ending with `_frequency` is returned as a frequency distribution (buckets); any other name is returned as a single value.
-For a `date_histogram`, the interval comes from the `datetime_frequency_interval` request parameter.
-These definitions come from the server configuration, never from a request; they can use any feature the backend supports, including scripts, so only trusted operators should set them.
+Rules:
+
+- Each entry holds exactly one aggregation type. An invalid entry is logged and ignored.
+- The response shape depends on the name. A name ending in `_frequency` is returned as buckets, so its type must be one of `terms`, `date_histogram`, `histogram`, `range`, `date_range`, `geohash_grid`, `geotile_grid` or `geohex_grid`. Any other name is returned as a single value, so its type must be one of `sum`, `avg`, `min`, `max`, `value_count` or `cardinality`.
+- A `date_histogram` sets exactly one of `calendar_interval` or `fixed_interval`. That interval applies unless the request sends `datetime_frequency_interval`, which then replaces it.
+- An entry with the name of a built-in aggregation replaces it.
+- The aggregation must be listed in the `aggregations` field of each collection that uses it (`name`, `data_type` and, for a distribution, `frequency_distribution_data_type`). The root `/aggregations` does not list it, and the root `/aggregate` accepts it only when `collections` names a collection that lists it.
+- The definitions come from the server configuration, never from a request. They can use any feature the backend supports, including scripts, so only trusted operators should set them.
 
 

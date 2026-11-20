@@ -468,20 +468,58 @@ class TestApplyCustomAggregations:
         assert "STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS" in caplog.text
 
     @pytest.mark.parametrize(
-        "entry",
-        [1, {}, {"sum": {"field": "x"}, "avg": {"field": "x"}}, {"sum": 1}],
-        ids=["not_an_object", "empty_body", "two_types", "type_without_object"],
+        "name,entry",
+        [
+            ("bad_aggregation", 1),
+            ("bad_aggregation", {}),
+            ("bad_aggregation", {"sum": {"field": "x"}, "avg": {"field": "x"}}),
+            ("bad_aggregation", {"sum": 1}),
+            ("plain_stats", {"stats": {"field": "x"}}),
+            ("plain_terms", {"terms": {"field": "x"}}),
+            ("sum_frequency", {"sum": {"field": "x"}}),
+            ("day_frequency", {"date_histogram": {"field": "x"}}),
+            (
+                "day_frequency",
+                {
+                    "date_histogram": {
+                        "field": "x",
+                        "calendar_interval": "day",
+                        "fixed_interval": "1d",
+                    }
+                },
+            ),
+        ],
+        ids=[
+            "not_an_object",
+            "empty_body",
+            "two_types",
+            "type_without_object",
+            "stats_under_plain_name",
+            "terms_under_plain_name",
+            "sum_under_frequency_name",
+            "histogram_without_interval",
+            "histogram_with_two_intervals",
+        ],
     )
-    def test_invalid_entry_is_skipped_and_logged(self, caplog, entry):
+    def test_invalid_entry_is_skipped_and_logged(self, caplog, name, entry):
         """Test that an invalid entry is skipped while valid ones are still added."""
         aggregations = {}
-        custom_json = json.dumps(
-            {"bad_aggregation": entry, "asset_file_size_sum": SUM_AGGREGATION}
-        )
+        custom_json = json.dumps({name: entry, "asset_file_size_sum": SUM_AGGREGATION})
         apply_custom_aggregations(aggregations, custom_json)
-        assert "bad_aggregation" not in aggregations
+        assert name not in aggregations
         assert aggregations["asset_file_size_sum"] == SUM_AGGREGATION
-        assert "bad_aggregation" in caplog.text
+        assert f"Ignoring custom aggregation '{name}'" in caplog.text
+
+    def test_date_histogram_with_a_fixed_interval_is_valid(self):
+        """Test that a configured date_histogram interval is accepted."""
+        aggregations = {}
+        entry = {
+            "date_histogram": {"field": "properties.datetime", "fixed_interval": "1d"}
+        }
+        apply_custom_aggregations(
+            aggregations, json.dumps({"per_day_frequency": entry})
+        )
+        assert aggregations["per_day_frequency"] == entry
 
 
 class TestLoadCustomAggregations:

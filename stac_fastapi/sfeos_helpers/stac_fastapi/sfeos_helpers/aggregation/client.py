@@ -495,8 +495,12 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             self.MAX_GEOTILE_PRECISION,
         )
 
-        datetime_frequency_interval = self.extract_date_histogram_interval(
-            aggregate_request.datetime_frequency_interval,
+        datetime_frequency_interval = (
+            self.extract_date_histogram_interval(
+                aggregate_request.datetime_frequency_interval,
+            )
+            if aggregate_request.datetime_frequency_interval is not None
+            else None
         )
 
         try:

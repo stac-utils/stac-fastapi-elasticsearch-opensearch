@@ -38,6 +38,24 @@ logger = logging.getLogger(__name__)
 
 COERCE_GLOBAL = get_bool_env("STAC_FASTAPI_ES_COERCE_GLOBAL", default=True)
 
+BUCKET_AGGREGATION_TYPES = frozenset(
+    {
+        "terms",
+        "date_histogram",
+        "histogram",
+        "range",
+        "date_range",
+        "geohash_grid",
+        "geotile_grid",
+        "geohex_grid",
+    }
+)
+GRID_AGGREGATION_TYPES = frozenset({"geohash_grid", "geotile_grid", "geohex_grid"})
+SINGLE_VALUE_METRIC_TYPES = frozenset(
+    {"sum", "avg", "min", "max", "value_count", "cardinality"}
+)
+DATE_HISTOGRAM_INTERVAL_KEYS = ("calendar_interval", "fixed_interval")
+
 
 def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
     """Recursively merge custom mappings into base mappings.
@@ -231,6 +249,37 @@ def get_custom_config(
     return custom_config
 
 
+def _custom_aggregation_error(name: str, body: Any) -> str | None:
+    """Return why a custom aggregation is invalid, or None when it is valid.
+
+    The response shape depends on the name: a name ending in ``_frequency`` is
+    returned as buckets, any other name as a single value.
+    """
+    if not (
+        isinstance(body, dict)
+        and len(body) == 1
+        and isinstance(next(iter(body.values())), dict)
+    ):
+        return "it must contain exactly one aggregation type with an object body"
+    agg_type, params = next(iter(body.items()))
+    if name.endswith("_frequency"):
+        if agg_type not in BUCKET_AGGREGATION_TYPES:
+            return (
+                "a name ending in '_frequency' is returned as buckets, so its type "
+                f"must be one of {sorted(BUCKET_AGGREGATION_TYPES)}, not '{agg_type}'"
+            )
+    elif agg_type not in SINGLE_VALUE_METRIC_TYPES:
+        return (
+            "a name not ending in '_frequency' is returned as a single value, so "
+            f"its type must be one of {sorted(SINGLE_VALUE_METRIC_TYPES)}, "
+            f"not '{agg_type}'"
+        )
+    if agg_type == "date_histogram":
+        if sum(key in params for key in DATE_HISTOGRAM_INTERVAL_KEYS) != 1:
+            return "a date_histogram must set exactly one of calendar_interval or fixed_interval"
+    return None
+
+
 def apply_custom_aggregations(
     aggregations: dict[str, dict[str, Any]], custom_json: str | None
 ) -> None:
@@ -256,15 +305,9 @@ def apply_custom_aggregations(
         )
         return
     for name, body in custom.items():
-        if not (
-            isinstance(body, dict)
-            and len(body) == 1
-            and isinstance(next(iter(body.values())), dict)
-        ):
-            logger.error(
-                f"Ignoring custom aggregation'{name}': it must contain exactly "
-                "one aggregation type with an object body"
-            )
+        error = _custom_aggregation_error(name, body)
+        if error:
+            logger.error(f"Ignoring custom aggregation '{name}': {error}")
             continue
         aggregations[name] = body
 

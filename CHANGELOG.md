@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- `STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS` and `STAC_FASTAPI_ES_AGGREGATIONS_FILE` declare additional aggregations through configuration, without patching `AGGREGATION_MAPPING`. An aggregation is still advertised on the collections that list it, and a name ending in `_frequency` is returned as a frequency distribution. [#NNN](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/NNN)
+- `STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS` and `STAC_FASTAPI_ES_AGGREGATIONS_FILE` declare additional aggregations through configuration, without patching `AGGREGATION_MAPPING`. A configured `date_histogram` keeps its interval unless the request sends `datetime_frequency_interval`, and `precision` is only added to grid aggregations. [#1037](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1037)  
+
 ### Breaking Changes
 
 - `PATCH /collections/{collection_id}` returns `400` for any JSON Patch operation whose `path` or `from` is `/bbox_shape` (or below it), including a read-only `test` or a `copy` from it, and for a root replace whose value carries `bbox_shape`. Previously `add` stored the client's shape in both validator modes, and with `ENABLE_STAC_VALIDATOR=false` `replace` overwrote it and `remove` deleted it, so `GET /collections?bbox=` matched the wrong area or stopped listing the collection. Merge patch still ignores `bbox_shape`. [#1017](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1017)

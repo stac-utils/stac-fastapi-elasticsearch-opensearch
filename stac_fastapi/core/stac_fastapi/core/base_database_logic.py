@@ -579,7 +579,7 @@ class BaseDatabaseLogic(abc.ABC):
         centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
-        datetime_frequency_interval: str,
+        datetime_frequency_interval: str | None,
         datetime_search: str,
         ignore_unavailable: bool | None = True,
     ) -> Any:

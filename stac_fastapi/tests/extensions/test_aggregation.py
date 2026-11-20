@@ -982,56 +982,168 @@ async def test_root_aggregate_answers_400_when_the_licence_refuses(
         assert resp.json()["aggregations"][0]["name"] == aggregation
 
 
+async def _collection_with_item(
+    app_client, txn_client, load_test_data, collection_id, aggregations
+):
+    """Create a collection advertising ``aggregations`` and one item in it."""
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = collection_id
+    test_collection["aggregations"] = aggregations
+    resp = await app_client.post("/collections", json=test_collection)
+    assert resp.status_code == 201
+    test_item = load_test_data("test_item.json")
+    test_item["id"] = f"{collection_id}-item"
+    test_item["collection"] = collection_id
+    await create_item(txn_client, test_item)
+    return test_item
+
+
+def _configured(app, monkeypatch, definitions):
+    mapping = dict(AGGREGATION_MAPPING)
+    apply_custom_aggregations(mapping, json.dumps(definitions))
+    monkeypatch.setattr(app.state.database_logic, "aggregation_mapping", mapping)
+
+
 @pytest.mark.asyncio
 async def test_aggregation_added_by_configuration_runs_on_a_collection(
     app, app_client, txn_client, ctx, load_test_data, monkeypatch
 ):
-    """An aggregation declared through STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS is added
-    to the mapping and, advertised on a collection, runs on its sub-resource route."""
-
-    mapping = dict(AGGREGATION_MAPPING)
-    apply_custom_aggregations(
-        mapping,
-        json.dumps(
-            {
-                "custom_collection_frequency": {
-                    "terms": {"field": "collection", "size": 100}
-                },
-                "custom_item_count": {"value_count": {"field": "id"}},
-            }
-        ),
-    )
-    monkeypatch.setattr(app.state.database_logic, "aggregation_mapping", mapping)
-
-    collection_id = "with-configured-aggregations"
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = collection_id
-    test_collection["aggregations"] = [
+    """A configured aggregation, advertised on a collection, runs on its route."""
+    _configured(
+        app,
+        monkeypatch,
         {
-            "name": "custom_collection_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "string",
+            "custom_collection_frequency": {
+                "terms": {"field": "collection", "size": 100}
+            },
+            "custom_item_count": {"value_count": {"field": "id"}},
         },
-        {"name": "custom_item_count", "data_type": "integer"},
-    ]
-    resp = await app_client.post("/collections", json=test_collection)
-    assert resp.status_code == 201
-
+    )
+    collection_id = "with-configured-aggregations"
+    await _collection_with_item(
+        app_client,
+        txn_client,
+        load_test_data,
+        collection_id,
+        [
+            {
+                "name": "custom_collection_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "string",
+            },
+            {"name": "custom_item_count", "data_type": "integer"},
+        ],
+    )
     try:
-        test_item = load_test_data("test_item.json")
-        test_item["id"] = "configured-aggregations-item"
-        test_item["collection"] = collection_id
-        await create_item(txn_client, test_item)
-
         resp = await app_client.post(
             f"/collections/{collection_id}/aggregate",
             json={"aggregations": ["custom_collection_frequency", "custom_item_count"]},
         )
         assert resp.status_code == 200
         aggs = {agg["name"]: agg for agg in resp.json()["aggregations"]}
-
         buckets = aggs["custom_collection_frequency"]["buckets"]
         assert [(b["key"], b["frequency"]) for b in buckets] == [(collection_id, 1)]
         assert aggs["custom_item_count"]["value"] == 1
+    finally:
+        await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.asyncio
+async def test_configured_date_histogram_interval_is_kept_unless_the_client_sends_one(
+    app, app_client, txn_client, ctx, load_test_data, monkeypatch
+):
+    """The interval written in the configuration applies by default; the request
+    parameter replaces it, whether it is a calendar or a fixed interval."""
+    _configured(
+        app,
+        monkeypatch,
+        {
+            "per_year_frequency": {
+                "date_histogram": {
+                    "field": "properties.datetime",
+                    "calendar_interval": "year",
+                }
+            },
+            "per_day_frequency": {
+                "date_histogram": {
+                    "field": "properties.datetime",
+                    "fixed_interval": "1d",
+                }
+            },
+        },
+    )
+    descriptor = {
+        "data_type": "frequency_distribution",
+        "frequency_distribution_data_type": "datetime",
+    }
+    collection_id = "with-configured-intervals"
+    item = await _collection_with_item(
+        app_client,
+        txn_client,
+        load_test_data,
+        collection_id,
+        [
+            {"name": "per_year_frequency", **descriptor},
+            {"name": "per_day_frequency", **descriptor},
+        ],
+    )
+    day = item["properties"]["datetime"][:10]
+    try:
+
+        async def keys(name, **params):
+            resp = await app_client.post(
+                f"/collections/{collection_id}/aggregate",
+                json={"aggregations": [name], **params},
+            )
+            assert resp.status_code == 200
+            return [b["key"] for b in resp.json()["aggregations"][0]["buckets"]]
+
+        assert (await keys("per_year_frequency"))[0].startswith(f"{day[:4]}-01-01")
+        assert (await keys("per_year_frequency", datetime_frequency_interval="month"))[
+            0
+        ].startswith(f"{day[:7]}-01")
+        assert (await keys("per_day_frequency"))[0].startswith(day)
+        assert (await keys("per_day_frequency", datetime_frequency_interval="month"))[
+            0
+        ].startswith(f"{day[:7]}-01")
+    finally:
+        await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.asyncio
+async def test_precision_is_only_added_to_grid_aggregations(
+    app, app_client, txn_client, ctx, load_test_data, monkeypatch
+):
+    """A grid name replaced by a non-grid type does not receive ``precision``."""
+    _configured(
+        app,
+        monkeypatch,
+        {
+            "centroid_geohash_grid_frequency": {
+                "terms": {"field": "collection", "size": 100}
+            }
+        },
+    )
+    collection_id = "with-replaced-grid"
+    await _collection_with_item(
+        app_client,
+        txn_client,
+        load_test_data,
+        collection_id,
+        [
+            {
+                "name": "centroid_geohash_grid_frequency",
+                "data_type": "frequency_distribution",
+                "frequency_distribution_data_type": "string",
+            }
+        ],
+    )
+    try:
+        resp = await app_client.post(
+            f"/collections/{collection_id}/aggregate",
+            json={"aggregations": ["centroid_geohash_grid_frequency"]},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["aggregations"][0]["buckets"][0]["key"] == collection_id
     finally:
         await app_client.delete(f"/collections/{collection_id}")
