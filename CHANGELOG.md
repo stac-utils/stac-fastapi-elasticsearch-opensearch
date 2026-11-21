@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Fixed
-
-- The landing page and collections now advertise `http://www.opengis.net/def/rel/ogc/1.0/queryables`. Clients following this relation from a catalog-scoped collection reach `/collections/{collection_id}/queryables`. Previously, clients looking for the OGC relation could fall back to a catalog-scoped URL that returned `404`. The short `queryables` relation is deprecated and still points to the same endpoint. [#1034](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1034)
-
 ## [v8.3.0] - 2026-11-20
 
 ### Added
@@ -47,6 +43,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Collection responses under `/catalogs/{catalog_id}/collections` (list, POST, GET and PUT) and collection entries in `/catalogs/{catalog_id}/children` now carry the same `queryables`, `aggregate`, `aggregations` and sortables links as `/collections/{collection_id}`, pointing at the global endpoints. They had none of these links because the catalogs client passed only `CatalogsExtension` to the serializer. [#1032](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1032)
 - When the selected item indexes are too many for the request URL, an Elasticsearch search no longer returns items that match none of the branches of a CQL2 `or` filter, and a filter with a single comparison no longer fails with `400`. [#1029](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1029)
 - With `ITEMS_INDEX_STRATEGY=datetime`, a CQL2 filter that matches no item index now returns an empty result instead of searching every index, which failed with `400` (`No mapping found for [collection]`). Filters with a branch outside the named collections now return those items as well, among them `collection = 'a' OR id = 'x'`, `collection = 'a' OR datetime > T`, `collection <> 'a'`, `NOT collection = 'a' OR NOT collection = 'b'` and double negations. Such filters search `items_*`. [#990](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/990)
+- The landing page and collections now advertise `http://www.opengis.net/def/rel/ogc/1.0/queryables`. Clients following this relation from a catalog-scoped collection reach `/collections/{collection_id}/queryables`. Previously, clients looking for the OGC relation could fall back to a catalog-scoped URL that returned `404`. The short `queryables` relation is deprecated and still points to the same endpoint. [#1034](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1034)
 
 ## [v8.2.0] - 2026-11-15
 
