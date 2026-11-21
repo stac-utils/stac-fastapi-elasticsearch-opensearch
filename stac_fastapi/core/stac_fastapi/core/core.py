@@ -411,15 +411,14 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         if self.extension_is_enabled("FilterExtension"):
-            landing_page["links"].append(
+            landing_page["links"].extend(
                 {
-                    # TODO: replace this with Relations.queryables.value,
-                    "rel": "queryables",
-                    # TODO: replace this with MimeTypes.jsonschema,
-                    "type": "application/schema+json",
+                    "rel": rel,
+                    "type": MimeTypes.jsonschema.value,
                     "title": "Queryables",
                     "href": urljoin(base_url, "queryables"),
                 }
+                for rel in (Relations.queryables.value, "queryables")
             )
 
         if self.extension_is_enabled("SearchSortExtension"):

@@ -7,6 +7,7 @@ from copy import deepcopy
 from typing import Any
 
 import attr
+from stac_pydantic.links import Relations
 from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 # `duplicate` another scoped path — so a stored copy is ours and is dropped on
 # read, like the rels stac-fastapi infers (self, root, ...).
 GENERATED_COLLECTION_RELS = {
+    Relations.queryables.value,
     "queryables",
     "aggregate",
     "aggregations",

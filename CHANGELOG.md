@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- The landing page and collections now advertise `http://www.opengis.net/def/rel/ogc/1.0/queryables`. Clients following this relation from a catalog-scoped collection reach `/collections/{collection_id}/queryables`. Previously, clients looking for the OGC relation could fall back to a catalog-scoped URL that returned `404`. The short `queryables` relation is deprecated and still points to the same endpoint. [#1034](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1034)
+
 ## [v8.3.0] - 2026-11-20
 
 ### Added
