@@ -31,6 +31,7 @@ from stac_fastapi.types.errors import ConflictError
 logger = logging.getLogger(__name__)
 
 GENERATION_FIELD = "collection_generation"
+GENERATION_DISCOVERY_BATCH_SIZE = 1000
 
 
 @lru_cache(256)
@@ -430,8 +431,11 @@ async def delete_item_index_shared(
             started from; any other version, or none, raises `ConflictError`
             before each step that removes items.
         generation (str, optional): The generation of the collection document
-            being deleted. Only its items are deleted, and only its alias is
-            accepted; without one, only items that have no generation.
+            being deleted; only its alias is accepted. With `expected`, items
+            of this generation, of any generation found while the document
+            still exists, and items without one are deleted; without
+            `expected`, only items of this generation (or, without one, only
+            items that have no generation).
     """
     client = settings.create_client
     try:
@@ -531,15 +535,100 @@ async def check_legacy_collection_delete(client: Any, collection_id: str) -> Non
 
 async def _check_collection_version(
     client: Any, collection_id: str, expected: DocumentVersion | None
-) -> None:
+) -> Any:
     if expected is None:
-        return
+        return None
     quiet, ignore_404 = _ignoring_404(client)
     doc = await quiet.get(index=COLLECTIONS_INDEX, id=collection_id, **ignore_404)
     if not doc.get("found") or DocumentVersion.from_hit(doc) != expected:
         raise ConflictError(
             f"Collection {collection_id} changed during deletion; retry DELETE"
         )
+    return doc
+
+
+def _current_generation_query(collection_id: str, generation: str | None) -> dict:
+    if generation is not None:
+        return shared_alias_filter(collection_id, generation)
+    return {
+        "bool": {
+            "filter": [{"term": {"collection": collection_id}}],
+            "must_not": [{"exists": {"field": GENERATION_FIELD}}],
+        }
+    }
+
+
+def _unfinished_delete(collection_id: str) -> HTTPException:
+    return HTTPException(
+        status_code=500,
+        detail=f"Deleting the items of collection {collection_id} did not finish; "
+        "retry DELETE",
+    )
+
+
+async def _seen_generations_query(
+    client: Any,
+    collection_id: str,
+    expected: DocumentVersion,
+    generation: str | None,
+) -> tuple[dict | None, bool]:
+    """Return a query for the generations of `collection_id` stored right now.
+
+    The version check after the search proves the collection document existed
+    throughout it, so every generation seen is the current one or a dead earlier
+    one. Also returns whether more generations remain than one batch covers;
+    the query is None when the shared index is gone.
+    """
+    lenient, ignore = _ignoring(client, [400, 404])
+    response = await lenient.search(
+        index=SHARED_ITEMS_INDEX,
+        body={
+            "size": 0,
+            "query": {"term": {"collection": collection_id}},
+            "aggs": {
+                "generations": {
+                    "terms": {
+                        "field": GENERATION_FIELD,
+                        "size": GENERATION_DISCOVERY_BATCH_SIZE,
+                    }
+                }
+            },
+        },
+        **ignore,
+    )
+    current = await _check_collection_version(client, collection_id, expected)
+    # A collections index rebuilt under the same name can repeat a version.
+    if current["_source"].get(GENERATION_FIELD) != generation:
+        raise ConflictError(
+            f"Collection {collection_id} changed during deletion; retry DELETE"
+        )
+    if response.get("status") == 404:
+        return None, False
+    if response.get("status") == 400:
+        # ponytail: e.g. a generation field without doc values can't be aggregated;
+        # any 400 keeps the earlier current-generation delete, so stale rows stay.
+        return _current_generation_query(collection_id, generation), False
+    shards = response["_shards"]
+    # OpenSearch counts an unavailable shard as neither successful nor failed.
+    if response.get("timed_out") or shards["successful"] != shards["total"]:
+        raise _unfinished_delete(collection_id)
+    found = response["aggregations"]["generations"]
+    seen = {bucket["key"] for bucket in found["buckets"]}
+    if isinstance(generation, str):
+        seen.add(generation)
+    matches: list[dict] = [
+        {"bool": {"must_not": [{"exists": {"field": GENERATION_FIELD}}]}}
+    ]
+    if seen:
+        matches.append({"terms": {GENERATION_FIELD: sorted(seen)}})
+    query = {
+        "bool": {
+            "filter": [{"term": {"collection": collection_id}}],
+            "should": matches,
+            "minimum_should_match": 1,
+        }
+    }
+    return query, found["sum_other_doc_count"] > 0
 
 
 async def _delete_shared_items(
@@ -549,20 +638,26 @@ async def _delete_shared_items(
     generation: str | None,
 ) -> None:
     quiet, ignore_404 = _ignoring_404(client)
-    query = (
-        shared_alias_filter(collection_id, generation)
-        if generation is not None
-        else {
-            "bool": {
-                "filter": [{"term": {"collection": collection_id}}],
-                "must_not": [{"exists": {"field": GENERATION_FIELD}}],
-            }
-        }
-    )
-    for _ in range(2):
-        # delete_by_query only sees refreshed documents.
-        await quiet.indices.refresh(index=SHARED_ITEMS_INDEX, **ignore_404)
-        await _check_collection_version(client, collection_id, expected)
+    conflict_retries = 1
+    while True:
+        # Search and delete_by_query only see refreshed documents.
+        refreshed = await quiet.indices.refresh(index=SHARED_ITEMS_INDEX, **ignore_404)
+        shards = refreshed.get("_shards")
+        # A missing index has no shards; a shard with no refreshed copy is a miss.
+        if shards and (shards.get("failed") or not shards.get("successful")):
+            await _check_collection_version(client, collection_id, expected)
+            raise _unfinished_delete(collection_id)
+        if expected is None:
+            # The document is already gone and the id may be live again, so
+            # only the deleted generation's items go.
+            query = _current_generation_query(collection_id, generation)
+            has_more = False
+        else:
+            query, has_more = await _seen_generations_query(
+                client, collection_id, expected, generation
+            )
+            if query is None:
+                return
         result = await quiet.delete_by_query(
             index=SHARED_ITEMS_INDEX,
             body={"query": query},
@@ -573,16 +668,26 @@ async def _delete_shared_items(
             **ignore_404,
         )
         if result.get("status") == 404:
+            # A lost scroll context is also a 404, with the items still there.
+            if "index_not_found" in str(result.get("error")):
+                return
+            raise _unfinished_delete(collection_id)
+        # A cancelled slice is reported only in its own status.
+        slices = [
+            entry for entry in result.get("slices", []) if isinstance(entry, dict)
+        ]
+        if (
+            result.get("failures")
+            or result.get("timed_out")
+            or any(status.get("canceled") for status in [result, *slices])
+        ):
+            raise _unfinished_delete(collection_id)
+        if result.get("version_conflicts"):
+            if not conflict_retries:
+                raise _unfinished_delete(collection_id)
+            conflict_retries -= 1
+        elif not has_more:
             return
-        if result.get("failures") or result.get("timed_out"):
-            break
-        if not result.get("version_conflicts"):
-            return
-    raise HTTPException(
-        status_code=500,
-        detail=f"Deleting the items of collection {collection_id} did not finish; "
-        "retry DELETE",
-    )
 
 
 async def index_behind_alias(client: Any, alias: str, index: str) -> bool:

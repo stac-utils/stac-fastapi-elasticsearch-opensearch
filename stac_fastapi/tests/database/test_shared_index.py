@@ -15,7 +15,12 @@ from stac_fastapi.sfeos_helpers.database import (
     shared_alias_filter,
 )
 from stac_fastapi.sfeos_helpers.database.utils import ConnectionTimeout
-from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX, SHARED_ITEMS_INDEX
+from stac_fastapi.sfeos_helpers.mappings import (
+    COLLECTIONS_INDEX,
+    ES_ITEMS_MAPPINGS,
+    ES_ITEMS_SETTINGS,
+    SHARED_ITEMS_INDEX,
+)
 from stac_fastapi.sfeos_helpers.search_engine import IndexInsertionFactory
 from stac_fastapi.sfeos_helpers.search_engine import factory as factory_module
 from stac_fastapi.types.errors import ConflictError
@@ -656,6 +661,262 @@ async def test_stale_generation_item_is_cleared_by_an_item_delete(
     assert (await app_client.get(url)).status_code == 200
 
 
+async def index_stale(client, test_item, item_id, generation=None):
+    # Left by an earlier creation of the id, e.g. a write queued before its delete.
+    body = item_with(test_item, "shared-a", item_id)
+    if generation:
+        body["collection_generation"] = generation
+    await client.index(
+        index=SHARED_ITEMS_INDEX, id=f"{item_id}|shared-a", body=body, refresh=True
+    )
+
+
+def is_discovery(kwargs):
+    body = kwargs.get("body") or {}
+    return kwargs.get("index") == SHARED_ITEMS_INDEX and "aggs" in body
+
+
+@pytest.mark.asyncio
+async def test_collection_delete_removes_items_left_by_earlier_generations(
+    app_client, database, test_collection, test_item
+):
+    for collection_id in ("shared-a", "shared-b"):
+        await add_collection(app_client, test_collection, test_item, collection_id)
+    client = database.client
+    await index_stale(client, test_item, "stale", "stale")
+    await index_stale(client, test_item, "untagged")
+    search = {"ids": ["stale", "untagged"]}
+    response = await app_client.post("/search", json=search)
+    assert len(response.json()["features"]) == 2, response.text
+
+    assert (await app_client.delete("/collections/shared-a")).status_code == 204
+
+    assert await count(client, "shared-a") == 0
+    assert await count(client, "shared-b") == 1
+    response = await app_client.post("/search", json=search)
+    assert response.json()["features"] == [], response.text
+
+
+@pytest.mark.asyncio
+async def test_collection_delete_removes_more_generations_than_one_batch(
+    app_client, database, monkeypatch, test_collection, test_item
+):
+    await add_collection(app_client, test_collection, test_item, "shared-a")
+    client = database.client
+    await index_stale(client, test_item, "stale-1", "stale-1")
+    await index_stale(client, test_item, "stale-2", "stale-2")
+    monkeypatch.setattr(index_module, "GENERATION_DISCOVERY_BATCH_SIZE", 1)
+
+    assert (await app_client.delete("/collections/shared-a")).status_code == 204
+
+    assert await count(client, "shared-a") == 0
+
+
+PARTIAL_DISCOVERY = {
+    "_shards": {"total": 1, "successful": 0, "failed": 1},
+    "aggregations": {"generations": {"buckets": [], "sum_other_doc_count": 0}},
+}
+ALL_SHARDS = {"total": 1, "successful": 1, "failed": 0}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "partial, touch",
+    [
+        (PARTIAL_DISCOVERY, False),
+        ({**PARTIAL_DISCOVERY, "timed_out": True, "_shards": ALL_SHARDS}, False),
+        # An unavailable OpenSearch shard is neither successful nor failed.
+        ({**PARTIAL_DISCOVERY, "_shards": {**ALL_SHARDS, "total": 2}}, False),
+        (PARTIAL_DISCOVERY, True),
+    ],
+)
+async def test_incomplete_discovery_keeps_the_collection(
+    app_client, database, monkeypatch, test_collection, test_item, partial, touch
+):
+    await add_collection(app_client, test_collection, test_item, "shared-a")
+    client = database.client
+    search = type(client).search
+    injected = False
+
+    async def partial_first_discovery(self, *args, **kwargs):
+        nonlocal injected
+        if not injected and is_discovery(kwargs):
+            injected = True
+            if touch:
+                await touch_collection(client, "shared-a")
+            return partial
+        return await search(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(client), "search", partial_first_discovery)
+        response = await app_client.delete("/collections/shared-a")
+
+    assert injected
+    assert await count(client, "shared-a") == 1
+    if touch:
+        assert response.status_code == 409, response.text
+        generation = await stored_generation(client, "shared-a")
+        assert await alias_filter(client, "shared-a") == shared_alias_filter(
+            "shared-a", generation
+        )
+        return
+    assert response.status_code == 500, response.text
+    assert "retry DELETE" in response.json()["detail"]
+    assert await collection_exists(client, "shared-a")
+    assert (await app_client.delete("/collections/shared-a")).status_code == 204
+    assert await count(client, "shared-a") == 0
+
+
+@pytest.mark.asyncio
+async def test_recreate_before_discovery_keeps_the_new_generation(
+    app_client, database, monkeypatch, test_collection, test_item
+):
+    await add_collection(app_client, test_collection, test_item, "shared-a")
+    client = database.client
+    search = type(client).search
+    paused = False
+
+    async def recreate_before_first_discovery(self, *args, **kwargs):
+        # The outer delete removed the alias; the id is deleted, created again
+        # and given an item before its discovery search runs.
+        nonlocal paused
+        if not paused and is_discovery(kwargs):
+            paused = True
+            assert (await app_client.delete("/collections/shared-a")).status_code == 204
+            await add_collection(app_client, test_collection, test_item, "shared-a")
+        return await search(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(client), "search", recreate_before_first_discovery)
+        response = await app_client.delete("/collections/shared-a")
+
+    assert paused
+    assert response.status_code == 409, response.text
+    assert await count(client, "shared-a") == 1
+    item = await app_client.get("/collections/shared-a/items/shared-item")
+    assert item.status_code == 200, item.text
+    generation = await stored_generation(client, "shared-a")
+    assert await alias_filter(client, "shared-a") == shared_alias_filter(
+        "shared-a", generation
+    )
+
+
+async def rebuild_collections_index(client):
+    name = f"{COLLECTIONS_INDEX}-000001"
+    await client.indices.delete(index=name)
+    await client.indices.create(index=name, body={"aliases": {COLLECTIONS_INDEX: {}}})
+    await ensure_generation_mappings(client)
+
+
+@pytest.mark.asyncio
+async def test_recreate_on_a_rebuilt_collections_index_keeps_the_new_generation(
+    app_client, database, monkeypatch, test_collection, test_item
+):
+    client = database.client
+    await rebuild_collections_index(client)
+    await add_collection(app_client, test_collection, test_item, "shared-a")
+    search = type(client).search
+    paused = False
+
+    async def rebuild_before_first_discovery(self, *args, **kwargs):
+        # The re-created collection is the first document of a fresh index of the
+        # same name, so it repeats the version the delete started from.
+        nonlocal paused
+        if not paused and is_discovery(kwargs):
+            paused = True
+            await rebuild_collections_index(client)
+            response = await app_client.post(
+                "/collections", json=collection_with(test_collection, "shared-a")
+            )
+            assert response.status_code == 201, response.text
+            response = await app_client.post(
+                "/collections/shared-a/items",
+                json=item_with(test_item, "shared-a", "new-item"),
+            )
+            assert response.status_code == 201, response.text
+        return await search(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(client), "search", rebuild_before_first_discovery)
+        response = await app_client.delete("/collections/shared-a")
+
+    assert paused
+    assert response.status_code == 409, response.text
+    item = await app_client.get("/collections/shared-a/items/new-item")
+    assert item.status_code == 200, item.text
+
+
+@pytest.mark.asyncio
+async def test_delete_without_generation_doc_values_falls_back(
+    app_client, database, test_collection, test_item
+):
+    client = database.client
+    mappings = deepcopy(ES_ITEMS_MAPPINGS)
+    mappings["properties"]["collection_generation"] = {
+        "type": "keyword",
+        "doc_values": False,
+    }
+    # A hand-created shared index whose generations can't be aggregated.
+    await client.indices.create(
+        index=SHARED_ITEMS_INDEX,
+        body={"mappings": mappings, "settings": ES_ITEMS_SETTINGS},
+    )
+    await add_collection(app_client, test_collection, test_item, "shared-a")
+    await add_collection(app_client, test_collection, test_item, "shared-b")
+    await index_stale(client, test_item, "stale", "stale")
+
+    assert (await app_client.delete("/collections/shared-a")).status_code == 204
+
+    assert not await client.exists(index=SHARED_ITEMS_INDEX, id="shared-item|shared-a")
+    # Only the current generation's items go.
+    assert await client.exists(index=SHARED_ITEMS_INDEX, id="stale|shared-a")
+    assert await count(client, "shared-b") == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "shards, touch",
+    [
+        ({"total": 2, "successful": 1, "failed": 1}, False),
+        # An unavailable primary: no copy refreshed, and no failure listed.
+        ({"total": 1, "successful": 0, "failed": 0}, False),
+        ({"total": 2, "successful": 1, "failed": 1}, True),
+    ],
+)
+async def test_refresh_shard_failure_keeps_the_collection(
+    app_client, database, monkeypatch, test_collection, test_item, shards, touch
+):
+    await add_collection(app_client, test_collection, test_item, "shared-a")
+    client = database.client
+    indices_class = type(client.indices)
+    refresh = indices_class.refresh
+    injected = False
+
+    async def fail_first_shared_refresh(self, *args, **kwargs):
+        nonlocal injected
+        response = await refresh(self, *args, **kwargs)
+        if not injected and kwargs.get("index") == SHARED_ITEMS_INDEX:
+            injected = True
+            if touch:
+                await touch_collection(client, "shared-a")
+            return {"_shards": shards}
+        return response
+
+    with monkeypatch.context() as patch:
+        patch.setattr(indices_class, "refresh", fail_first_shared_refresh)
+        response = await app_client.delete("/collections/shared-a")
+
+    assert injected
+    assert response.status_code == (409 if touch else 500), response.text
+    assert await collection_exists(client, "shared-a")
+    assert await count(client, "shared-a") == 1
+    if touch:
+        generation = await stored_generation(client, "shared-a")
+        assert await alias_filter(client, "shared-a") == shared_alias_filter(
+            "shared-a", generation
+        )
+
+
 @pytest.mark.asyncio
 async def test_collection_without_a_generation_keeps_its_term_alias(
     app_client, database, test_collection, test_item
@@ -1007,6 +1268,15 @@ async def test_change_during_cleanup_fails_the_final_delete(
             [{"deleted": 0, "version_conflicts": 0, "failures": [], "timed_out": True}],
             500,
         ),
+        (
+            [{"deleted": 0, "version_conflicts": 0, "failures": [], "canceled": "x"}],
+            500,
+        ),
+        (
+            [{"deleted": 0, "failures": [], "slices": [{}, {"canceled": "x"}]}],
+            500,
+        ),
+        ([{"status": 404, "error": {"type": "search_context_missing_exception"}}], 500),
     ],
 )
 async def test_unfinished_delete_by_query_keeps_the_collection(
@@ -1200,13 +1470,18 @@ async def test_simple_strategy_deletes_shared_layout_collections(
     for collection_id in ("shared-a", "shared-b"):
         await add_collection(app_client, test_collection, test_item, collection_id)
     client = database.client
+    # The document goes first here, so another generation may be a re-created one.
+    await index_stale(client, test_item, "other", "other")
 
     with monkeypatch.context() as patch:
         patch.setenv("ITEMS_INDEX_STRATEGY", "simple")
         async with rebuilt_index_strategy(txn_client, app):
             assert (await app_client.delete("/collections/shared-a")).status_code == 204
             assert await client.indices.exists(index=SHARED_ITEMS_INDEX)
-            assert await count(client, "shared-a") == 0
+            assert not await client.exists(
+                index=SHARED_ITEMS_INDEX, id="shared-item|shared-a"
+            )
+            assert await client.exists(index=SHARED_ITEMS_INDEX, id="other|shared-a")
 
             # Under simple, "shared" is an ordinary id whose alias is the index.
             await add_collection(app_client, test_collection, test_item, "shared")

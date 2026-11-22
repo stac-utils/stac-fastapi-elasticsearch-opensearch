@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- With `ITEMS_INDEX_STRATEGY=shared`, `DELETE /collections/{collection_id}` also removes items left in the shared index by an earlier collection with the same id, and items without a generation. It used to delete only the current generation's items, so the others kept showing up in searches across all collections after the delete and could not be removed through the API. Items of a collection created again during the delete are still left alone. Where `collection_generation` is mapped without doc values, only the current generation's items are deleted, as before. [#1051](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1051)
+
 ## [v8.3.0] - 2026-11-20
 
 ### Added
