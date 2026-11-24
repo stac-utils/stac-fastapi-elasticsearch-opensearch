@@ -50,7 +50,13 @@ BUCKET_AGGREGATION_TYPES = frozenset(
         "geohex_grid",
     }
 )
-GRID_AGGREGATION_TYPES = frozenset({"geohash_grid", "geotile_grid", "geohex_grid"})
+GRID_AGGREGATION_TYPE_BY_NAME = {
+    "centroid_geohash_grid_frequency": "geohash_grid",
+    "centroid_geohex_grid_frequency": "geohex_grid",
+    "centroid_geotile_grid_frequency": "geotile_grid",
+    "geometry_geohash_grid_frequency": "geohash_grid",
+    "geometry_geotile_grid_frequency": "geotile_grid",
+}
 SINGLE_VALUE_METRIC_TYPES = frozenset(
     {"sum", "avg", "min", "max", "value_count", "cardinality"}
 )
@@ -277,6 +283,8 @@ def _custom_aggregation_error(name: str, body: Any) -> str | None:
     if agg_type == "date_histogram":
         if sum(key in params for key in DATE_HISTOGRAM_INTERVAL_KEYS) != 1:
             return "a date_histogram must set exactly one of calendar_interval or fixed_interval"
+    if params.get("keyed"):
+        return "keyed buckets are not supported"
     return None
 
 

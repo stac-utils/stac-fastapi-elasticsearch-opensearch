@@ -51,5 +51,14 @@ Rules:
 - An entry with the name of a built-in aggregation replaces it.
 - The aggregation must be listed in the `aggregations` field of each collection that uses it (`name`, `data_type` and, for a distribution, `frequency_distribution_data_type`). The root `/aggregations` does not list it, and the root `/aggregate` accepts it only when `collections` names a collection that lists it.
 - The definitions come from the server configuration, never from a request. They can use any feature the backend supports, including scripts, so only trusted operators should set them.
+- A `min` or `max` on a date field is converted to a date value only when the aggregation is declared with `data_type: "datetime"` in the collection's `aggregations` configuration.
+- Keyed buckets (`"keyed": true`) are not supported. Such aggregation entries are ignored and a warning is logged during configuration loading.
+- A grid aggregation's configured precision is used by default. A request-level *_frequency_precision parameter overrides it only when it matches the aggregation's actual grid type:
+
+    ..._geohash_grid_frequency → geohash_grid
+    ..._geotile_grid_frequency → geotile_grid
+    ..._geohex_grid_frequency → geohex_grid
+
+Precision parameters for other grid types are ignored and the configured precision is preserved.
 
 

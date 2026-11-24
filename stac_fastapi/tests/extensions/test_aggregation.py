@@ -1,9 +1,11 @@
 import json
 import os
+from datetime import datetime
 from urllib.parse import urlparse
 
 import pytest
 
+from stac_fastapi.sfeos_helpers.aggregation.format import metric_agg
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     apply_custom_aggregations,
@@ -1053,8 +1055,7 @@ async def test_configured_date_histogram_interval_is_kept_unless_the_client_send
     app, app_client, txn_client, ctx, load_test_data, monkeypatch
 ):
     """The interval written in the configuration applies by default; the request
-    parameter replaces it, whether it is a calendar or a fixed interval."""
-    from datetime import datetime as dt
+    parameter replaces it only for the grid type its name stands for."""
 
     _configured(
         app,
@@ -1093,7 +1094,7 @@ async def test_configured_date_histogram_interval_is_kept_unless_the_client_send
     # Two more items: another day of the same month, and another month of the same
     # year. The number of non-empty buckets then tells the intervals apart, whatever
     # the date of the test item: 1 per year, 2 per month, 3 per day.
-    base = dt.fromisoformat(item["properties"]["datetime"].replace("Z", "+00:00"))
+    base = datetime.fromisoformat(item["properties"]["datetime"].replace("Z", "+00:00"))
     other_day = base.replace(day=1 if base.day != 1 else 2)
     other_month = base.replace(month=1 if base.month != 1 else 2, day=1)
     for n, when in enumerate((other_day, other_month)):
@@ -1169,3 +1170,17 @@ async def test_precision_is_only_added_to_grid_aggregations(
         assert resp.json()["aggregations"][0]["buckets"][0]["key"] == collection_id
     finally:
         await app_client.delete(f"/collections/{collection_id}")
+
+
+def test_metric_agg_converts_to_a_date_only_when_declared_datetime():
+    """Test the conversion of the date when aggregation declare datetime"""
+    # 15.0 is an average of a numeric field, not a number of milliseconds
+    numeric = metric_agg(
+        {"mean_datetime_quality": {"value": 15.0}}, "mean_datetime_quality", "number"
+    )
+    assert numeric["value"] == 15.0
+
+    # milliseconds since the epoch, declared as a datetime, whatever the name
+    for name in ("datetime_min", "first_seen"):
+        date = metric_agg({name: {"value": 1.6e12}}, name, "datetime")
+        assert str(date["value"]).startswith("2020-09-1")

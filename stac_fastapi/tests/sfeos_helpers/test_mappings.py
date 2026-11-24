@@ -488,6 +488,14 @@ class TestApplyCustomAggregations:
                     }
                 },
             ),
+            (
+                "keyed_frequency",
+                {"range": {"field": "x", "ranges": [{"to": 5}], "keyed": True}},
+            ),
+            (
+                "keyed_histogram_frequency",
+                {"histogram": {"field": "x", "interval": 5, "keyed": True}},
+            ),
         ],
         ids=[
             "not_an_object",
@@ -499,6 +507,8 @@ class TestApplyCustomAggregations:
             "sum_under_frequency_name",
             "histogram_without_interval",
             "histogram_with_two_intervals",
+            "keyed_range",
+            "keyed_histogram",
         ],
     )
     def test_invalid_entry_is_skipped_and_logged(self, caplog, name, entry):
