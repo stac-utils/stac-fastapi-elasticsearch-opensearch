@@ -1255,7 +1255,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             }
 
             precision = agg_precision.get(name)
-            # a precision from the request replaces the configures one
+            # a precision from the request replaces the configured one
             # only for the grid type its name stands for
             if precision is not None and GRID_AGGREGATION_TYPE_BY_NAME.get(name) == key:
                 agg[key]["precision"] = precision

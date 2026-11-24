@@ -1055,7 +1055,7 @@ async def test_configured_date_histogram_interval_is_kept_unless_the_client_send
     app, app_client, txn_client, ctx, load_test_data, monkeypatch
 ):
     """The interval written in the configuration applies by default; the request
-    parameter replaces it only for the grid type its name stands for."""
+    parameter replaces it whether it is a calendar or a fixed interval."""
 
     _configured(
         app,
@@ -1129,6 +1129,87 @@ async def test_configured_date_histogram_interval_is_kept_unless_the_client_send
             )
             == 2
         )
+    finally:
+        await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.asyncio
+async def test_configured_grid_precision_is_kept_unless_the_request_sends_a_compatible_one(
+    app, app_client, txn_client, ctx, load_test_data, monkeypatch
+):
+    """The configured precision applies by default; a request precision replaces
+    it only for the matching grid type."""
+
+    _configured(
+        app,
+        monkeypatch,
+        {
+            "centroid_geohash_grid_frequency": {
+                "geohash_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": 5,
+                }
+            },
+            # Deliberately mismatched name/type
+            "centroid_geotile_grid_frequency": {
+                "geohash_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": 5,
+                }
+            },
+        },
+    )
+
+    descriptor = {
+        "data_type": "frequency_distribution",
+        "frequency_distribution_data_type": "string",
+    }
+
+    collection_id = "with-configured-grid-precision"
+
+    await _collection_with_item(
+        app_client,
+        txn_client,
+        load_test_data,
+        collection_id,
+        [
+            {"name": "centroid_geohash_grid_frequency", **descriptor},
+            {"name": "centroid_geotile_grid_frequency", **descriptor},
+        ],
+    )
+
+    try:
+
+        async def key_lengths(name, **params):
+            resp = await app_client.post(
+                f"/collections/{collection_id}/aggregate",
+                json={"aggregations": [name], **params},
+            )
+
+            assert resp.status_code == 200, resp.text
+
+            buckets = resp.json()["aggregations"][0]["buckets"]
+            assert buckets
+
+            return {len(b["key"]) for b in buckets}
+
+        # Fails if precision_if_sent is replaced by extract_precision:
+        # geohash precision becomes 1 instead of configured 5
+        assert await key_lengths("centroid_geohash_grid_frequency") == {5}
+
+        # Compatible override
+        assert await key_lengths(
+            "centroid_geohash_grid_frequency",
+            centroid_geohash_grid_frequency_precision=3,
+        ) == {3}
+
+        # Fails if GRID_AGGREGATION_TYPE_BY_NAME check is removed:
+        # geotile parameter must not affect a geohash_grid
+        assert await key_lengths(
+            "centroid_geotile_grid_frequency",
+            centroid_geotile_grid_frequency_precision=2,
+        ) == {5}
+
     finally:
         await app_client.delete(f"/collections/{collection_id}")
 

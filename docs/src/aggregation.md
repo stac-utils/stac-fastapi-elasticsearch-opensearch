@@ -55,9 +55,9 @@ Rules:
 - Keyed buckets (`"keyed": true`) are not supported. Such aggregation entries are ignored and a warning is logged during configuration loading.
 - A grid aggregation's configured precision is used by default. A request-level *_frequency_precision parameter overrides it only when it matches the aggregation's actual grid type:
 
-    ..._geohash_grid_frequency → geohash_grid
-    ..._geotile_grid_frequency → geotile_grid
-    ..._geohex_grid_frequency → geohex_grid
+    ..._geohash_grid_frequency → geohash_grid  
+    ..._geotile_grid_frequency → geotile_grid  
+    ..._geohex_grid_frequency → geohex_grid  
 
 Precision parameters for other grid types are ignored and the configured precision is preserved.
 
