@@ -1,12 +1,22 @@
 ## Aggregation
 
-Stac-fastapi-elasticsearch-opensearch supports the STAC API [Aggregation Extension](https://github.com/stac-api-extensions/aggregation). This enables aggregation of points and geometries, as well as frequency distribution aggregation of any other property including dates. Aggregations can be defined at the root Catalog level (`/aggregations`) and at the Collection level (`/<collection_id>/aggregations`). The [Filter Extension](https://github.com/stac-api-extensions/filter) is also fully supported, enabling aggregated returns of search queries. Any query made with `/search` may also be executed with `/aggregate`, provided that the relevant aggregation fields are available,
+Stac-fastapi-elasticsearch-opensearch supports the STAC API [Aggregation Extension](https://github.com/stac-api-extensions/aggregation). This enables aggregation of points and geometries, as well as frequency distribution aggregation of any other property including dates. Aggregations can be defined at the root Catalog level (`/aggregations`) and at the Collection level (`/<collection_id>/aggregations`). The [Filter Extension](https://github.com/stac-api-extensions/filter) is also fully supported, enabling aggregated returns of search queries. Any query made with `/search` may also be executed with `/aggregate`, provided that the relevant aggregation fields are available.
 
 The root `/aggregations` advertises every aggregation below, and the root `/aggregate` accepts any of them, with or without `collections`. A collection's `/aggregations` returns the aggregations declared in its `aggregations` field (or the defaults when it has none), and `/collections/{collection_id}/aggregate` accepts only those.
 
 On Elasticsearch, `centroid_geohex_grid_frequency` and the `geometry_*` grid aggregations need a licence above basic; on a basic licence `/aggregate` answers `400` with the engine's reason. OpenSearch runs all of them.
 
 A field named `aggregations` should be added to the Collection object for the collection for which the aggregations are available, for example:
+
+```json
+"aggregations": [
+  {"name": "total_count", "data_type": "integer"},
+  {"name": "datetime_frequency", "data_type": "frequency_distribution",
+   "frequency_distribution_data_type": "datetime"},
+  {"name": "platform_frequency", "data_type": "frequency_distribution",
+   "frequency_distribution_data_type": "string"}
+]
+```
 
 Available aggregations are:
 
@@ -43,22 +53,36 @@ For example:
 }
 ```
 
+Each custom aggregation must also be declared in the `aggregations` field of every collection that uses it. The two entries above would be declared as:
+
+```json
+"aggregations": [
+  {"name": "asset_file_size_sum", "data_type": "integer"},
+  {"name": "per_week_frequency", "data_type": "frequency_distribution",
+   "frequency_distribution_data_type": "datetime"}
+]
+```
+
 Rules:
 
 - Each entry holds exactly one aggregation type. An invalid entry is logged and ignored.
 - The response shape depends on the name. A name ending in `_frequency` is returned as buckets, so its type must be one of `terms`, `date_histogram`, `histogram`, `range`, `date_range`, `geohash_grid`, `geotile_grid` or `geohex_grid`. Any other name is returned as a single value, so its type must be one of `sum`, `avg`, `min`, `max`, `value_count` or `cardinality`.
 - A `date_histogram` sets exactly one of `calendar_interval` or `fixed_interval`. That interval applies unless the request sends `datetime_frequency_interval`, which then replaces it.
 - An entry with the name of a built-in aggregation replaces it.
-- The aggregation must be listed in the `aggregations` field of each collection that uses it (`name`, `data_type` and, for a distribution, `frequency_distribution_data_type`). The root `/aggregations` does not list it, and the root `/aggregate` accepts it only when `collections` names a collection that lists it.
-- The definitions come from the server configuration, never from a request. They can use any feature the backend supports, including scripts, so only trusted operators should set them.
+- The aggregation must be listed in the `aggregations` field of each collection that uses it, as shown above. The root `/aggregations` does not list it, and the root `/aggregate` accepts it only when `collections` names a collection that lists it.
+- The definitions come from the server configuration, never from a request. They can use any feature the backend supports, including scripts, so only trusted operators should set them. The configuration is loaded once at startup; changing it requires a restart.
 - A `min` or `max` on a date field is converted to a date value only when the aggregation is declared with `data_type: "datetime"` in the collection's `aggregations` configuration.
-- Keyed buckets (`"keyed": true`) are not supported. Such aggregation entries are ignored and a warning is logged during configuration loading.
-- A grid aggregation's configured precision is used by default. A request-level *_frequency_precision parameter overrides it only when it matches the aggregation's actual grid type:
+- Keyed buckets (`"keyed": true`) are not supported. Such aggregation entries are ignored and an error is logged during configuration loading.
+- A grid aggregation's configured precision is used by default. A request-level precision parameter overrides it only when the parameter's grid type matches the aggregation's actual type:
 
-    ..._geohash_grid_frequency → geohash_grid  
-    ..._geotile_grid_frequency → geotile_grid  
-    ..._geohex_grid_frequency → geohex_grid  
+  | Request parameter | Applies only to type |
+  |---|---|
+  | `centroid_geohash_grid_frequency_precision` | `geohash_grid` |
+  | `centroid_geohex_grid_frequency_precision` | `geohex_grid` |
+  | `centroid_geotile_grid_frequency_precision` | `geotile_grid` |
+  | `geometry_geohash_grid_frequency_precision` | `geohash_grid` |
+  | `geometry_geotile_grid_frequency_precision` | `geotile_grid` |
 
-Precision parameters for other grid types are ignored and the configured precision is preserved.
+  Precision parameters for other grid types are ignored and the configured precision is preserved. For example, `centroid_geohash_grid_frequency_precision` sent with an aggregation whose configured type is `geotile_grid` has no effect.
 
 
