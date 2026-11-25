@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v8.4.0] - 2026-11-25
+
+### Added
+
+- `STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS` and `STAC_FASTAPI_ES_AGGREGATIONS_FILE` declare additional aggregations through configuration, without patching `AGGREGATION_MAPPING`. A configured `date_histogram` keeps its interval unless the request sends `datetime_frequency_interval`, and `precision` is only added to grid aggregations. A configured grid precision is kept unless the request sends one. [#1037](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1037)
+
 ### Fixed
 
 - With `ITEMS_INDEX_STRATEGY=shared`, `DELETE /collections/{collection_id}` also removes items left in the shared index by an earlier collection with the same id, and items without a generation. It used to delete only the current generation's items, so the others kept showing up in searches across all collections after the delete and could not be removed through the API. Items of a collection created again during the delete are still left alone. Where `collection_generation` is mapped without doc values, only the current generation's items are deleted, as before. [#1051](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/1051)
@@ -15,7 +21,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- `STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS` and `STAC_FASTAPI_ES_AGGREGATIONS_FILE` declare additional aggregations through configuration, without patching `AGGREGATION_MAPPING`. A configured `date_histogram` keeps its interval unless the request sends `datetime_frequency_interval`, and `precision` is only added to grid aggregations. A configured grid precision is kept unless the request sends one. [#1037](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1037)  
 - `GET /catalogs/{catalog_id}/collections` accepts `bbox` and `datetime`, which match the collection extents as on `GET /collections`, whenever `GET /collections` accepts them (`ENABLE_COLLECTIONS_SEARCH` or `ENABLE_COLLECTIONS_SEARCH_ROUTE`). The route now takes every parameter of the base Collection Search class, which the scoped Collection Search binding in [multi-tenant-catalogs#20](https://github.com/StacLabs/multi-tenant-catalogs/pull/20) requires before `filter`, `sortby`, `q` or `fields` can be bound there. `BaseDatabaseLogic.get_catalog_collections` gains optional `bbox` and `datetime` parameters; the client passes them only when they are set, so an out-of-tree backend needs them only to serve those two parameters. [#1036](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1036)
 - With `ENABLE_COLLECTIONS_SEARCH` on (the default), the landing page and `/catalogs/{catalog_id}/conformance` declare `https://api.stacspec.org/v1.0.0/multi-tenant-catalogs#collection-search`, which binds the Collection Search parameters to `GET /catalogs/{catalog_id}/collections`. The scoped conformance also lists the Collection Search base and `simple-query` classes, the Fields, Free Text, Filter and Sort classes that route accepts, and `collection-search#sortables` when sort is enabled. With only `ENABLE_COLLECTIONS_SEARCH_ROUTE`, the marker is left out, because the landing page then has no `simple-query` class. Two gaps remain: the scoped listing has no collection-queryables link yet, which the spec requires once `#filter` is bound, and the scoped parameters are still accepted when collection search is off. [#1046](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1046)
 - `GET /catalogs/{catalog_id}/collections` links `/collections-sortables` with the `http://www.opengis.net/def/rel/ogc/1.0/sortables` relation whenever that route is registered. [#1046](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/1046)
@@ -1236,7 +1241,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.3.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.4.0...main
+[v8.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.3.0...v8.4.0
 [v8.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.2.0...v8.3.0
 [v8.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.2...v8.2.0
 [v8.1.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v8.1.1...v8.1.2
