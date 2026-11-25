@@ -138,6 +138,9 @@ def merge_queryables(collection_queryables: list[dict]) -> dict:
                         f"Conflict detected for queryable '{prop_name}'. "
                         f"Keeping existing definition: {existing_def}. Ignoring: {prop_def}."
                     )
+                # if both properties of the same types and are enumerations, merge the enum values
+                if existing_def.get("type") == prop_def.get("type") and (values := existing_def.get("enum")):
+                    existing_def["enum"] = list({*values, *prop_def.get("enum", [])})
             else:
                 merged_properties[prop_name] = prop_def
 
