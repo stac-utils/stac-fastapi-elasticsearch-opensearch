@@ -455,6 +455,12 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     detail=f"Aggregation {agg_name} not supported {where}",
                 )
 
+        def precision_if_sent(value, minimum, maximum):
+            """Validate precision when the client sent one, None otherwise."""
+            if value is None:
+                return None
+            return self.extract_precision(value, minimum, maximum)
+
         if aggregate_request.filter_expr:
             try:
                 search, _ = await self.database.apply_cql2_filter(
@@ -465,38 +471,42 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     status_code=400, detail=f"Error with cql2 filter: {e}"
                 )
 
-        centroid_geohash_grid_precision = self.extract_precision(
+        centroid_geohash_grid_precision = precision_if_sent(
             aggregate_request.centroid_geohash_grid_frequency_precision,
             1,
             self.MAX_GEOHASH_PRECISION,
         )
 
-        centroid_geohex_grid_precision = self.extract_precision(
+        centroid_geohex_grid_precision = precision_if_sent(
             aggregate_request.centroid_geohex_grid_frequency_precision,
             0,
             self.MAX_GEOHEX_PRECISION,
         )
 
-        centroid_geotile_grid_precision = self.extract_precision(
+        centroid_geotile_grid_precision = precision_if_sent(
             aggregate_request.centroid_geotile_grid_frequency_precision,
             0,
             self.MAX_GEOTILE_PRECISION,
         )
 
-        geometry_geohash_grid_precision = self.extract_precision(
+        geometry_geohash_grid_precision = precision_if_sent(
             aggregate_request.geometry_geohash_grid_frequency_precision,
             1,
             self.MAX_GEOHASH_PRECISION,
         )
 
-        geometry_geotile_grid_precision = self.extract_precision(
+        geometry_geotile_grid_precision = precision_if_sent(
             aggregate_request.geometry_geotile_grid_frequency_precision,
             0,
             self.MAX_GEOTILE_PRECISION,
         )
 
-        datetime_frequency_interval = self.extract_date_histogram_interval(
-            aggregate_request.datetime_frequency_interval,
+        datetime_frequency_interval = (
+            self.extract_date_histogram_interval(
+                aggregate_request.datetime_frequency_interval,
+            )
+            if aggregate_request.datetime_frequency_interval is not None
+            else None
         )
 
         try:

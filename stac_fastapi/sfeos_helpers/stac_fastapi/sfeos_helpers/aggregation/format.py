@@ -51,7 +51,7 @@ def metric_agg(es_aggs: dict[str, Any], name: str, data_type: str) -> Aggregatio
         "value"
     )
     # ES 7.x does not return datetimes with a 'value_as_string' field
-    if "datetime" in name and isinstance(value, float):
+    if data_type == "datetime" and isinstance(value, float):
         value = datetime_to_str(datetime.fromtimestamp(value / 1e3))
     return Aggregation(
         name=name,

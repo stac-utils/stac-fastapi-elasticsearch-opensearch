@@ -38,6 +38,30 @@ logger = logging.getLogger(__name__)
 
 COERCE_GLOBAL = get_bool_env("STAC_FASTAPI_ES_COERCE_GLOBAL", default=True)
 
+BUCKET_AGGREGATION_TYPES = frozenset(
+    {
+        "terms",
+        "date_histogram",
+        "histogram",
+        "range",
+        "date_range",
+        "geohash_grid",
+        "geotile_grid",
+        "geohex_grid",
+    }
+)
+GRID_AGGREGATION_TYPE_BY_NAME = {
+    "centroid_geohash_grid_frequency": "geohash_grid",
+    "centroid_geohex_grid_frequency": "geohex_grid",
+    "centroid_geotile_grid_frequency": "geotile_grid",
+    "geometry_geohash_grid_frequency": "geohash_grid",
+    "geometry_geotile_grid_frequency": "geotile_grid",
+}
+SINGLE_VALUE_METRIC_TYPES = frozenset(
+    {"sum", "avg", "min", "max", "value_count", "cardinality"}
+)
+DATE_HISTOGRAM_INTERVAL_KEYS = ("calendar_interval", "fixed_interval")
+
 
 def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
     """Recursively merge custom mappings into base mappings.
@@ -229,6 +253,87 @@ def get_custom_config(
                     f"Failed to read {ENV_VAR_CUSTOM_MAPPINGS_FILE} at {mappings_file}: {e}"
                 )
     return custom_config
+
+
+def _custom_aggregation_error(name: str, body: Any) -> str | None:
+    """Return why a custom aggregation is invalid, or None when it is valid.
+
+    The response shape depends on the name: a name ending in ``_frequency`` is
+    returned as buckets, any other name as a single value.
+    """
+    if not (
+        isinstance(body, dict)
+        and len(body) == 1
+        and isinstance(next(iter(body.values())), dict)
+    ):
+        return "it must contain exactly one aggregation type with an object body"
+    agg_type, params = next(iter(body.items()))
+    if name.endswith("_frequency"):
+        if agg_type not in BUCKET_AGGREGATION_TYPES:
+            return (
+                "a name ending in '_frequency' is returned as buckets, so its type "
+                f"must be one of {sorted(BUCKET_AGGREGATION_TYPES)}, not '{agg_type}'"
+            )
+    elif agg_type not in SINGLE_VALUE_METRIC_TYPES:
+        return (
+            "a name not ending in '_frequency' is returned as a single value, so "
+            f"its type must be one of {sorted(SINGLE_VALUE_METRIC_TYPES)}, "
+            f"not '{agg_type}'"
+        )
+    if agg_type == "date_histogram":
+        if sum(key in params for key in DATE_HISTOGRAM_INTERVAL_KEYS) != 1:
+            return "a date_histogram must set exactly one of calendar_interval or fixed_interval"
+    if params.get("keyed"):
+        return "keyed buckets are not supported"
+    return None
+
+
+def apply_custom_aggregations(
+    aggregations: dict[str, dict[str, Any]], custom_json: str | None
+) -> None:
+    """Apply custom aggregation definitions to an aggregation mapping, in place.
+
+    ``custom_json`` is a JSON object mapping an aggregation name to an
+    Elasticsearch/OpenSearch aggregation body made of a single aggregation type,
+    e.g. ``{"asset_file_size_sum": {"sum": {"field": "assets.file:size"}}}``.
+    Custom entries overwrite built-in ones with the same name. Invalid JSON is
+    logged and ignored; an invalid entry is logged and skipped.
+    """
+    if not custom_json:
+        return
+    try:
+        custom = json.loads(custom_json)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS JSON: {e}")
+        return
+    if not isinstance(custom, dict):
+        logger.error(
+            "STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS must be a JSON object "
+            "mapping aggregation names to aggregation bodies"
+        )
+        return
+    for name, body in custom.items():
+        error = _custom_aggregation_error(name, body)
+        if error:
+            logger.error(f"Ignoring custom aggregation '{name}': {error}")
+            continue
+        aggregations[name] = body
+
+
+def load_custom_aggregations(
+    aggregations: dict[str, dict[str, Any]], custom_aggregations: str | None = None
+) -> None:
+    """Read the custom aggregations configuration and apply it, in place.
+
+    The JSON in STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS takes precedence, otherwise
+    the file named by STAC_FASTAPI_ES_AGGREGATIONS_FILE is read.
+    """
+    custom_config = get_custom_config(
+        "STAC_FASTAPI_ES_CUSTOM_AGGREGATIONS",
+        "STAC_FASTAPI_ES_AGGREGATIONS_FILE",
+        custom_aggregations,
+    )
+    apply_custom_aggregations(aggregations, custom_config)
 
 
 def get_dynamic_template(
@@ -517,6 +622,8 @@ AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
         }
     },
 }
+
+load_custom_aggregations(AGGREGATION_MAPPING)
 
 ES_MAPPING_TYPE_TO_JSON: dict[
     str, Literal["string", "number", "boolean", "object", "array", "null", "integer"]

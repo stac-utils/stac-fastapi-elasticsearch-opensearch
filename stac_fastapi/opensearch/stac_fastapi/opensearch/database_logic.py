@@ -103,6 +103,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
+    GRID_AGGREGATION_TYPE_BY_NAME,
     ITEM_INDICES,
     Geometry,
 )
@@ -1213,12 +1214,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_ids: list[str] | None,
         aggregations: list[str],
         search: Search,
-        centroid_geohash_grid_precision: int,
-        centroid_geohex_grid_precision: int,
-        centroid_geotile_grid_precision: int,
-        geometry_geohash_grid_precision: int,
-        geometry_geotile_grid_precision: int,
-        datetime_frequency_interval: str,
+        centroid_geohash_grid_precision: int | None,
+        centroid_geohex_grid_precision: int | None,
+        centroid_geotile_grid_precision: int | None,
+        geometry_geohash_grid_precision: int | None,
+        geometry_geotile_grid_precision: int | None,
+        datetime_frequency_interval: str | None,
         datetime_search: str,
         ignore_unavailable: bool | None = True,
     ):
@@ -1237,10 +1238,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "geometry_geohash_grid_frequency": geometry_geohash_grid_precision,
                 "geometry_geotile_grid_frequency": geometry_geotile_grid_precision,
             }
-            if name in agg_precision:
-                agg[key]["precision"] = agg_precision[name]
+            precision = agg_precision.get(name)
+            # a precision from the request replaces the configured one
+            # only for the grid type its name stands for
+            if precision is not None and GRID_AGGREGATION_TYPE_BY_NAME.get(name) == key:
+                agg[key]["precision"] = precision
 
-            if key == "date_histogram":
+            if key == "date_histogram" and datetime_frequency_interval:
+                agg[key].pop("fixed_interval", None)
                 agg[key]["calendar_interval"] = datetime_frequency_interval
 
             return agg
